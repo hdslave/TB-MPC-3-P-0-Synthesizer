@@ -36,3 +36,10 @@ rate-44100 89c22dadaba96021
 rate-96000 d16e8b8bb6937ac5
 stop-start-jump-play 82438b1a7b6da351
 stop-start-jump-bar a7617cca9afbe829
+swing-62 4f9db6b8db7e76e9
+swing-75 e1240eccfe5646a1
+seed-back 2efb66da060385a5
+notes-playing 8e33b7c596532005
+notes-stopped 8e33b7c596532005
+mode-switch 9fbc2eadebb97fa5
+preset-note-bass f6428d06b4aff585

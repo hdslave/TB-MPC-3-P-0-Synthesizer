@@ -10,6 +10,12 @@
 //   CV 2 (density): the Density knob (a host's automation of it does what CV 2 did).
 //   The gate's half-step timer: half a clock at the host's tempo. (The applet measures it from the last two clocks:
 //     the same while the tempo holds; on the module the first note after the clock starts is long.)
+//   Swing: the second clock of each pair comes later, at Swing's share of the pair, as an MPC's swing does; a
+//     swung step's gate is half of its own length.
+//   Seed Back: the seeds whose patterns played, the last 16, to go back to; going back locks the seed.
+//   Mode: Notes: MIDI notes play the voice instead of TB-3PO (whose count goes on, unheard, so switching back lands
+//     in time): a note over a held one glides to it with the 303's glide and keeps the gate open, a velocity of 100
+//     or more accents, and letting go of the newest note goes back to the one still held.
 #pragma once
 
 #include "params.h"
@@ -53,6 +59,7 @@ public:
         gateOffPending = false;
         regenPressed = false;
         frameCount = 0;
+        held = 0;
     }
 
     // First values, before anything plays: the applet's Start(), then every parameter.
@@ -81,33 +88,90 @@ public:
             case ParamId::steps: seq.setSteps ((int) v); break;
             case ParamId::transpose: transposeKnob = (int) v; updateTranspose(); break;
             case ParamId::clockDiv: regridWanted = true; break;
-            case ParamId::regen: break;
+            case ParamId::mode:
+                if ((v >= 0.5f) != notesMode)
+                {
+                    // Either way the note sounding stops: a held key or a sequencer's gate belongs to the other mode.
+                    notesMode = v >= 0.5f;
+                    held = 0;
+                    seq.stop();
+                    gateOffPending = false;
+                    voice.gate (false, false);
+                }
+                break;
+            case ParamId::regen:
+            case ParamId::seedBack:
+            case ParamId::swing: break;
             default: voice.set (id, v); break;
         }
     }
 
-    // The Regen button: a reset pulse now.
+    // The Regen button: a reset pulse now. Seed Back: the seed before, locked.
     void press (uint32_t id)
     {
         if (id == ParamId::regen)
             regenPressed = true;
+        else if (id == ParamId::seedBack)
+            seedBack();
     }
 
-    // A MIDI note: it transposes the pattern from the next step, and holds (as a CV keyboard's last note does).
-    void note (int key)
+    // A MIDI note. TB-3PO: it transposes the pattern from the next step, and holds (as a CV keyboard's last note
+    // does). Notes: it plays.
+    void note (int key, float velocity)
     {
-        midiTranspose = key - 60;
-        updateTranspose();
+        if (! notesMode)
+        {
+            midiTranspose = key - 60;
+            updateTranspose();
+            return;
+        }
+        const bool legato = held > 0;
+        release (key); // played again while held: it moves to the top
+        if (held == maxHeld)
+            std::copy (heldKeys + 1, heldKeys + maxHeld, heldKeys), std::copy (heldAccent + 1, heldAccent + maxHeld, heldAccent), --held;
+        heldKeys[held] = (int8_t) key;
+        heldAccent[held] = velocity >= accentVelocity - 1.0e-6f;
+        ++held;
+        const int32_t cv = (key - noteAtZeroVolts) * 128;
+        if (legato)
+            voice.glide (cv); // the gate stays open: no new envelope
+        else
+            voice.pitch (cv, cv);
+        voice.gate (true, heldAccent[held - 1]);
     }
 
-    // The seed the last reset chose (Seed Mode: Random), once: the host must hear it as the Seed parameter's value.
-    bool takeNewSeed (uint16_t& s)
+    void noteOff (int key)
     {
-        if (! seedChanged)
-            return false;
-        seedChanged = false;
-        s = seq.currentSeed();
-        return true;
+        if (! notesMode || held == 0)
+            return;
+        const bool wasTop = heldKeys[held - 1] == key;
+        release (key);
+        if (held == 0)
+            voice.gate (false, false);
+        else if (wasTop)
+        {
+            voice.glide ((heldKeys[held - 1] - noteAtZeroVolts) * 128);
+            voice.gate (true, heldAccent[held - 1]);
+        }
+    }
+
+    // A value the engine set itself (a new seed from a reset, the seed and Seed Mode from Seed Back), once each: the
+    // host must hear them as the parameters' values.
+    bool takeChange (uint32_t& id, float& value)
+    {
+        if (changed & (1u << 0))
+        {
+            changed &= ~(1u << 0);
+            id = ParamId::seed, value = (float) seq.currentSeed();
+            return true;
+        }
+        if (changed & (1u << 1))
+        {
+            changed &= ~(1u << 1);
+            id = ParamId::seedMode, value = knob[ParamId::seedMode];
+            return true;
+        }
+        return false;
     }
 
     // Where the sequence's own count is: for a host that gives no song position (0 when it last stopped).
@@ -124,9 +188,10 @@ public:
         {
             if (playing)
             {
-                // Stopped: the gate shuts (the note releases).
+                // Stopped: the sequencer's gate shuts (the note releases); notes played by hand go on.
                 seq.stop();
-                voice.gate (false, false);
+                if (! notesMode)
+                    voice.gate (false, false);
                 gateOffPending = false;
             }
             playing = false;
@@ -154,7 +219,7 @@ public:
             {
                 if (regridWanted)
                     regrid();
-                const double next = (double) (lastClock + 1) * stepBeats();
+                const double next = clockBeat (lastClock + 1);
                 const double ahead = (next - position) / perFrame;
                 if (ahead <= clockSlack)
                 {
@@ -193,6 +258,34 @@ public:
 
 private:
     double stepBeats() const { return clockDivBeats[(int) knob[ParamId::clockDiv]]; }
+    bool swung() const { return knob[ParamId::swing] != 0.5f; }
+
+    // Clock k's place in beats. Swung, every odd clock moves to its pair's start plus Swing's share of the pair; at
+    // 50 % the clocks are k grids from the top, worked out exactly as before Swing was added.
+    double clockBeat (int64_t k) const
+    {
+        const double grid = stepBeats();
+        if (! swung() || (k & 1) == 0)
+            return (double) k * grid;
+        return (double) (k - 1) * grid + 2.0 * grid * (double) knob[ParamId::swing];
+    }
+    // The last clock at or before `beats`.
+    int64_t clockAtOrBefore (double beats) const
+    {
+        const double grid = stepBeats();
+        const int64_t b = (int64_t) std::floor (beats / grid + 1.0e-9);
+        if (! swung() || (b & 1) == 0)
+            return b;
+        return beats / grid + 1.0e-9 < clockBeat (b) / grid ? b - 1 : b; // between the grid line and its late clock
+    }
+    // The first clock at or after `beats`.
+    int64_t clockAtOrAfter (double beats) const
+    {
+        if (! swung())
+            return (int64_t) std::ceil (beats / stepBeats() - 1.0e-9);
+        const int64_t k = clockAtOrBefore (beats);
+        return clockBeat (k) / stepBeats() >= beats / stepBeats() - 1.0e-9 ? k : k + 1;
+    }
     int resetEvery() const { return resetBars[(int) knob[ParamId::reset]]; } // bars, 0: at Play or never
     bool resetAtPlay() const { return (int) knob[ParamId::reset] == 0; }
 
@@ -201,18 +294,16 @@ private:
     // A clock is a reset clock when a bar-reset line falls in (the clock before, this clock].
     bool resetClock (int64_t k) const
     {
-        const double grid = stepBeats();
-        return resetEvery() > 0 && lineOf ((double) k * grid) != lineOf ((double) (k - 1) * grid);
+        return resetEvery() > 0 && lineOf (clockBeat (k)) != lineOf (clockBeat (k - 1));
     }
 
     void relocate (double beats, double window, bool started)
     {
-        const double grid = stepBeats();
-        const double b = std::floor (beats / grid + 1.0e-9);
+        const int64_t b = clockAtOrBefore (beats);
         // Just past a clock (less than a block: a loop's wrap inside the last block, a Play landing a hair late):
         // that clock comes at once; further in, the next is the first.
-        const double late = (beats - b * grid) / perFrame;
-        lastClock = (int64_t) b - (late < window ? 1 : 0);
+        const double late = (beats - clockBeat (b)) / perFrame;
+        lastClock = b - (late < window ? 1 : 0);
         position = beats;
         regridWanted = false;
         const int64_t first = lastClock + 1;
@@ -221,8 +312,8 @@ private:
             if (resetClock (first))
                 return; // the first clock is a reset clock: it resets as it comes
             // Between lines: as if reset at the last one's clock and stepped on since (a Play is a reset there too).
-            const double line = (double) lineOf ((double) first * grid) * resetEvery() * bar;
-            const int64_t from = (int64_t) std::ceil (line / grid - 1.0e-9);
+            const double line = (double) lineOf (clockBeat (first)) * resetEvery() * bar;
+            const int64_t from = clockAtOrAfter (line);
             if (started)
                 resetPulse();
             seq.place (first - from);
@@ -235,7 +326,7 @@ private:
     // Clock Div changed: count clocks on the new grid from here, without a burst of them.
     void regrid()
     {
-        lastClock = (int64_t) std::floor (position / stepBeats() + 1.0e-9);
+        lastClock = clockAtOrBefore (position);
         regridWanted = false;
     }
 
@@ -243,7 +334,8 @@ private:
     {
         const uint16_t before = seq.currentSeed();
         seq.reset (entropy());
-        seedChanged = seedChanged || seq.currentSeed() != before;
+        if (seq.currentSeed() != before)
+            changed |= 1u << 0;
     }
 
     void clock (int64_t k)
@@ -251,14 +343,64 @@ private:
         if (resetClock (k))
             resetPulse();
         seq.clock();
+        remember();
+        if (notesMode)
+            return; // the count goes on; the notes play the voice
         voice.pitch (seq.slideStart, seq.slideEnd);
         voice.gate (seq.gateCv > 0, seq.gateCv == Tb3po::gateAccent);
         if (seq.opened)
         {
             gateOffPending = true;
-            gateOffIn = (uint32_t) std::max (1.0, std::floor (0.5 * stepBeats() / perFrame));
+            // Half the step: at Swing 50 % half a grid, as before Swing; swung, half of this step's own length.
+            const double length = swung() ? clockBeat (k + 1) - clockBeat (k) : stepBeats();
+            gateOffIn = (uint32_t) std::max (1.0, std::floor (0.5 * length / perFrame));
         }
         TBMPC_TRACE (0);
+    }
+
+    // Seed Back's memory: when a clock plays a pattern from a new seed, the seed before goes in, if its pattern played.
+    void remember()
+    {
+        const uint16_t now = seq.playingSeed();
+        if (now != shownSeed)
+        {
+            if (shownPlayed && ! goingBack)
+            {
+                if (remembered == historySize)
+                    std::copy (history + 1, history + historySize, history), --remembered;
+                history[remembered++] = shownSeed;
+            }
+            goingBack = false;
+            shownSeed = now;
+            shownPlayed = false;
+        }
+        shownPlayed = true;
+    }
+
+    void seedBack()
+    {
+        // Back past seeds equal to the one asked for already.
+        while (remembered > 0 && history[remembered - 1] == seq.currentSeed())
+            --remembered;
+        if (remembered == 0)
+            return;
+        const uint16_t s = history[--remembered];
+        seq.setSeed (s);
+        seq.setLocked (true);
+        knob[ParamId::seed] = (float) s;
+        knob[ParamId::seedMode] = 1.0f;
+        goingBack = true; // the pattern left now is not remembered: Back again goes further back
+        changed |= (1u << 0) | (1u << 1);
+    }
+
+    // A key let go (or played again): out of the held list.
+    void release (int key)
+    {
+        int n = 0;
+        for (int i = 0; i < held; ++i)
+            if (heldKeys[i] != key)
+                heldKeys[n] = heldKeys[i], heldAccent[n] = heldAccent[i], ++n;
+        held = n;
     }
 
     void updateTranspose()
@@ -282,7 +424,19 @@ private:
     double rate = 48000.0, perFrame = 0.0, position = 0.0, bar = 4.0;
     float knob[ParamId::count] {};
     int transposeKnob = 0, midiTranspose = 0;
-    bool playing = false, regridWanted = false, gateOffPending = false, regenPressed = false, seedChanged = false;
+    bool playing = false, regridWanted = false, gateOffPending = false, regenPressed = false, notesMode = false;
+    uint32_t changed = 0; // values to tell the host: bit 0 the seed, bit 1 Seed Mode
+    // Mode: Notes: the keys held, oldest first.
+    static constexpr int maxHeld = 16;
+    int8_t heldKeys[maxHeld] {};
+    bool heldAccent[maxHeld] {};
+    int held = 0;
+    // Seed Back: the seeds whose patterns played, oldest first.
+    static constexpr int historySize = 16;
+    uint16_t history[historySize] {};
+    int remembered = 0;
+    uint16_t shownSeed = 0;
+    bool shownPlayed = false, goingBack = false;
     int64_t lastClock = -1;
     uint32_t gateOffIn = 0, lastBlock = 0, draws = 0;
     uint64_t frameCount = 0; // frames rendered since prepare()

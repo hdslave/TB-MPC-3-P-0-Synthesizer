@@ -303,8 +303,10 @@ constexpr double rate48 = 48000.0;
 
 // Where the notes of a locked pattern start (frames), as the plug-in must play it from the top at `bpm` in steps of
 // `stepFrames`: a note starts where the gate opens after being shut (a step after a slide is legato: no new note).
-std::vector<long> expectedNotes (uint16_t seed, int density, int scale, int steps, double stepFrames, int clocks)
+std::vector<long> expectedNotes (uint16_t seed, int density, int scale, int steps, double stepFrames, int clocks, double swing = 0.5)
 {
+    // Swung, each odd clock comes at its pair's start plus Swing's share of the pair.
+    auto frameOf = [&] (int k) { return (k & 1) && swing != 0.5 ? (k - 1) * stepFrames + 2.0 * stepFrames * (double) (float) swing : k * stepFrames; };
     tbmpc::Tb3po t;
     t.start (1);
     t.setScale (scale);
@@ -319,7 +321,7 @@ std::vector<long> expectedNotes (uint16_t seed, int density, int scale, int step
     {
         t.clock();
         if (t.gateCv > 0 && gate == 0)
-            out.push_back (std::lround (k * stepFrames));
+            out.push_back (std::lround (frameOf (k)));
         if (t.opened)
             t.halfStepPassed();
         gate = t.gateCv;
@@ -357,7 +359,7 @@ void testParameters()
 {
     Instance a;
     const uint32_t count = a.params->count (a.plugin);
-    CHECK (count == 20);
+    CHECK (count == 23);
     std::map<clap_id, int> seen;
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -374,7 +376,7 @@ void testParameters()
         CHECK (std::fabs (back - v) <= 0.02 * (info.max_value - info.min_value) + 1e-9);
     }
     for (const char* name : { "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent", "Waveform", "Volume", "Slide", "Seed Mode",
-                              "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset" })
+                              "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset", "Mode", "Seed Back", "Swing" })
         CHECK (a.ids.count (name) == 1);
     // The seed reads as the module shows it, four hex digits; density as -7..+7; the applet's first scale.
     char text[64] = {};
@@ -435,8 +437,8 @@ void testPresets()
         names.push_back (p.name), keys.push_back (p.key);
         CHECK (p.ours && (p.flags & CLAP_PRESET_DISCOVERY_IS_FACTORY_CONTENT) != 0);
     }
-    CHECK ((names == std::vector<std::string> { "Default", "Acid Line", "Root Pulse", "Square Lead", "Dub Steps" }));
-    CHECK ((keys == std::vector<std::string> { "default", "acid-line", "root-pulse", "square-lead", "dub-steps" }));
+    CHECK ((names == std::vector<std::string> { "Default", "Acid Line", "Root Pulse", "Square Lead", "Dub Steps", "Note Bass" }));
+    CHECK ((keys == std::vector<std::string> { "default", "acid-line", "root-pulse", "square-lead", "dub-steps", "note-bass" }));
 
     Instance a;
     CHECK (a.presets != nullptr);
@@ -807,6 +809,200 @@ void testVoice()
     CHECK (std::all_of (l.begin(), l.end(), [] (float v) { return v == 0.0f; }));
 }
 
+void testSwing()
+{
+    // Swing 75 %: every note where the pattern puts it, the odd steps a quarter of a pair late; a swung step's gate is
+    // half its own length. Sixteenths at 120 BPM: a pair is 12,000 frames, an even step 9,000, an odd one 3,000.
+    for (double swing : { 0.62, 0.75 })
+    {
+        Instance a;
+        auto patch = timingPatch (0x303);
+        patch.push_back ({ "Density", 4 });
+        patch.push_back ({ "Swing", swing });
+        a.setup (patch);
+        std::vector<float> l, r;
+        a.render (48000 * 6, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); });
+        const auto expect = expectedNotes (0x303, 4, tbmpc::appletDefaultScale, 16, 6000.0, 48, swing);
+        const auto found = onsets (l, 1e-3f, 1e-4f, 96);
+        CHECK (expect.size() > 8 && found.size() == expect.size());
+        bool near = found.size() == expect.size();
+        for (size_t i = 0; near && i < found.size(); ++i)
+            near = found[i] >= expect[i] && found[i] < expect[i] + 48;
+        CHECK (near);
+    }
+    Instance b;
+    b.setup ({ { "Seed Mode", 1.0 }, { "Seed", 0x303 }, { "Density", -7 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 },
+               { "Accent", 0.0 }, { "Swing", 0.75 } });
+    std::vector<float> l, r;
+    b.render (48000 * 4, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); });
+    tbmpc::Tb3po t;
+    t.start (1);
+    t.setDensity (0);
+    t.setSeed (0x303);
+    t.setLocked (true);
+    t.reset (0);
+    auto peak = [&] (long from, long to) { float m = 0; for (long i = from; i < to; ++i) m = std::max (m, std::fabs (l[(size_t) i])); return m; };
+    int even = 0, odd = 0;
+    for (int k = 0; k < 30; ++k)
+    {
+        const int prev = t.currentStep();
+        t.clock();
+        if (k < 1 || t.slid (t.currentStep()) || t.slid (prev))
+            continue; // not a plain note
+        const long start = (k / 2) * 12000 + ((k & 1) ? 9000 : 0), length = (k & 1) ? 3000 : 9000;
+        const float before = peak (start + length / 2 - 300, start + length / 2 - 10);
+        CHECK (before > 0.01f);
+        if (k & 1)
+        {
+            CHECK (peak (start + length - 300, start + length - 10) < 0.05f * before); // closed, and fading
+            ++odd;
+        }
+        else
+        {
+            CHECK (peak (start + length / 2 + 2400, start + length - 10) < 1e-4f); // closed and silent
+            ++even;
+        }
+    }
+    CHECK (even >= 3 && odd >= 3);
+}
+
+// Every value the plug-in reported back for a parameter, in order.
+std::vector<double> reported (OutEvents& out, clap_id id)
+{
+    std::vector<double> v;
+    for (auto& [i, x] : out.values)
+        if (i == id)
+            v.push_back (x);
+    return v;
+}
+
+void testSeedBack()
+{
+    std::vector<float> l, r, l2, r2;
+    auto t = [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); };
+    // Locked: seed 0303 plays, then 1234; Seed Back (on a clock) goes back to 0303: from the next step the notes are
+    // 0303's again, and the host hears Seed 0303 and Seed Mode Locked.
+    {
+        Instance a, ref;
+        a.setup (timingPatch (0x303));
+        ref.setup (timingPatch (0x303));
+        OutEvents out;
+        a.render (48000 * 8, 128, l, r, t, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 96000) a.set (e, "Seed", 0x1234);
+            if (at == 192000) a.set (e, "Seed Back", 1.0);
+        }, &out);
+        ref.render (48000 * 8, 128, l2, r2, t);
+        CHECK (a.value ("Seed") == 0x303 && a.value ("Seed Mode") == 1.0);
+        CHECK ((reported (out, a.id ("Seed")) == std::vector<double> { 0x303 }) && (reported (out, a.id ("Seed Mode")) == std::vector<double> { 1.0 }));
+        auto from = [] (const std::vector<long>& x, long at) { std::vector<long> y; for (long h : x) if (h >= at) y.push_back (h); return y; };
+        const auto mine = from (onsets (l), 198000), theirs = from (onsets (l2), 198000);
+        const auto middle = from (onsets (l), 102000), refMiddle = from (onsets (l2), 102000);
+        CHECK (mine.size() > 8 && mine.size() == theirs.size());
+        bool same = mine.size() == theirs.size();
+        for (size_t i = 0; same && i < mine.size(); ++i)
+            same = std::labs (mine[i] - theirs[i]) <= 48;
+        CHECK (same);
+        CHECK (middle != refMiddle); // 1234 played something else in between
+    }
+    // Random: each Play picks a seed; Seed Back gives the first Play's one back, locked. Twice: further back.
+    {
+        Instance a;
+        OutEvents out;
+        a.render (48000 * 3, 128, l, r, [] (uint64_t at) {
+            if (at < 24000) return playingFrom (0.0, 120.0, rate48, at);
+            if (at < 30000) return Transport { false, 120.0, 0.0 };
+            if (at < 54000) return playingFrom (0.0, 120.0, rate48, at - 30000);
+            if (at < 60000) return Transport { false, 120.0, 0.0 };
+            return playingFrom (0.0, 120.0, rate48, at - 60000);
+        }, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 128 * 600) a.set (e, "Seed Back", 1.0);
+            if (at == 128 * 800) a.set (e, "Seed Back", 1.0);
+        }, &out);
+        const auto seeds = reported (out, a.id ("Seed"));
+        // Three Plays (three seeds); Back at 76,800 (third playing): the second; Back at 102,400: the first.
+        CHECK (seeds.size() == 5 && seeds[3] == seeds[1] && seeds[4] == seeds[0]);
+        CHECK (a.value ("Seed Mode") == 1.0 && ! seeds.empty() && a.value ("Seed") == seeds.back());
+    }
+    // Nothing played yet: Seed Back does nothing.
+    {
+        Instance a;
+        OutEvents out;
+        a.render (4800, 128, l, r, [] (uint64_t) { return Transport { false, 120.0, 0.0 }; }, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0) a.set (e, "Seed Back", 1.0);
+        }, &out);
+        CHECK (reported (out, a.id ("Seed")).empty() && a.value ("Seed Mode") == 0.0);
+    }
+}
+
+void testNotes()
+{
+    // Mode: Notes with the transport stopped, a clean saw: a note plays at once at its pitch (C3 = 130.8 Hz); one
+    // played over it glides to G3 (196 Hz) without a new note; letting the top one go glides back; letting go of the
+    // last closes the gate.
+    auto patch = [] () {
+        return std::vector<std::pair<std::string, double>> { { "Mode", 1.0 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 },
+                                                             { "Accent", 0.0 } };
+    };
+    auto stopped = [] (uint64_t) { return Transport { false, 120.0, 0.0 }; };
+    std::vector<float> l, r;
+    Instance a;
+    a.setup (patch());
+    a.render (48000 * 2, 128, l, r, stopped, [] (uint64_t at, uint32_t n, Events& e) {
+        auto in = [&] (uint64_t when) { return when >= at && when < at + n; };
+        if (in (1000)) e.note ((uint32_t) (1000 - at), CLAP_EVENT_NOTE_ON, 48, 0.6);
+        if (in (20000)) e.note ((uint32_t) (20000 - at), CLAP_EVENT_NOTE_OFF, 48, 0.0);
+        if (in (30000)) e.note ((uint32_t) (30000 - at), CLAP_EVENT_NOTE_ON, 48, 0.6);
+        if (in (40000)) e.note ((uint32_t) (40000 - at), CLAP_EVENT_NOTE_ON, 55, 0.6);
+        if (in (52000)) e.note ((uint32_t) (52000 - at), CLAP_EVENT_NOTE_OFF, 55, 0.0);
+        if (in (64000)) e.note ((uint32_t) (64000 - at), CLAP_EVENT_NOTE_OFF, 48, 0.0);
+    });
+    const auto hits = onsets (l, 1e-3f, 1e-4f, 96);
+    if (std::getenv ("TBMPC_DEBUG"))
+    {
+        std::printf ("debug notes:");
+        for (long h : hits) std::printf (" %ld", h);
+        std::printf ("\n");
+    }
+    CHECK (hits.size() == 2 && hits[0] >= 1000 && hits[0] < 1048 && hits[1] >= 30000 && hits[1] < 30048);
+    auto hz = [&] (size_t from, size_t to) { return crossings (l, from, to) * 48000.0 / (double) (to - from); };
+    auto peak = [&] (size_t from, size_t to) { float m = 0; for (size_t i = from; i < to; ++i) m = std::max (m, std::fabs (l[i])); return m; };
+    CHECK (std::fabs (hz (4000, 16000) - 130.8) < 3.0);
+    CHECK (peak (22000, 29000) < 1e-4f);
+    CHECK (std::fabs (hz (44000, 51000) - 196.0) < 4.0);  // glided to G3
+    CHECK (peak (40000, 44000) > 0.05f);                   // no gap: the gate stayed open
+    CHECK (std::fabs (hz (56000, 63000) - 130.8) < 3.0);  // back to C3, still held
+    CHECK (peak (66000, 96000) < 1e-4f);
+    // Accent: velocity 100 and up, louder with Accent up.
+    auto loud = [&] (double velocity) {
+        Instance b;
+        auto p = patch();
+        p.push_back ({ "Accent", 1.0 });
+        b.setup (p);
+        std::vector<float> x, y;
+        b.render (24000, 128, x, y, stopped, [velocity] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 48, velocity);
+        });
+        double sum = 0;
+        for (size_t i = 0; i < 9600; ++i) sum += (double) x[i] * x[i];
+        return std::sqrt (sum / 9600);
+    };
+    CHECK (loud (100.0 / 127.0) > loud (99.0 / 127.0) * 1.2);
+    // Mode: Notes while the host plays and no note is held: TB-3PO is not heard.
+    Instance c;
+    c.setup (patch());
+    c.render (48000, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); });
+    CHECK (std::all_of (l.begin(), l.end(), [] (float v) { return v == 0.0f; }));
+    // Back to TB-3PO with a key held: the note stops, and TB-3PO plays again on its clock.
+    Instance d;
+    d.setup (patch());
+    d.render (48000 * 2, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); }, [&] (uint64_t at, uint32_t, Events& e) {
+        if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 60, 0.8);
+        if (at == 128 * 200) d.set (e, "Mode", 0.0);
+    });
+    CHECK (peak (12000, 25000) > 0.05f && peak (25600 + 2400, 25600 + 2900) < 1e-3f);
+    CHECK (peak (48000, 96000) > 0.01f);
+}
+
 void testExtremes()
 {
     // Random settings, every one in its range, at a fast tempo: the output stays a number and within full scale.
@@ -845,7 +1041,7 @@ void demos (const std::string& folder)
     // 16 s of each factory preset at 120 BPM. Each preset (loaded by its key) must give exactly the values listed
     // here and the same sound; the files are rendered from the preset. Default runs on its Random seed: a new
     // pattern every Play.
-    struct Demo { const char* file; const char* preset; std::vector<std::pair<std::string, double>> values; };
+    struct Demo { const char* file; const char* preset; std::vector<std::pair<std::string, double>> values; bool notes = false; };
     std::vector<Demo> list {
         { "demo-acid-line.wav", "acid-line", { { "Seed Mode", 1 }, { "Seed", 0x5a17 }, { "Scale", 6 }, { "Density", 5 }, { "Cutoff", 0.28 },
                                                { "Resonance", 0.78 }, { "Env Mod", 0.62 }, { "Decay", 0.3 }, { "Accent", 0.8 } } },
@@ -857,6 +1053,24 @@ void demos (const std::string& folder)
         { "demo-dub-steps.wav", "dub-steps", { { "Seed Mode", 1 }, { "Seed", 0x1d0b }, { "Scale", 2 }, { "Density", 3 }, { "Steps", 12 },
                                                { "Octave", -1 }, { "Cutoff", 0.32 }, { "Resonance", 0.5 }, { "Env Mod", 0.35 }, { "Decay", 0.75 },
                                                { "Accent", 0.4 }, { "Volume", 0.8 } } },
+        // Note Bass is played by notes: a two-bar line, some held over the next (glides), some loud (accents).
+        { "demo-note-bass.wav", "note-bass", { { "Mode", 1 }, { "Cutoff", 0.26 }, { "Resonance", 0.74 }, { "Env Mod", 0.62 }, { "Decay", 0.38 },
+                                               { "Accent", 0.8 } }, true },
+    };
+    // The line: sixteenths at 120 BPM (6,000 frames), as (step, key, steps held, velocity); played on repeat.
+    struct Note { int step, key, length; double velocity; };
+    const Note line[] = { { 0, 36, 1, 1.0 }, { 2, 36, 1, 0.6 }, { 3, 48, 2, 0.6 }, { 4, 46, 1, 0.6 }, { 6, 39, 1, 1.0 }, { 8, 36, 1, 0.6 },
+                          { 10, 41, 2, 0.6 }, { 11, 43, 1, 1.0 }, { 12, 36, 1, 0.6 }, { 14, 34, 1, 0.6 }, { 15, 36, 1, 1.0 },
+                          { 16, 36, 1, 1.0 }, { 18, 48, 1, 0.6 }, { 19, 36, 2, 0.6 }, { 20, 39, 1, 1.0 }, { 22, 36, 1, 0.6 },
+                          { 24, 41, 3, 0.6 }, { 26, 43, 1, 0.6 }, { 27, 46, 1, 1.0 }, { 28, 36, 1, 0.6 }, { 30, 48, 1, 0.6 } };
+    auto lineEvents = [&line] (uint64_t at, uint32_t n, Events& e) {
+        for (uint64_t loop = at / 192000; loop <= (at + n) / 192000; ++loop)
+            for (const auto& x : line)
+            {
+                const uint64_t on = loop * 192000 + (uint64_t) x.step * 6000, off = on + (uint64_t) x.length * 6000 - 2400;
+                if (on >= at && on < at + n) e.note ((uint32_t) (on - at), CLAP_EVENT_NOTE_ON, (int16_t) x.key, x.velocity);
+                if (off >= at && off < at + n) e.note ((uint32_t) (off - at), CLAP_EVENT_NOTE_OFF, (int16_t) x.key, 0.0);
+            }
     };
     for (auto& demo : list)
     {
@@ -868,8 +1082,16 @@ void demos (const std::string& folder)
             CHECK (a.value (name) == b.value (name));
         std::vector<float> l, r, l2, r2;
         auto t = [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); };
-        a.render (48000 * 16, 128, l, r, t);
-        b.render (48000 * 16, 128, l2, r2, t);
+        if (demo.notes)
+        {
+            a.render (48000 * 16, 128, l, r, t, lineEvents);
+            b.render (48000 * 16, 128, l2, r2, t, lineEvents);
+        }
+        else
+        {
+            a.render (48000 * 16, 128, l, r, t);
+            b.render (48000 * 16, 128, l2, r2, t);
+        }
         CHECK (l == l2 && r == r2);
         float peak = 0.0f;
         for (float s : l2)
@@ -912,6 +1134,9 @@ int main (int argc, char** argv)
     testSeed();
     testTranspose();
     testVoice();
+    testSwing();
+    testSeedBack();
+    testNotes();
     testExtremes();
     demos (argv[2]);
     entry->deinit();

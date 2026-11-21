@@ -260,6 +260,7 @@ public:
     // --- What the pattern is (for the tests) ---
     int currentStep() const { return step; }
     uint16_t currentSeed() const { return seed; }
+    uint16_t playingSeed() const { return patternSeed; } // the seed the pattern now playing was made from
     bool gated (int s) const { return (gates >> s) & 1u; }
     bool slid (int s) const { return (slides >> s) & 1u; }
     bool accented (int s) const { return (accents >> s) & 1u; }

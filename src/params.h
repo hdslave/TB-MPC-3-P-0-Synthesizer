@@ -12,7 +12,7 @@
 #include <strings.h>
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.1.1"
+#define TBMPC_VERSION "0.2.0"
 #endif
 
 namespace tbmpc
@@ -23,6 +23,7 @@ enum : uint32_t
 {
     tuning = 0, cutoff, resonance, envMod, decay, accent, waveform, volume, glide,
     seedMode, seed, regen, density, scale, root, octave, steps, transpose, clockDiv, reset,
+    mode, seedBack, swing, // 0.2.0
     count
 };
 }
@@ -69,6 +70,11 @@ constexpr double moduleTickRate = 1.0e6 / 60.0;
 inline const char* const waveChoices[] = { "Saw", "Square" };
 inline const char* const glideChoices[] = { "TB-3PO", "303" };
 inline const char* const seedModeChoices[] = { "Random", "Locked" };
+inline const char* const modeChoices[] = { "TB-3PO", "Notes" };
+// Mode: Notes: a note at this velocity or louder is accented (as 303-style synths read MIDI).
+constexpr float accentVelocity = 100.0f / 127.0f;
+// 0 V is C2: in Mode: Notes, MIDI note 36 (C2) plays the pitch the sequencer's 0 V does.
+constexpr int noteAtZeroVolts = 36;
 inline const char* const rootChoices[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 inline const char* const resetChoices[] = { "Play", "1 Bar", "2 Bars", "4 Bars", "8 Bars", "Off" };
 constexpr int resetBars[] = { 0, 1, 2, 4, 8, 0 };
@@ -84,8 +90,8 @@ using P = Param;
 #define BUTTON(id, name, module) P { ParamId::id, name, module, 0.0f, 1.0f, 0.0f, Kind::button, Unit::button, nullptr }
 
 // In the order a host lists them, three to a page as Melodee's Edit page shows them: the 303's panel (Tuning,
-// Cutoff, Resonance; Env Mod, Decay, Accent; Waveform, Volume and the slide), then TB-3PO's settings (the seed;
-// density, scale, root; octave, length, transpose) and the clock.
+// Cutoff, Resonance; Env Mod, Decay, Accent; Waveform, Volume and the slide), then what plays it and TB-3PO's
+// settings (the mode and the seed; Regen, Seed Back, density; scale, root, octave; length, transpose) and the clock.
 inline constexpr Param paramTable[] = {
     CONT (tuning, "Tuning", "Voice", -12.0f, 12.0f, 0.0f, semitones),
     CONT (cutoff, "Cutoff", "Voice", 0.0f, 1.0f, 0.35f, cutoffHz),
@@ -96,9 +102,11 @@ inline constexpr Param paramTable[] = {
     CHOICE (waveform, "Waveform", "Voice", waveChoices, 0.0f),
     CONT (volume, "Volume", "Voice", 0.0f, 1.0f, 0.75f, percent),
     CHOICE (glide, "Slide", "Voice", glideChoices, 0.0f),
+    CHOICE (mode, "Mode", "TB-3PO", modeChoices, 0.0f),
     CHOICE (seedMode, "Seed Mode", "TB-3PO", seedModeChoices, 0.0f),
     INT (seed, "Seed", "TB-3PO", 0.0f, 65535.0f, 12345.0f, seedHex),
     BUTTON (regen, "Regen", "TB-3PO"),
+    BUTTON (seedBack, "Seed Back", "TB-3PO"),
     INT (density, "Density", "TB-3PO", -7.0f, 7.0f, 5.0f, signedInt),
     P { ParamId::scale, "Scale", "TB-3PO", 0.0f, (float) (scaleCount - 1), (float) appletDefaultScale, Kind::choice, Unit::choice, scaleNames },
     CHOICE (root, "Root", "TB-3PO", rootChoices, 0.0f),
@@ -106,6 +114,7 @@ inline constexpr Param paramTable[] = {
     INT (steps, "Steps", "TB-3PO", 1.0f, 32.0f, 16.0f, plainInt),
     INT (transpose, "Transpose", "TB-3PO", -36.0f, 36.0f, 0.0f, signedInt),
     CHOICE (clockDiv, "Clock Div", "Clock", clockDivChoices, 5.0f),
+    CONT (swing, "Swing", "Clock", 0.5f, 0.75f, 0.5f, percent),
     CHOICE (reset, "Reset", "Clock", resetChoices, 0.0f),
 };
 #undef CONT

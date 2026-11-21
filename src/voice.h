@@ -103,7 +103,7 @@ public:
         s1 = s2 = s3 = s4 = 0.0f;
         meg = veg = sweep = 0.0f;
         megAttacking = vegAttacking = gateOpen = accentOn = false;
-        sliding = false;
+        sliding = noteGlide = false;
         slideFrames = 0;
         pitchOct = targetOct = 0.0f;
         tick = 0;
@@ -129,6 +129,7 @@ public:
     // 1/128 semitone from 0 V.
     void pitch (int32_t startCv, int32_t endCv)
     {
+        noteGlide = false;
         slideStartCv = startCv;
         slideEndCv = endCv;
         slideFrames = 0;
@@ -142,6 +143,17 @@ public:
         }
         sliding = true;
         pitchOct = (float) startCv * (1.0f / 1536.0f); // the slide moves from the first sample on (slide())
+    }
+
+    // Mode: Notes, a note played over a held one: the 303's glide from wherever the pitch is to `cv`, whatever Slide
+    // says (the applet's slide belongs to its sequencer).
+    void glide (int32_t cv)
+    {
+        targetOct = (float) cv * (1.0f / 1536.0f);
+        slideEndCv = cv;
+        noteGlide = true;
+        sliding = pitchOct != targetOct;
+        tuneMoved = true;
     }
 
     // The gate: shut, or open (normal or accented). Opening retriggers both envelopes; a change while open (a slide
@@ -159,7 +171,7 @@ public:
 
     bool silent() const { return ! gateOpen && veg == 0.0f; }
 
-    void render (float* left, float* right, uint32_t frames)
+    void render (float* __restrict left, float* __restrict right, uint32_t frames)
     {
         for (uint32_t i = 0; i < frames; ++i)
         {
@@ -217,7 +229,7 @@ private:
     {
         if (! sliding)
             return;
-        if (glide303())
+        if (noteGlide || glide303())
         {
             pitchOct += (targetOct - pitchOct) * glideCoeff;
             if (std::fabs (targetOct - pitchOct) < 1.0e-6f)
@@ -406,5 +418,6 @@ private:
     uint32_t tick = 0;
     bool megAttacking = false, vegAttacking = false, gateOpen = false, accentOn = false;
     bool sliding = false, square = false, dirty = true, moving = false, tuneMoved = true;
+    bool noteGlide = false; // this slide is a note's glide (Mode: Notes)
 };
 } // namespace tbmpc

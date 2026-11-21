@@ -1,6 +1,6 @@
 // The factory presets: the patches the demo renders play (tests/host.cpp checks they are the same values and the same
 // sound). A preset sets every parameter: the ones listed here, the rest to their defaults. All but Default lock their
-// seed, so they play the same pattern every time.
+// seed, so they play the same pattern every time; Note Bass is played by MIDI notes instead.
 #pragma once
 
 #include "params.h"
@@ -44,6 +44,10 @@ constexpr PresetValue dubSteps[] = {
     { seedMode, 1.0f }, { seed, 0x1d0b }, { scale, 2.0f }, { density, 3.0f }, { steps, 12.0f }, { octave, -1.0f },
     { cutoff, 0.32f }, { resonance, 0.5f }, { envMod, 0.35f }, { decay, 0.75f }, { accent, 0.4f }, { volume, 0.8f },
 };
+// Mode: Notes: played by MIDI notes (held over another: a glide; velocity 100 and up: an accent).
+constexpr PresetValue noteBass[] = {
+    { mode, 1.0f }, { cutoff, 0.26f }, { resonance, 0.74f }, { envMod, 0.62f }, { decay, 0.38f }, { accent, 0.8f },
+};
 } // namespace presetValues
 
 #define TBMPC_PRESET(name, key, list) Preset { name, key, list, (uint32_t) (sizeof (list) / sizeof (list[0])) }
@@ -53,6 +57,7 @@ inline const Preset presetTable[] = {
     TBMPC_PRESET ("Root Pulse", "root-pulse", presetValues::rootPulse),
     TBMPC_PRESET ("Square Lead", "square-lead", presetValues::squareLead),
     TBMPC_PRESET ("Dub Steps", "dub-steps", presetValues::dubSteps),
+    TBMPC_PRESET ("Note Bass", "note-bass", presetValues::noteBass),
 };
 #undef TBMPC_PRESET
 constexpr uint32_t presetCount = sizeof (presetTable) / sizeof (presetTable[0]);

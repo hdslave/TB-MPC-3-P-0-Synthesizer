@@ -36,6 +36,7 @@ struct Plugin
     // Every parameter's value. The audio thread writes it from events; the main thread reads it, and writes it when
     // a state is loaded. The engine notices those at the next block.
     std::atomic<float> values[paramCount];
+    std::atomic<bool> mainChanged { false }; // the main thread wrote values (a state, a preset, a flush): look at them
     float applied[paramCount] {};
     Engine engine;
     bool active = false;
@@ -136,17 +137,36 @@ void handle (Plugin& p, const clap_event_header* e, const clap_output_events* ou
         }
         case CLAP_EVENT_NOTE_ON:
         {
-            // A note transposes the pattern (TB-3PO's CV 1): C4 (60) plays it as it is.
+            // TB-3PO: a note transposes the pattern (its CV 1), C4 (60) as it is. Notes: it plays.
             const auto* n = reinterpret_cast<const clap_event_note*> (e);
-            if (n->velocity > 0.0 && n->key >= 0 && n->key < 128)
-                p.engine.note (n->key);
+            if (n->key >= 0 && n->key < 128)
+            {
+                if (n->velocity > 0.0)
+                    p.engine.note (n->key, (float) n->velocity);
+                else
+                    p.engine.noteOff (n->key);
+            }
+            break;
+        }
+        case CLAP_EVENT_NOTE_OFF:
+        case CLAP_EVENT_NOTE_CHOKE:
+        {
+            const auto* n = reinterpret_cast<const clap_event_note*> (e);
+            if (n->key >= 0 && n->key < 128)
+                p.engine.noteOff (n->key);
+            else if (n->key == -1) // a choke of every key
+                for (int k = 0; k < 128; ++k)
+                    p.engine.noteOff (k);
             break;
         }
         case CLAP_EVENT_MIDI:
         {
             const auto* m = reinterpret_cast<const clap_event_midi*> (e);
-            if ((m->data[0] & 0xf0) == 0x90 && m->data[2] > 0)
-                p.engine.note (m->data[1] & 0x7f);
+            const int status = m->data[0] & 0xf0, key = m->data[1] & 0x7f, velocity = m->data[2] & 0x7f;
+            if (status == 0x90 && velocity > 0)
+                p.engine.note (key, (float) velocity / 127.0f);
+            else if (status == 0x80 || status == 0x90)
+                p.engine.noteOff (key);
             break;
         }
         default: break;
@@ -166,7 +186,10 @@ void paramsFlush (const clap_plugin* plugin, const clap_input_events* in, const 
             const auto* v = reinterpret_cast<const clap_event_param_value*> (e);
             const int index = paramIndex (v->param_id);
             if (index >= 0 && paramTable[index].kind != Kind::button)
+            {
                 p.values[index].store (clampParam (paramTable[index], (float) v->value), std::memory_order_relaxed);
+                p.mainChanged.store (true, std::memory_order_release);
+            }
         }
     }
     (void) out;
@@ -212,6 +235,7 @@ void setAll (Plugin& p, const float* values)
 {
     for (uint32_t i = 0; i < paramCount; ++i)
         p.values[i].store (values[i], std::memory_order_relaxed);
+    p.mainChanged.store (true, std::memory_order_release);
     if (! p.active) // not processing: the engine takes them now; otherwise at the next block
         for (uint32_t i = 0; i < paramCount; ++i)
             p.applied[i] = values[i], p.engine.set (paramTable[i].id, values[i]);
@@ -285,7 +309,7 @@ bool presetFromLocation (const clap_plugin* plugin, uint32_t kind, const char*, 
 const clap_plugin_preset_load presetExtension { presetFromLocation };
 
 // Ports: no audio in, one stereo out (the same signal both sides: Melodee plays a mono port on the left only), one
-// note input that transposes the pattern.
+// note input: it transposes the pattern, or in Mode: Notes plays the voice.
 uint32_t audioCount (const clap_plugin*, bool input) { return input ? 0 : 1; }
 bool audioGet (const clap_plugin*, uint32_t index, bool input, clap_audio_port_info* info)
 {
@@ -311,7 +335,7 @@ bool noteGet (const clap_plugin*, uint32_t index, bool input, clap_note_port_inf
     info->id = 0;
     info->supported_dialects = CLAP_NOTE_DIALECT_CLAP | CLAP_NOTE_DIALECT_MIDI;
     info->preferred_dialect = CLAP_NOTE_DIALECT_CLAP;
-    std::snprintf (info->name, sizeof (info->name), "Transpose");
+    std::snprintf (info->name, sizeof (info->name), "Notes");
     return true;
 }
 const clap_plugin_note_ports noteExtension { noteCount, noteGet };
@@ -376,13 +400,14 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
     float* left = process->audio_outputs[0].data32[0];
     float* right = process->audio_outputs[0].channel_count > 1 ? process->audio_outputs[0].data32[1] : nullptr;
 
-    // Values the main thread changed (a state loaded while playing).
-    for (uint32_t i = 0; i < paramCount; ++i)
-    {
-        const float v = p.values[i].load (std::memory_order_relaxed);
-        if (v != p.applied[i] && paramTable[i].kind != Kind::button)
-            p.applied[i] = v, p.engine.set (paramTable[i].id, v);
-    }
+    // Values the main thread changed (a state loaded while playing): looked through only when it wrote some.
+    if (p.mainChanged.exchange (false, std::memory_order_acquire))
+        for (uint32_t i = 0; i < paramCount; ++i)
+        {
+            const float v = p.values[i].load (std::memory_order_relaxed);
+            if (v != p.applied[i] && paramTable[i].kind != Kind::button)
+                p.applied[i] = v, p.engine.set (paramTable[i].id, v);
+        }
 
     // Events at the block's first frame come first, the transport after them: a setting the host sends with Play is
     // in place for what Play does (the sequencer's reset at Play, its first step).
@@ -428,20 +453,22 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
     }
     for (; next < count; ++next) // events stamped past the block (a host's mistake): applied at its end
         handle (p, in->get (in, next), process->out_events);
-    // A reset chose a new seed (Seed Mode: Random): the Seed parameter shows it, and a saved state keeps it.
-    uint16_t seed = 0;
-    if (p.engine.takeNewSeed (seed))
+    // Values the engine set itself (a reset's new seed in Seed Mode: Random; the seed and Seed Mode from Seed Back):
+    // the parameters show them, and a saved state keeps them.
+    uint32_t changedId = 0;
+    float changedValue = 0.0f;
+    while (p.engine.takeChange (changedId, changedValue))
     {
-        const int index = paramIndex (ParamId::seed);
-        p.values[index].store ((float) seed, std::memory_order_relaxed);
-        p.applied[index] = (float) seed;
+        const int index = paramIndex (changedId);
+        p.values[index].store (changedValue, std::memory_order_relaxed);
+        p.applied[index] = changedValue;
         if (process->out_events != nullptr)
         {
             clap_event_param_value back {};
             back.header = { sizeof (back), frames > 0 ? frames - 1 : 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
-            back.param_id = ParamId::seed;
+            back.param_id = changedId;
             back.note_id = back.port_index = back.channel = back.key = -1;
-            back.value = seed;
+            back.value = changedValue;
             process->out_events->try_push (process->out_events, &back.header);
         }
     }
