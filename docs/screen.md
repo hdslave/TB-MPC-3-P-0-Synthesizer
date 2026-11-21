@@ -48,7 +48,7 @@ docker --context colima-melodee run --rm --platform linux/arm64 \
 tools/ui_preview/melodee
 ```
 
-The last command runs the built plug-in through the sibling Melodee screen checkout, mounted read-only. Set `MELODEE_SCREEN_TREE` to use a different path to that build. It captures the first six prescribed states, then exercises the two other filters and both sequencer lists.
+The last command runs the built plug-in through the sibling hdslaveOS checkout (`../melodee-hdslave`, branch `hdslave`), mounted read-only. Set `MELODEE_SCREEN_TREE` to use a different path to that build. It captures the first six prescribed states, then exercises the two other filters and both sequencer lists.
 
 | Capture | Live host state |
 |---|---|
