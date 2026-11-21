@@ -160,17 +160,20 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 
 ## The screen
 
-In hdslaveOS (melodee-hdslave until 2026-11-21), the plug-in draws its own page in place of the parameter list:
+In hdslaveOS (melodee-hdslave until 2026-11-21), the plug-in draws its own page in place of the parameter list. It
+opens in **Press Plate**: a stamped cobalt and aluminium panel with a lime melting smiley, whose drips jump on a
+four-step downbeat or an accented gate. The second theme, **Blacklight Transfer** (the smiley on a blue ticket, the
+pattern as a pitch roll), is under CLOCK: select THEME and Push; Push again goes back. The theme holds for this
+instance on every page, in Edit and Stage, until Melodee restarts; projects and presets keep only the sound.
 
-- **PATTERN**, TB-3PO's own screen: the pattern as a full-width pitch roll across the top (all 16 or 32 steps on
-  one timeline, pitches named on the left, a filled head for a gated step and a hollow one for a rest's pitch,
-  accents marked on ACC, slides drawn as a line to the next pitch and marked on SLD, a playhead following the
-  clock), and below it the seed, locked or random, the transport and step, the division, scale, root, octave and
-  density ([docs/screen.md](docs/screen.md) has the details). The wheel dials the seed and locks it, so the pattern you dial is kept; it plays from the next clock (until
-  then the seed shows pale, marked NEXT, over the pattern still playing); Push is Regen; Shift + Push is Seed Back.
-  K1-K3: Cutoff, Resonance, Env Mod.
+- **PATTERN**, TB-3PO's own screen: the seed (locked or random), the transport and the step in the dark window; then
+  the scale, root, octave, density and division; then one column a step with its number, nearest note, gate (a
+  filled block; a rest is hollow), accent (a diamond) and outgoing slide (an arrow), the playing column lit. A
+  32-step pattern stacks two banks of 16. The wheel dials the seed and locks it, so the pattern you dial is kept; it
+  plays from the next clock (until then the window reads PENDING over the pattern still playing); Push is Regen;
+  Shift + Push is Seed Back. K1-K3: Cutoff, Resonance, Env Mod. [docs/screen.md](docs/screen.md) has the details.
 - **VOICE** and **TONE**: the voice's knobs, beside the filter's live response (Cutoff's reading marked).
-- **TB-3PO** and **CLOCK**: the sequencer's, beside the pattern.
+- **TB-3PO** and **CLOCK**: the sequencer's settings beside a small score; CLOCK also holds THEME.
 
 On a list the controls are hdslave Machine's: the wheel moves a row; Push edits it (the wheel then changes it: a
 choice a step, a knob 1/128, 1/1024 with Shift; Push again leaves), or presses a button; Minus / Plus change group
@@ -266,9 +269,11 @@ statically and needs only the MPC's libc and libm.
 - The quantizer and its scales: Emilie Gillet (Mutable Instruments Braids), re-implemented by Bryan Head; the
   Hemisphere framework: Jason Justian. MIT license; see `licenses/MIT-oc-firmware.txt`.
 - The diode ladder's linear model and the zero-delay ladders: Vadim Zavalishin, *The Art of VA Filter Design*.
-- The screen's type: Departure Mono, copyright 2022–2024 Helena Zhang, SIL Open Font License 1.1
-  (`licenses/OFL-departure-mono.txt`); its glyphs are rasterized into `src/ui/font.h`. The screen extension's header,
-  `src/melodee_screen.h`, is hdslaveOS's, MIT.
+- The screen's type: Departure Mono (copyright 2022–2024 Helena Zhang), Barlow Condensed Bold Italic (copyright 2017
+  The Barlow Project Authors) and Michroma (copyright 2011 The Michroma Project Authors), each SIL Open Font License
+  1.1 (`licenses/OFL-*.txt`); `tools/ui_preview/assets.py` rasterizes their glyphs into the headers in `src/ui/`.
+  The artwork's origins are listed in
+  [THIRD_PARTY.md](THIRD_PARTY.md). The screen extension's header, `src/melodee_screen.h`, is hdslaveOS's, MIT.
 - CLAP headers: MIT license, `third_party/clap/LICENSE`.
 
 TB-303 is a trademark of Roland Corporation and MPC of inMusic Brands; this project is not affiliated with either.

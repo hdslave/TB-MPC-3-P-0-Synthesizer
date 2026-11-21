@@ -12,7 +12,7 @@
 #include <strings.h>
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.4.2"
+#define TBMPC_VERSION "0.4.3"
 #endif
 
 namespace tbmpc
