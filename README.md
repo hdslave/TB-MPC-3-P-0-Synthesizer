@@ -160,11 +160,13 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 
 ## The screen
 
-In Melodee (melodee-hdslave with its plug-in screen), the plug-in draws its own page in place of the parameter list:
+In hdslaveOS (melodee-hdslave until 2026-11-21), the plug-in draws its own page in place of the parameter list:
 
-- **PATTERN**, TB-3PO's own screen: the seed in hex, locked or random, the density, scale, root and octave, and the
-  pattern (a gated step a bar as high as its pitch, accents bright, slides joined to the next step, the step playing
-  lit). The wheel dials the seed and locks it, so the pattern you dial is kept; it plays from the next clock (until
+- **PATTERN**, TB-3PO's own screen: the pattern as a full-width pitch roll across the top (all 16 or 32 steps on
+  one timeline, pitches named on the left, a filled head for a gated step and a hollow one for a rest's pitch,
+  accents marked on ACC, slides drawn as a line to the next pitch and marked on SLD, a playhead following the
+  clock), and below it the seed, locked or random, the transport and step, the division, scale, root, octave and
+  density ([docs/screen.md](docs/screen.md) has the details). The wheel dials the seed and locks it, so the pattern you dial is kept; it plays from the next clock (until
   then the seed shows pale, marked NEXT, over the pattern still playing); Push is Regen; Shift + Push is Seed Back.
   K1-K3: Cutoff, Resonance, Env Mod.
 - **VOICE** and **TONE**: the voice's knobs, beside the filter's live response (Cutoff's reading marked).
