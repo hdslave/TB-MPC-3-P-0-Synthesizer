@@ -210,7 +210,7 @@ envelopes run, then nothing. The voice's sample is compiled into the run's loop 
 
 ## Install
 
-Copy `TB-MPC-3-P-0.clap` to the MPC's card as `Melodee/Plugins/hdslave TB-MPC-3-P-0/hdslave TB-MPC-3-P-0.clap`.
+Copy `build/TB-MPC-3-P-0.clap` to the MPC's card as `Melodee/Plugins/hdslave TB-MPC-3-P-0/hdslave TB-MPC-3-P-0.clap`.
 
 ## Build
 
@@ -268,7 +268,7 @@ statically and needs only the MPC's libc and libm.
 - The diode ladder's linear model and the zero-delay ladders: Vadim Zavalishin, *The Art of VA Filter Design*.
 - The screen's type: Departure Mono, copyright 2022–2024 Helena Zhang, SIL Open Font License 1.1
   (`licenses/OFL-departure-mono.txt`); its glyphs are rasterized into `src/ui/font.h`. The screen extension's header,
-  `src/melodee_screen.h`, is melodee-hdslave's, MIT.
+  `src/melodee_screen.h`, is hdslaveOS's, MIT.
 - CLAP headers: MIT license, `third_party/clap/LICENSE`.
 
 TB-303 is a trademark of Roland Corporation and MPC of inMusic Brands; this project is not affiliated with either.

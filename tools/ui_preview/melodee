@@ -2,7 +2,7 @@
 # Capture the actual plug-in in Melodee's Edit and Stage hosts.
 set -eu
 cd "$(dirname "$0")/../.."
-host=${MELODEE_SCREEN_TREE:-"$PWD/../melodee-hdslave-screen"}
+host=${MELODEE_SCREEN_TREE:-"$PWD/../melodee-hdslave"}
 dest=assets/previews/melodee
 mkdir -p "$dest" build/melodee-shots
 docker --context colima-melodee run --rm --platform linux/arm64 \
