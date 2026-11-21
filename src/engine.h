@@ -17,7 +17,8 @@
 //   Pitch bend and the mod wheel: they bend the voice and open its filter, in either mode.
 //   Mode: Notes: MIDI notes play the voice instead of TB-3PO (whose count goes on, unheard, so switching back lands
 //     in time): a note over a held one glides to it with the 303's glide and keeps the gate open, a velocity of 100
-//     or more accents, and letting go of the newest note goes back to the one still held.
+//     or more accents, and letting go of the newest note goes back to the one still held. A key played again while
+//     held is a new note, as if let go first (it strikes again, or glides over another key still held).
 #pragma once
 
 #include "params.h"
@@ -135,8 +136,10 @@ public:
             updateTranspose();
             return;
         }
+        // A key played again while held (a host retriggering it before its note off: Melodee then sends one off for
+        // both) counts as let go first: on its own it strikes again, over another held key it glides as any note.
+        release (key);
         const bool legato = held > 0;
-        release (key); // played again while held: it moves to the top
         if (held == maxHeld)
             std::copy (heldKeys + 1, heldKeys + maxHeld, heldKeys), std::copy (heldAccent + 1, heldAccent + maxHeld, heldAccent), --held;
         heldKeys[held] = (int8_t) key;
@@ -146,7 +149,10 @@ public:
         if (legato)
             voice.glide (cv); // the gate stays open: no new envelope
         else
+        {
             voice.pitch (cv, cv);
+            voice.gate (false, false); // still open (the key played again): shut on this frame, so both envelopes start over
+        }
         voice.gate (true, heldAccent[held - 1]);
     }
 

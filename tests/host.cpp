@@ -1769,6 +1769,152 @@ void testReviewFixes()
     }
 }
 
+// Notes for Mode: Notes, as Melodee sends them: each at the start of its block, in the order given.
+struct Played { uint64_t frame; bool on; int key; double velocity; };
+std::vector<float> playNotes (const std::vector<std::pair<std::string, double>>& patch, const std::vector<Played>& notes, uint32_t frames)
+{
+    Instance a;
+    a.setup (patch);
+    std::vector<float> l, r;
+    a.render (frames, 128, l, r, [] (uint64_t) { return Transport { false, 120.0, 0.0 }; }, [&] (uint64_t at, uint32_t n, Events& e) {
+        for (const auto& p : notes)
+            if (p.frame >= at && p.frame < at + n)
+                e.note ((uint32_t) (p.frame - at), p.on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF, (int16_t) p.key, p.velocity);
+    });
+    return l;
+}
+
+// 0.4.4: a key played again while it is still held. Melodee retriggers a key whose note off is still to come by
+// moving that off later: the plug-in hears on, on, then a single off. The second note strikes again, as the key let
+// go and played again on that frame would (to the bit): both envelopes start over, at its own velocity, at its pitch
+// at once. Before, it was taken for a legato note over itself: no new envelope, so repeats ran together.
+void testRepeatedNotes()
+{
+    auto rms = [] (const std::vector<float>& x, size_t from, size_t to) {
+        double s = 0;
+        for (size_t i = from; i < to; ++i) s += (double) x[i] * x[i];
+        return std::sqrt (s / (double) (to - from));
+    };
+    auto peak = [] (const std::vector<float>& x, size_t from, size_t to) {
+        float m = 0;
+        for (size_t i = from; i < to; ++i) m = std::max (m, std::fabs (x[i]));
+        return m;
+    };
+    // The MEG heard: a low cutoff that Env Mod opens far, Decay 630 ms.
+    const std::vector<std::pair<std::string, double>> patch { { "Mode", 1.0 }, { "Cutoff", 0.2 }, { "Resonance", 0.3 }, { "Env Mod", 0.9 },
+                                                              { "Decay", 0.5 }, { "Accent", 1.0 } };
+    const uint64_t again = 128 * 150; // 400 ms on
+    for (double velocity : { 0.6, 1.0 }) // the second plain, then accented
+    {
+        const auto repeated = playNotes (patch, { { 0, true, 48, 0.6 }, { again, true, 48, velocity }, { 2 * again, false, 48, 0 } }, 48000);
+        const auto struck = playNotes (patch, { { 0, true, 48, 0.6 }, { again, false, 48, 0 }, { again, true, 48, velocity }, { 2 * again, false, 48, 0 } }, 48000);
+        const double before = rms (repeated, again - 2400, again), after = rms (repeated, again + 240, again + 2640);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug repeated note (velocity %.1f): rms %.4f before, %.4f after\n", velocity, before, after);
+        CHECK (repeated == struck);
+        CHECK (after > 1.5 * before);                              // a new attack: both envelopes again
+        CHECK (peak (repeated, 2 * again + 4800, 48000) < 1e-4f); // the one note off lets it go
+    }
+    // A key played again while a glide to it is under way (the key it glided from let go): at its pitch at once,
+    // not the rest of the glide.
+    {
+        const std::vector<std::pair<std::string, double>> clean { { "Mode", 1.0 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 },
+                                                                  { "Accent", 0.0 }, { "Slide Time", 1.0 } };
+        const std::vector<Played> line { { 0, true, 36, 0.6 }, { 4864, true, 48, 0.6 }, { 7168, false, 36, 0 }, { 9600, true, 48, 0.6 } };
+        auto struckLine = line;
+        struckLine.insert (struckLine.end() - 1, Played { 9600, false, 48, 0 });
+        const auto repeated = playNotes (clean, line, 24000), struck = playNotes (clean, struckLine, 24000);
+        const double hz = crossings (repeated, 9600 + 480, 9600 + 480 + 12000) * 48000.0 / 12000.0;
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug repeated note mid-glide: %.1f Hz (C3 130.8)\n", hz);
+        CHECK (repeated == struck);
+        CHECK (std::fabs (hz - 130.8) < 3.0);
+    }
+    // Unchanged: with another key held, a key played again glides as any note over a held one (no new envelope),
+    // again as its note off and on would.
+    {
+        const std::vector<Played> line { { 0, true, 36, 0.6 }, { 4864, true, 48, 0.6 }, { 9600, true, 36, 0.6 } };
+        auto struckLine = line;
+        struckLine.insert (struckLine.end() - 1, Played { 9600, false, 36, 0 });
+        CHECK (playNotes (patch, line, 24000) == playNotes (patch, struckLine, 24000));
+    }
+}
+
+// 0.4.4: the MEG's decay is the step's own, Decay's or (accented) Accent Decay's, however the step was reached: a
+// slide or a legato note from an accented step into a plain one falls at Decay's rate. Before, the decay chosen when
+// the gate opened stayed until a knob moved, so a plain step after an accented slide fell at Accent Decay's, and any
+// knob turned in it (one with nothing to do with the MEG) switched it to Decay's.
+void testAccentDecayAcrossSlides()
+{
+    auto brightness = [] (const std::vector<float>& x, size_t from, size_t to) {
+        double d = 0, e = 0;
+        for (size_t i = from + 1; i < to; ++i)
+            d += (double) (x[i] - x[i - 1]) * (x[i] - x[i - 1]), e += (double) x[i] * x[i];
+        return std::sqrt (d / (e + 1e-30));
+    };
+    // Decay 2 s, Accent Decay 200 ms: far apart.
+    const std::vector<std::pair<std::string, double>> patch { { "Cutoff", 0.5 }, { "Resonance", 0.3 }, { "Env Mod", 0.9 }, { "Decay", 1.0 },
+                                                              { "Accent Decay", 0.0 }, { "Accent", 1.0 } };
+    // Mode: Notes, 10 ms of an accented note, then a plain one played over it (legato): 300 to 500 ms into the plain
+    // note the filter is about where it is after 10 ms of a plain note, the MEG falling at Decay's rate in both (a
+    // little lower for its accented start: 0.89 as bright; falling at Accent Decay's, it was half).
+    {
+        auto notes = patch;
+        notes.push_back ({ "Mode", 1.0 });
+        auto plainAfter = [&] (double first) {
+            const auto l = playNotes (notes, { { 0, true, 36, first }, { 512, true, 43, 0.6 } }, 512 + 24000);
+            return brightness (l, 512 + 14400, 512 + 24000);
+        };
+        const double fromAccent = plainAfter (1.0), fromPlain = plainAfter (0.6);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug legato from an accent: brightness %.4f, from a plain note %.4f\n", fromAccent, fromPlain);
+        CHECK (fromAccent > 0.75 * fromPlain);
+    }
+    // TB-3PO: a pattern whose accented step slides into a plain one (found with the port). Knobs that do nothing in
+    // the 303 filter (Peak Spread is Twin Peak's) turned all through it leave the sound as it is, to the bit.
+    {
+        uint16_t seed = 0;
+        int slideClock = -1;
+        for (uint32_t s = 1; s < 4096 && slideClock < 0; ++s)
+        {
+            tbmpc::Tb3po t;
+            t.start (1);
+            t.setScale (tbmpc::appletDefaultScale);
+            t.setDensity (5 + 7);
+            t.setSteps (16);
+            t.setSeed ((uint16_t) s);
+            t.setLocked (true);
+            t.reset (0);
+            int32_t gate = 0;
+            for (int k = 0; k < 12 && slideClock < 0; ++k)
+            {
+                t.clock();
+                if (gate == tbmpc::Tb3po::gateAccent && t.gateCv == tbmpc::Tb3po::gateNormal)
+                    seed = (uint16_t) s, slideClock = k;
+                if (t.opened)
+                    t.halfStepPassed();
+                gate = t.gateCv;
+            }
+        }
+        CHECK (slideClock >= 0);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug accent slide: seed %04x, into a plain step at clock %d\n", seed, slideClock);
+        auto pattern = [&] (bool turned) {
+            Instance a;
+            auto v = patch;
+            v.insert (v.end(), { { "Seed Mode", 1.0 }, { "Seed", (double) seed }, { "Density", 5.0 }, { "Steps", 16.0 } });
+            a.setup (v);
+            std::vector<float> l, r;
+            a.render (6000 * 16, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); }, [&] (uint64_t at, uint32_t, Events& e) {
+                if (turned && at % 640 == 0)
+                    a.set (e, "Peak Spread", (at / 640) % 2 ? 3.0 : 1.0);
+            });
+            return l;
+        };
+        CHECK (pattern (false) == pattern (true));
+    }
+}
+
 int main (int argc, char** argv)
 {
     if (argc < 3)
@@ -1808,6 +1954,8 @@ int main (int argc, char** argv)
     testFilters();
     testScreen (argv[2]);
     testReviewFixes();
+    testRepeatedNotes();
+    testAccentDecayAcrossSlides();
     testBendAndWheel();
     testExtremes();
     demos (argv[2]);

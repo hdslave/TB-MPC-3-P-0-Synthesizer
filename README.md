@@ -35,7 +35,7 @@ In the order Melodee's Edit page lists them, three to a page.
 | Cutoff | 7 octaves | The filter's cutoff before the envelope and accent open it, calibrated as the 303's service notes set the 303's: at its middle, with Resonance full, the resonant peak is at 500 Hz, in each filter. It reads what you hear (see [Filter](#filter)), so its text moves with Resonance and Filter. |
 | Resonance | 0 – 100 % | The filter's feedback: the 303's and Twin Peak's up to just short of self-oscillation, 18 dB's into it at the top (from 86 %); the passband thins (about -6 dB) as on a 303. It also slows the accent sweep. |
 | Env Mod | 0 – 100 % | How far the MEG opens the filter (up to 4.5 octaves) and how far it lowers the cutoff's floor (up to 1.3 octaves), as on the 303. |
-| Decay | 200 ms – 2 s | The MEG's decay (to -40 dB). An accented step takes Accent Decay's (by default the shortest, as on the 303). |
+| Decay | 200 ms – 2 s | The MEG's decay (to -40 dB). An accented step takes Accent Decay's (by default the shortest, as on the 303), slid into or not; a plain step takes this one, even slid into from an accent. |
 | Accent | 0 – 100 % | How much an accented step (TB-3PO's 5 V gate) lifts the VCA (up to +7 dB) and opens the filter through the accent sweep. Accents in a row at high resonance build up. |
 | Waveform | Saw / Square | |
 | Volume | 0 – 100 % | |
@@ -118,6 +118,10 @@ Melodee's notes (its roll, its pads, a keyboard) play the voice, the way MIDI-pl
 - A note played while another is held glides to its pitch with the 303 glide (whatever Slide is set to) and keeps the
   gate open: no new envelope, as a 303's slide.
 - Velocity 100 or more accents the note.
+- A key played again while it is still held (a host retriggering it before its note off: Melodee then sends a single
+  note off for both) is a new note, as if let go first: on its own it strikes again, both envelopes from the start at
+  its velocity; over another held key it glides as above. Its one note off lets it go. (Before 0.4.4 it ran into the
+  note before, with no new envelope.)
 - Letting go of the newest note glides back to the newest one still held; letting go of the last closes the gate.
 - The host stopping does not stop a held note. Switching Mode stops the note sounding.
 
@@ -128,8 +132,8 @@ Tuning, the voice's knobs and Accent work as in TB-3PO mode; Transpose, Octave a
 A reset makes the pattern from the seed (a new seed first, in Random mode) and goes back to step 0. Each clock moves
 to the next step, so the first step played after a reset is the pattern's second (index 1), as on the module. A step
 plays its note if it is gated; a gate lasts half a clock, unless the step slides, when it stays open into the next
-step (legato: no new envelope). Accented steps send the voice a 5 V gate. The pattern holds 32 steps of notes,
-gates, slides, accents and octave flags; Steps sets how many play.
+step (legato: no new envelope, but the step's own accent and decay). Accented steps send the voice a 5 V gate. The
+pattern holds 32 steps of notes, gates, slides, accents and octave flags; Steps sets how many play.
 
 The pattern is made again from the seed at the next clock when Density, the scale's number of notes or the seed
 changes. Root, Octave, Transpose and a scale of the same size only move its pitches.
@@ -245,14 +249,15 @@ statically and needs only the MPC's libc and libm.
   bar), a tempo change inside a block, Clock Div changed on a downbeat, a button pressed through a flush and one
   stamped past its block, the same output for any block size, Random and Locked seeds and Regen, Seed Back (locked and random, twice, with nothing to go
   back to), Swing (notes and gate lengths), Mode: Notes (a note's pitch, a glide without a new note, back to a held
-  note, the accent at velocity 100, TB-3PO silent, a switch back), Gate (20 and 90 %), Mutate (each step from the new
-  seed's pattern or the old one's, as the new seed picks; 0 and 100 % whole; Locked unchanged), pitch bend and the mod
-  wheel (the same sound as Tuning and Cutoff turned as far; all notes off), transposing by MIDI note and by knob, the accent,
-  Cutoff, both slides, Drive (brighter as it turns, its level within -3 .. +6 dB of the dry voice), Slide Time (15 ms
-  there, 600 ms under half way, 100 ms on), Accent Decay, the filters (the 500 Hz calibration in each, Twin Peak's band,
-  their levels, Cutoff's text by Resonance and Filter and the host asked to read it again), the screen's page (it
-  draws, its controls set the values the host then hears, its buttons press; pictures in `build/screen-*.png`), bounded
-  output at random settings, and the demo renders of the presets.
+  note, the accent at velocity 100, a key played again while held, TB-3PO silent, a switch back), Gate (20 and 90 %),
+  Mutate (each step from the new seed's pattern or the old one's, as the new seed picks; 0 and 100 % whole; Locked
+  unchanged), pitch bend and the mod wheel (the same sound as Tuning and Cutoff turned as far; all notes off),
+  transposing by MIDI note and by knob, the accent, Cutoff, both slides, Drive (brighter as it turns, its level within
+  -3 .. +6 dB of the dry voice), Slide Time (15 ms there, 600 ms under half way, 100 ms on), Accent Decay (and Decay's
+  after a slide out of an accent), the filters (the 500 Hz calibration in each, Twin Peak's band, their levels,
+  Cutoff's text by Resonance and Filter and the host asked to read it again), the screen's page (it draws, its
+  controls set the values the host then hears, its buttons press; pictures in `build/screen-*.png`), bounded output at
+  random settings, and the demo renders of the presets.
 - `tests/fingerprint.cpp` renders 74 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
   MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and

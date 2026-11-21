@@ -5,9 +5,9 @@
 //         4-pole transistor-style ladders, the lower subtracted from the higher; or 18 dB, three equal stages
 //     --> VCA --> Drive --> Volume --> soft ceiling --> out
 //
-//   MEG (the filter's envelope): retriggered by each new gate (not by a slide), its decay the Decay knob, or the
-//     shortest decay on an accented step. Env Mod sets how far it opens the filter and how far it lowers the
-//     cutoff's floor, as on the 303.
+//   MEG (the filter's envelope): retriggered by each new gate (not by a slide), its decay the Decay knob, or Accent
+//     Decay on an accented step: the step's own, slid into or not. Env Mod sets how far it opens the filter and how
+//     far it lowers the cutoff's floor, as on the 303.
 //   VEG (the VCA's envelope): a fixed, long decay while the gate is open; a few ms to close when it shuts.
 //   Drive (off at 0): after the VCA, a soft clipper (first-order antiderivative anti-aliasing), its level made up.
 //   Accent (a 5 V gate): the MEG, scaled by Accent, adds to the VCA and, through the "accent sweep" smoother that
@@ -172,15 +172,14 @@ public:
         tuneMoved = true;
     }
 
-    // The gate: shut, or open (normal or accented). Opening retriggers both envelopes; a change while open (a slide
-    // into an accented step) only switches the accent.
+    // The gate: shut, or open (normal or accented). Opening retriggers both envelopes; a change while open (a slide or
+    // a legato note) switches the accent and the MEG's decay to the new step's, with no new envelope.
     void gate (bool open, bool accent)
     {
         if (open && ! gateOpen)
-        {
             megAttacking = vegAttacking = true;
+        if (open)
             megDecay = accent ? accentDecay : decayKnob;
-        }
         gateOpen = open;
         accentOn = open && accent;
     }
@@ -316,8 +315,8 @@ private:
         glideCoeff = 1.0f - pole (slideSeconds (knob[ParamId::slideTime]));
         accentDecay = pole (decaySeconds (knob[ParamId::accentDecay]) / std::log (100.0));
         decayKnob = (float) std::exp (-std::log (100.0) / ((double) decaySeconds (knob[ParamId::decay]) * rate));
-        if (gateOpen && ! accentOn)
-            megDecay = decayKnob;
+        if (gateOpen) // the step's own, accented or not: a knob turned in it cannot switch it
+            megDecay = accentOn ? accentDecay : decayKnob;
         // The accent sweep's smoothing: quick at no resonance, slow at full.
         const double sweepSeconds = sweepFastest + sweepSlowest * knob[ParamId::resonance];
         sweepCoeff = 1.0f - (float) std::exp (-1.0 / (sweepSeconds * rate));
