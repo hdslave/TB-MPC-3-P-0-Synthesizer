@@ -1,0 +1,136 @@
+# The names of the Ornament & Crime firmware's quantizer scales, in its order (scale_names and
+# scale_names_short in its OC_scales.cpp, Benisphere Suite): long name, a tab, short name. The first four are
+# the user scales, the fifth is Off.
+User-defined 1	USER1
+User-defined 2	USER2
+User-defined 3	USER3
+User-defined 4	USER4
+Off	OFF
+Semitone	SEMI
+Ionian	IONI
+Dorian	DORI
+Phrygian	PHRY
+Lydian	LYDI
+Mixolydian	MIXO
+Aeolian	AEOL
+Locrian	LOCR
+Blues major	BLU+
+Blues minor	BLU-
+Pentatonic maj	PEN+
+Pentatonic min	PEN-
+Folk	FOLK
+Japanese	JAPA
+Gamelan	GAME
+Gypsy	GYPS
+Arabian	ARAB
+Flamenco	FLAM
+Whole tone	WHOL
+Pythagorean	PYTH
+EB/4	EB/4
+E /4	E /4
+EA/4	EA/4
+Bhairav	BHAI
+Gunakri	GUNA
+Marwa	MARW
+Shree [Camel]	SHRI
+Purvi	PURV
+Bilawal	BILA
+Yaman	YAMA
+Kafi	KAFI
+Bhimpalasree	BHIM
+Darbari	DARB
+Rageshree	RAGE
+Khamaj	KHAM
+Mimal	MIMA
+Parameshwari	PARA
+Rangeshwari	RANG
+Gangeshwari	GANG
+Kameshwari	KAME
+Pa Khafi	PAKA
+Natbhairav	NATB
+Malkauns	KAUN
+Bairagi	BAIR
+B Todi	BTOD
+Chandradeep	CHAN
+Kaushik Todi	KTOD
+Jogeshwari	JOGE
+Tart.-Vallotti	VALL
+13of22tETgen=5	1322
+Mandelbaum	MANF
+Magic-in-145tET	MAGC
+Quartaminor3rds	QUAR
+Armodue semi-eq	ARMO
+Hirajoshi	HIRA
+Scot bagpipes	SCOT
+Thai ranat	THAI
+Sevish12on31EDO	SEVI
+11tetMachine6	MACH
+13tetFather8	FATH
+15tetBlackwd10	BLAC
+16tetMavila7	MAV7
+16tetMavila9	MAV9
+17tetSuprpyth12	SPYT
+22tetOrwell9	22OR
+22tetPajaraSy10	PAJS
+22tetPajara5-10	PAJP
+22tetPorcupine7	PORC
+26tetFlattone12	FLAT
+26tetLemba10	LEMB
+46tetSensi11	SENS
+53tetOrwell9	53OR
+12of72tetRodgrs	1272
+TrivalentZeus7	TRIZ
+202tetOctone	2028
+313tetElfMadag9	MADG
+MarvelWooGlumma	MARV
+TOP Parapyth12	PARA
+16-ED (2 or 3)	16ED
+15-ED (2 or 3)	15ED
+14-ED (2 or 3)	14ED
+13-ED (2 or 3)	13ED
+11-ED (2 or 3)	11ED
+10-ED (2 or 3)	10ED
+9-ED (2 or 3)	9ED
+8-ED (2 or 3)	8ED
+7-ED (2 or 3)	7ED
+6-ED2	6ED
+5-ED2	5ED
+16-HD2	16H2
+15-HD2	15H2
+14-HD2	14H2
+13-HD2	13H2
+12-HD2	12H2
+11-HD2	11H2
+10-HD2	10H2
+9-HD2	9H2
+8-HD2	8H2
+7-HD2	7H2
+6-HD2	6H2
+5-HD2	5H2
+4-HD2	4H2
+16-SD2	16S2
+15-SD2	15S2
+14-SD2	14S2
+13-SD2	13S2
+12-SD2	12S2
+11-SD2	11S2
+10-SD2	10S2
+9-SD2	9S2
+8-SD2	8S2
+7-SD2	7S2
+6-SD2	6S2
+5-SD2	5S2
+4-SD2	4S2
+Bohlen-Pierce =	B-Pe
+Bohlen-Pierce j	B-Pj
+Bohlen-Pierce l	B-Pl
+8-24-HD3[16]	16H3
+7-21-HD3[14]	14H3
+6-18-HD3[12]	12H3
+5-15-HD3[10]	10H3
+4-12-HD3[8]	8H3
+24-8-SD3[16]	16S3
+21-7-SD3[14]	14S3
+18-6-SD3[12]	12S3
+15-5-SD3[10]	10S3
+12-4-SD3[8]	8S3
