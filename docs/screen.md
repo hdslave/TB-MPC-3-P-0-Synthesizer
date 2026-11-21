@@ -1,10 +1,10 @@
 # TB-MPC-3-P-0 screen
 
-PATTERN opens with a melting yellow smiley in a silver and violet record groove. The full-width pitch roll below it uses 314 × 103 native pixels. All 16 or 32 steps share one timeline. The ruler numbers every fourth step. A yellow playhead and the numeric position follow the clock.
+The Press Plate screen puts a lime melting smiley on the right end of a stamped cobalt and aluminium panel. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
 
-Up to eight distinct semitone pitches have labelled rows. Denser or microtonal phrases use an octave ruler with a compact note name for each step. The heads still follow the published CV. Labels stagger on 32-step phrases. Zero CV is C2. A filled mint head opens the gate. A hollow head marks the pitch of a rest. Pink pips mark accents. Pink connectors and orange SLD arrows follow outgoing slides, including the last step’s arrow back to the first.
+Each column of the punched-metal matrix shows one step's number, nearest note, gate, accent and outgoing slide. A filled rectangle opens the gate, a diamond marks an accent, and an arrow marks a slide. A small cobalt dot under a note indicates fractional-semitone CV. Zero CV is C2. The lime column follows playback. Patterns up to 16 steps use one bank. Longer patterns stack two banks so all 32 steps stay visible. The dark strip above the matrix lists scale, root, octave, density and clock division.
 
-The four large digits follow the seed dial. Beside them, the page shows transport, step, clock division, scale, root, octave and density. The GATE, ACC and SLD lamps show the current step’s flags during playback. Dialling ahead shows NEXT above the seed. PENDING and the published score’s seed take the place of the lamps. MIDI NOTES and SEQ MUTED share that space when the sequencer counts silently. Both messages fit together. An unpublished pattern displays “Awaiting clock”.
+On all five pages, two narrow slices through the smiley’s lower drips move sideways on a four-step downbeat or a gated accent. The offset grows from one native pixel to two, returns to one, and settles after 144 ms. Closely spaced hits share the current pulse. Stop clears it immediately. The motion uses Melodee’s display clock and the published sequencer position.
 
 ## Controls
 
@@ -18,15 +18,15 @@ The four large digits follow the seed dial. Beside them, the page shows transpor
 
 On a list the wheel moves one row per detent and stops at the ends. Push enters or leaves editing. On Regen and Seed Back it presses the button. While editing, a detent moves a choice or integer by one, or a continuous value by 1/128 of its range. Shift gives 1/1024 for a continuous value. Minus / Plus moves an edited choice or integer by one and a continuous value by 1/16. Outside editing it jumps to the first row of the neighbouring group.
 
-The pots turn the selected row and the two below it. Buttons and missing rows have no pot binding. The card rail uses the track colour. A hollow square shows a known physical pot position waiting for pickup. Shift replaces the cards with the controls for the current page and edit state. Melodee owns pot takeover, its soft keys, and Shift + wheel when the host uses it to fine-edit the last touched pot.
+The pots turn the selected row and the two below it. Buttons and missing rows have no pot binding. A cobalt arc and an ivory pointer show each dial setting. A small mark beneath the dial carries the track colour. A hollow square shows a known physical pot position waiting for pickup. Shift replaces the cards with the controls for the current page and edit state. Melodee owns pot takeover, its soft keys, and Shift + wheel when the host uses it to fine-edit the last touched pot.
 
 VOICE and TONE plot the selected filter from 20 Hz to 20 kHz on a logarithmic axis. The vertical range is −36 to +24 dB. The curve uses the synth's response equations at the current settings, before envelope and accent modulation. The dotted vertical marker and its foot show the frequency reported by Cutoff. Twin Peak marks its lower edge. TB-3PO and CLOCK show the published seed and a small score. CLOCK divides each two-step interval at Swing, with a fixed halfway tick for reference. [Parameter descriptions](../README.md#controls)
 
 ## Art and previews
 
-PATTERN uses the yellow groove print. VOICE and TONE use its mint and lavender inks. TB-3PO has the clean pink checkerboard, and CLOCK uses the same plate in amber. Each 320 × 50 header is compiled at panel resolution with four bits per pixel. Page captions and hexadecimal digits use Barlow Condensed Bold Italic. The live readouts use Departure Mono. [Source art and prompts](../assets/explore/rave/prompts.md) · [Groove plate](../assets/art/groove-header.png) · [Checkerboard plate](../assets/art/checker-header.png) · [Credits](../THIRD_PARTY.md)
+The approved master supplies the 320 × 64 PATTERN plate and the 320 × 42 editor plate. The asset generator extends a straight section of rail to fill the panel and preserves the smiley’s proportions at both heights. Both plates share a 128-colour palette. Michroma supplies the wordmark, Barlow Condensed Bold Italic the seed and values, and Departure Mono the labels. [Master](../assets/explore/press-plate/master.png) · [Pattern plate](../assets/art/press-hero.png) · [Editor plate](../assets/art/press-editor.png) · [Credits](../THIRD_PARTY.md)
 
-The contact sheet covers 20 fixture states, including a dense 32-step phrase, a pending seed in MIDI Notes mode, and the screen before the first clock. Each state has native RGB, nearest-neighbour 3×, RGB565 and a 320 × 240 Edit composite. The strip follows steps 4–7. The 2× GIF follows one complete cycle. [Contact sheet](../assets/previews/contact-sheet-2x.png) · [Step strip](../assets/previews/step-advance-strip.png) · [16-step loop](../assets/previews/step-advance.gif)
+The contact sheet covers 20 fixture states, including a dense 32-step phrase, a pending seed in MIDI Notes mode, and the screen before the first clock. Each state has native RGB, nearest-neighbour 3×, RGB565 and a 320 × 240 Edit composite. The strip follows steps 4–7. The 2× GIF follows one complete cycle sampled every 30 ms, including the frames between steps. [Contact sheet](../assets/previews/contact-sheet-2x.png) · [Step strip](../assets/previews/step-advance-strip.png) · [16-step loop](../assets/previews/step-advance.gif)
 
 From the checkout root, run the C++17 preview host on macOS. Rendering the gallery also uses Python with Pillow or the launcher's uv fallback.
 
@@ -58,7 +58,7 @@ The last command runs the built plug-in through the sibling hdslaveOS checkout (
 | [7](../assets/previews/melodee/7@2x.png), [8](../assets/previews/melodee/8@2x.png) | TONE selects Twin Peak, then 18 dB. The trace, marker and value follow. |
 | [9](../assets/previews/melodee/9@2x.png), [10](../assets/previews/melodee/10@2x.png) | TB-3PO and CLOCK each open on their first row and retain the published score. |
 
-All ten host reports selected `screen=1` and recorded the knob bindings. The playing states in the gallery use an explicit fixture pattern. [Host log](../assets/previews/melodee/host.txt)
+All ten host reports selected `screen=1` and recorded the knob bindings. A separate live transport check on VOICE captured the resting image and both one- and two-pixel offsets. Across 26 playback samples, differences inside the plug-in’s overlay-safe area were confined to the drip tips. Stop restored the original image and a later idle capture matched it. The playing states in the gallery use an explicit fixture pattern. [Host log](../assets/previews/melodee/host.txt)
 
 ## Bench and changed pixels
 
@@ -66,37 +66,36 @@ Measured 2026-11-21. Each entry is the mean elapsed time for 2,000 calls to `upd
 
 | Operation | M4 Max, ms | Linux VM, ms |
 |---|---:|---:|
-| Full PATTERN, 16 steps | 0.025568 | 0.031122 |
-| Partial step, 16 steps | 0.012750 | 0.017174 |
-| Full PATTERN, 32 steps | 0.028370 | 0.034263 |
-| Partial step, 32 steps | 0.015660 | 0.018904 |
-| Full VOICE, Twin Peak | 0.033723 | 0.034502 |
-| Partial VOICE cursor move | 0.011232 | 0.012892 |
-| Full VOICE while Resonance changes | 0.036552 | 0.039810 |
-| Partial VOICE while Resonance changes | 0.027814 | 0.029297 |
-| Idle | 0.000020 | 0.000042 |
+| Full PATTERN, 16 steps | 0.031232 | 0.034124 |
+| Idle | 0.000022 | 0.000039 |
+| Partial step, 16 steps | 0.025809 | 0.027790 |
+| Full PATTERN, 32 steps | 0.034661 | 0.037237 |
+| Partial step, 32 steps | 0.025652 | 0.027637 |
+| Full VOICE, Twin Peak | 0.039112 | 0.040289 |
+| Partial VOICE cursor move | 0.021031 | 0.022213 |
+| Full VOICE while Resonance changes | 0.041171 | 0.044543 |
+| Partial VOICE while Resonance changes | 0.037124 | 0.037728 |
 
-Peak changed pixels between successive frames, counted on the plug-in canvas across a full cycle or a traversal of every list row. Both targets produced the same counts.
+Peak changed pixels between successive frames, counted across a full clock cycle or a traversal of every editor row. Both targets produced the same counts.
 
 | Change | Maximum pixels |
 |---|---:|
 | Idle | 0 |
-| 16-step advance | 2,009 |
-| 16-step advance in Notes mode | 1,319 |
-| 32-step advance | 1,704 |
-| Dense microtonal 32-step advance | 1,701 |
-| TB-3PO miniature advance | 855 |
-| CLOCK miniature advance | 832 |
-| VOICE cursor | 6,122 |
+| Drip motion alone on PATTERN | 170 |
+| Drip motion alone on an editor | 71 |
+| 16-step advance, sequencer or Notes mode | 2,581 |
+| 32-step advance | 1,339 |
+| Dense microtonal 32-step advance | 1,312 |
+| TB-3PO miniature advance | 1,078 |
+| CLOCK miniature advance | 1,059 |
+| VOICE cursor | 5,910 |
 | TONE cursor | 6,228 |
-| TB-3PO cursor | 6,214 |
-| CLOCK cursor | 6,048 |
+| TB-3PO cursor | 6,375 |
+| CLOCK cursor | 5,892 |
 
-The paint code retains the last plug-in pixels separately from host overlays. For a clock advance, it compares the span covering the previous and current columns, including the overhang of the small pitch labels. A whole paint covers all 320 × 218 pixels and respects the host stride. Time alone leaves the canvas untouched.
+Paint retains the last plug-in pixels independently of host overlays. Only invalidated regions are rendered. It compares their scanlines against the retained image before writing to the host. A whole paint covers all 320 × 218 pixels and respects the supplied stride.
 
-The Linux build passed 732,233 host checks including `testScreen`, 512 sequencer reference checks and all 74 sound fingerprints from main. The arm64 CLAP measures 264,752 bytes, up 24 bytes from the 0.4.2 build. Both targets passed the 20 image hashes, all sixteen hex glyphs in all four positions, input, bindings, allocations, lengths 0–32 and idle, stride and whole-paint checks. The tests also compare partial playhead jumps to whole redraws on both normal and microtonal phrases.
-
-After RGB565 conversion, the muted note text on the playhead measures 4.84:1, selected row text 8.02:1 and pot tags 9.87:1. The body and compact note capitals are eight native pixels tall. Essential information clears the host’s top two and bottom three overlay rows.
+The Linux ARM build passed 732,233 host checks, 512 sequencer reference checks and all 74 sound fingerprints. The CLAP measures 264,768 bytes. Both targets passed the 20 image hashes, all sixteen hex digits in all four positions, controls, bindings, allocation checks, lengths 0–32, full/partial redraw comparisons and stride guards. Motion checks exercise both plate sizes, including ordinary gates, off-beat gated accents, intermediate offsets, settling and stopping mid-pulse.
 
 ## Engine handoff and hardware status
 

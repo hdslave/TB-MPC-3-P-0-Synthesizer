@@ -17,10 +17,10 @@ constexpr uint32_t noParam = 0xffffffffu;
 using Ink = uint32_t;
 namespace ink
 {
-constexpr Ink bg = 0xff130c1a, field = 0xff1a1022, card = 0xff28192f, selected = 0xffff78ba;
-constexpr Ink rule = 0xff795477, grid = 0xff4a2b46, muted = 0xffc7adc8, soft = 0xffe5d5e6;
-constexpr Ink pink = 0xffff479e, orange = 0xffffa52b, mint = 0xff85f6d1, alternate = 0xff241329;
-constexpr Ink paper = 0xfffff3da, live = 0xffffee32, cursor = 0xff534022;
+constexpr Ink bg = 0xff101213, field = 0xff17191b, card = 0xff303438, rule = 0xff60645f;
+constexpr Ink grid = 0xff373b3d, muted = 0xffa7ada9, paper = 0xfffcf2d8, live = 0xffc6ff05;
+constexpr Ink metal = 0xffd2cfc1, alternate = 0xffbdbeb3, steel = 0xffacaea8, header = 0xff474c49;
+constexpr Ink cobalt = 0xff5255ed, violet = 0xffaaa4ff, pink = 0xffef52bd, cursor = 0xff35450f;
 }
 
 struct Field { uint32_t id; const char* label; };
@@ -82,29 +82,61 @@ struct Raster
                 if (((i + j) & 7) < 4) dot (x + i, y + j, c);
     }
 
-    template<size_t Rows, size_t Bytes>
-    void print (int x, int y, const uint8_t (&plate)[Rows][Bytes], const Ink (&palette)[16]) const
+    template<size_t Rows, size_t W>
+    void plate (const uint8_t (&data)[Rows][W]) const
     {
-        // These opaque plates are compiled at their final panel size.
-        if (x < 0 || y < 0 || x + int (Bytes * 2) > w || y + int (Rows) > h) return;
+        if (w != int (W) || h != int (Rows)) return;
         for (size_t j = 0; j < Rows; ++j)
+            for (size_t i = 0; i < W; ++i)
+                px[j * W + i] = art::palette[data[j][i]];
+    }
+
+    // Move only a narrow printed strip across the hanging tips of the smiley.
+    void slip (int left, int top, int wide, int high, int distance) const
+    {
+        for (int y = top; y < top + high; ++y)
         {
-            Ink* dest = px + (y + int (j)) * w + x;
-            for (uint8_t pair : plate[j])
-            {
-                *dest++ = palette[pair >> 4];
-                *dest++ = palette[pair & 15];
-            }
+            Ink* line = px + y * w + left;
+            std::memmove (line, line - distance, wide * sizeof (Ink));
         }
     }
 
-    int text (int x, int y, const char* s, Ink color) const
+    static unsigned glyphIndex (char ch)
+    {
+        const unsigned c = static_cast<unsigned char> (ch);
+        return (c >= 32 && c < 127 ? c : '?') - 32;
+    }
+
+    static int readingWidth (const char* s, bool lead = false)
+    {
+        int width = 0;
+        for (; *s; ++s)
+            width += (lead ? art::leadAdvance : art::readingAdvance)[glyphIndex (*s)];
+        return width;
+    }
+
+    void reading (int x, int y, int end, const char* s, Ink color, bool lead = false) const
+    {
+        for (; *s; ++s)
+        {
+            const auto i = glyphIndex (*s);
+            const int advance = (lead ? art::leadAdvance : art::readingAdvance)[i];
+            if (x + advance > end) break;
+            for (int j = 0; j < (lead ? 23 : 19); ++j)
+                for (unsigned bits = lead ? art::lead[i][j] : art::reading[i][j], k = 0; bits; bits >>= 1, ++k)
+                    if ((bits & 1) && x + int (k) < end) dot (x + int (k), y+j, color);
+            x += advance;
+        }
+    }
+
+    int text (int x, int y, const char* s, Ink color, bool shortCaps = false) const
     {
         for (; *s; ++s, x += font::glyphWidth)
         {
             const unsigned ch = static_cast<unsigned char> (*s);
-            const auto& glyph = font::glyphs[(ch >= 32 && ch <= 127 ? ch : '?') - 32];
-            for (int j = 0; j < font::glyphHeight; ++j)
+            const unsigned i = (ch >= 32 && ch <= 127 ? ch : '?') - 32;
+            const uint8_t* glyph = shortCaps ? font::smallCaps[i] : font::glyphs[i];
+            for (int j = 0; j < (shortCaps ? 6 : font::glyphHeight); ++j)
                 for (int bits = glyph[j], k = 0; bits; bits >>= 1, ++k)
                     if (bits & 1) dot (x + k, y + j, color);
         }
@@ -113,7 +145,7 @@ struct Raster
 
     void right (int end, int y, const char* s, Ink c) const
     {
-        text (end - font::glyphWidth * int (std::strlen (s)), y, s, c);
+        text (end - 6 * int (std::strlen (s)), y, s, c);
     }
 
     template<size_t Bytes>
@@ -127,8 +159,8 @@ struct Raster
 
     void hex (int x, int y, unsigned seed, Ink color) const
     {
-        for (int shift = 12; shift >= 0; shift -= 4, x += 24)
-            mask (x, y, art::digits + 25 * ((seed >> shift) & 15), 25, color);
+        for (int shift = 12; shift >= 0; shift -= 4, x += 20)
+            mask (x, y, art::digits + 27 * ((seed >> shift) & 15), 27, color);
     }
 };
 

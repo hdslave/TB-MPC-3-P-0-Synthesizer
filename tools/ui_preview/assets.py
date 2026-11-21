@@ -1,4 +1,5 @@
 """Build the native display glyphs and indexed screen artwork."""
+from math import cos, radians, sin
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
@@ -27,113 +28,88 @@ def put(path, lines):
 
 
 body_face = ImageFont.truetype(str(FONTS/'DepartureMono-Regular.otf'), 11)
-glyphs = [row_bits(mask(body_face, (7, 12), (0, -3), chr(i) if i != 127 else '·')) for i in range(32,128)]
+glyphs, small_caps = [], []
+for i in range(32,128):
+    cell = mask(body_face, (7,12), (0,-3), chr(i) if i != 127 else '·')
+    slim = cell.crop((0,0,6,12)).resize((5,12),Image.Resampling.BOX)
+    small_caps.append(row_bits(slim.crop((0,0,5,8)).resize((5,6), Image.Resampling.BOX).point(lambda v: 255 if v >= 85 else 0)))
+    glyphs.append(row_bits(slim.point(lambda v: 255 if v >= 85 else 0)))
 note_chars = '0123456789ABCDEFG#-'
 notes = []
 for ch in note_chars:
     native = mask(body_face, (7, 12), (0,-3), ch)
     compact = native.crop((0,0,6,8)).resize((4,8),Image.Resampling.BOX)
     notes.append(row_bits(compact.point(lambda v: 255 if v >= 85 else 0)))
-put(UI/'font.h', header + ['namespace hdui::font {', 'constexpr int glyphWidth = 7, glyphHeight = 12;',
+put(UI/'font.h', header + ['namespace hdui::font {', 'constexpr int glyphWidth = 6, glyphHeight = 12;',
     'inline constexpr uint8_t glyphs[][12] = {', ',\n'.join(glyphs), '};', 'inline constexpr char noteChars[] = "' + note_chars + '";',
-    'inline constexpr uint8_t notes[][8] = {', ',\n'.join(notes), '};', '}'])
-
-# Type is one-bit. The illustrated masthead has a separate indexed palette.
-inks = [(215,241,67), (12,14,16)]
+    'inline constexpr uint8_t smallCaps[][6] = {', ',\n'.join(small_caps), '};', 'inline constexpr uint8_t notes[][8] = {', ',\n'.join(notes), '};', '}'])
 
 
-def plate(mask, name):
-    assert mask.width % 8 == 0
-    proof = Image.new('P',mask.size)
-    proof.putpalette([component for ink in inks for component in ink])
-    proof.putdata([bool(v) for v in mask.tobytes()])
-    proof.save(ART/(name+'.png'))
-    rows = []
-    for y in range(mask.height):
-        values = []
-        for x in range(0,mask.width,8):
-            word = sum(1 << bit for bit in range(8) if mask.getpixel((x+bit,y)))
-            values.append(f'0x{word:02x}')
-        rows.append('    {' + ','.join(values) + '}')
-    return [f'inline constexpr uint8_t {name}[][{mask.width//8}] = {{', ',\n'.join(rows), '};']
+def table(name, rows, kind='uint8_t'):
+    return [f'inline constexpr {kind} {name}[][{len(rows[0])}] = {{',
+            ',\n'.join('    {' + ','.join(hex(v) for v in row) + '}' for row in rows), '};']
 
 
-display = ImageFont.truetype(str(FONTS/'BarlowCondensed-BoldItalic.ttf'),96)
+def outline(font, text, size):
+    l,t,r,b = font.getbbox(text)
+    glyph = Image.new('L', (r-l,b-t))
+    ImageDraw.Draw(glyph).text((-l,-t), text, font=font, fill=255)
+    return glyph.resize(size, Image.Resampling.LANCZOS).point(lambda v: 255 if v >= 95 else 0)
 
 
-def lettering(text, size):
-    left,top,right,bottom = display.getbbox(text)
-    block = Image.new('L',(right-left,bottom-top))
-    ImageDraw.Draw(block).text((-left,-top),text,font=display,fill=255)
-    return block.resize(size,Image.Resampling.LANCZOS).point(lambda v: 255 if v >= 100 else 0)
+def bits(image):
+    return [[sum(1 << bit for bit in range(8) if x+bit < image.width and image.getpixel((x+bit,y)))
+             for x in range(0,image.width,8)] for y in range(image.height)]
 
 
-# All sixteen digits share one baseline and advance, including the leaning edges.
-atlas = Image.new('L',(24,16*25))
-for i,ch in enumerate('0123456789ABCDEF'):
-    glyph = lettering(ch,(16 if ch == '1' else 21,22))
-    atlas.paste(glyph,((24-glyph.width)//2,25*i+1))
-
-subtitles = Image.new('L',(112,15*5))
-for i,(name,width) in enumerate([('BASS SEQUENCER',96),('VOICE',37),('TONE',36),
-                                 ('TB-3PO',47),('CLOCK',43)]):
-    subtitles.paste(lettering(name,(width,10)),(0,15*i+2))
-
-# Both plates use four bits per pixel. Redraw uses a palette lookup only.
-flyer = ['130c1a','271537','4b2672','7141a3','ad8acc','d4c3e1','f2edf1','ff5cac',
-         'a32470','ff9223','b4ac29','ffee32','f51492','625d74','88f7d1','fff2d9']
-mint =  ['100f1d','1c1732','35264f','58458a','9583b6','c2c9db','efeff8','b19eff',
-         '564190','f49fb0','5baf99','86f6ce','7c62c2','575165','c7ffdf','f8ffe9']
-amber = ['141018','23191c','3a291f','584021','93682c','c99138','f2c260','ffc365',
-         'a8470e','ff800d','c09912','fff044','f59d22','625343','fff6bd','fff1cb']
+def native_plate(source, height):
+    raw = source.resize((round(source.width*height/source.height), height), Image.Resampling.LANCZOS)
+    cut = round(raw.width*.29)
+    end = 320 - raw.width + cut
+    output = Image.new('RGB', (320,height))
+    output.paste(raw.crop((0,0,cut,height)))
+    output.paste(raw.crop((cut,0,cut+1,height)).resize((end-cut,height)), (cut,0))
+    output.paste(raw.crop((cut,0,raw.width,height)), (end,0))
+    return output
 
 
-def pack_banner(image, filename, name):
-    swatch = Image.new('P',(1,1))
-    swatch.putpalette(bytes.fromhex(''.join(flyer)))
-    indexed = image.quantize(palette=swatch,dither=Image.Dither.NONE)
-    indexed.save(ART/filename,optimize=True)
-    rows = []
-    for y in range(indexed.height):
-        packed = [(indexed.getpixel((x,y)) << 4) | indexed.getpixel((x+1,y))
-                  for x in range(0,indexed.width,2)]
-        rows.append('    {' + ','.join(f'0x{b:02x}' for b in packed) + '}')
-    return [f'inline constexpr uint8_t {name}[][{indexed.width//2}] = {{', ',\n'.join(rows), '};']
+source = Image.open(EXPLORE/'press-plate/master.png').convert('RGB')
+hero, editor = (native_plate(source, h) for h in (64,42))
+atlas = Image.new('RGB', (320,106))
+atlas.paste(hero)
+atlas.paste(editor,(0,64))
+atlas = atlas.quantize(colors=128, dither=Image.Dither.NONE)
+palette = bytes(atlas.getpalette())
+inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
+contents = header + ['namespace hdui::art {', 'inline constexpr uint32_t palette[] = {' + ','.join(inks) + '};']
+for name, start, stop in [('hero',0,64),('editor',64,106)]:
+    im = atlas.crop((0,start,320,stop))
+    im.save(ART/f'press-{name}.png', optimize=True)
+    data = im.tobytes()
+    contents += table(name, [data[i:i+320] for i in range(0,len(data),320)])
 
-
-def title(image, x, y, ink, rise):
-    glyph = lettering('TB-MPC-3-P-0',(155,22))
-    # Each column follows the edge of the slanted paper.
-    for i in range(glyph.width):
-        image.paste(ink,(x+i,y-i//rise,x+i+1,y-i//rise+glyph.height),glyph.crop((i,0,i+1,glyph.height)))
-
-
-def print_panel(filename,size):
-    return Image.open(EXPLORE/'rave'/filename).convert('RGB').resize(size,Image.Resampling.LANCZOS)
-
-
-check = Image.new('RGB',(320,50),'#130c1a')
-check.paste(print_panel('checker-original.png',(176,50)),(144,0))
-draw = ImageDraw.Draw(check)
-draw.polygon([(2,10),(176,2),(169,27),(0,35)],fill='#a32470')
-draw.polygon([(5,8),(177,1),(169,25),(1,33)],fill='#ffee32')
-draw.polygon([(8,32),(119,28),(115,44),(3,49)],fill='#ff5cac')
-title(check,10,10,'#130c1a',24)
-
-record = Image.new('RGB',(320,50),'#130c1a')
-record.paste(print_panel('groove-original.png',(154,50)),(0,0))
-draw = ImageDraw.Draw(record)
-# Slashed lap joint between the record art and the reverse-printed title.
-draw.polygon([(157,0),(164,0),(145,50),(138,50)],fill='#7141a3')
-draw.polygon([(157,0),(160,0),(141,50),(138,50)],fill='#d4c3e1')
-draw.polygon([(158,32),(274,30),(269,44),(152,48)],fill='#ff5cac')
-draw.line([(281,32),(315,32)],fill='#7141a3',width=1)
-title(record,160,8,'#7141a3',66)
-title(record,160,6,'#ffee32',66)
-
-contents = header + ['namespace hdui::art {']
-for name,palette in [('flyer',flyer),('mint',mint),('amber',amber)]:
-    contents += [f'inline constexpr uint32_t {name}[16] = {{', '    ' + ','.join('0xff'+rgb for rgb in palette), '};']
-put(UI/'identity.h', contents + pack_banner(record,'groove-header.png','groove')
-    + pack_banner(check,'checker-header.png','checkers') + plate(atlas,'digits')
-    + plate(subtitles,'subtitles') + ['}'])
+wide = ImageFont.truetype(str(FONTS/'Michroma-Regular.ttf'), 72)
+contents += table('logo', bits(outline(wide, 'TB-MPC-3-P-0',(109,11))))
+bold = ImageFont.truetype(str(FONTS/'BarlowCondensed-BoldItalic.ttf'), 72)
+digits = []
+for ch in '0123456789ABCDEF':
+    canvas = Image.new('L',(20,27))
+    width = 14 if ch == '1' else 19
+    canvas.paste(outline(bold,ch,(width,27)),((20-width)//2,0))
+    digits.extend(bits(canvas))
+contents += table('digits', digits)
+for name, size, width, height, baseline in [('reading',18,16,19,14), ('lead',23,24,23,18)]:
+    font = ImageFont.truetype(str(FONTS/'BarlowCondensed-BoldItalic.ttf'), size)
+    rows, advances = [], []
+    for i in range(32,127):
+        ch = chr(i)
+        cell = Image.new('L',(width,height))
+        ImageDraw.Draw(cell).text((1,baseline), ch, font=font, fill=255, anchor='ls')
+        rows.append([sum(1<<x for x in range(width) if cell.getpixel((x,y)) >= 95) for y in range(height)])
+        advances.append(max(3,round(font.getlength(ch))))
+    contents += table(name, rows,'uint16_t' if width <= 16 else 'uint32_t')
+    contents += [f'inline constexpr uint8_t {name}Advance[] = {{' + ','.join(map(str,advances)) + '};']
+# Unit directions in 1/64 pixels for a 270-degree hardware dial.
+angles = [radians(135 + 270*i/48) for i in range(49)]
+contents += table('dial', [(round(64*cos(a)),round(64*sin(a))) for a in angles], 'int8_t')
+put(UI/'identity.h', contents + ['}'])

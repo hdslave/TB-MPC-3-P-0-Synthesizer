@@ -5,7 +5,7 @@ namespace tbmpc::plots
 {
 using hdui::Raster;
 namespace ink = hdui::ink;
-constexpr int pitchGutter = 30;
+
 
 inline int stepCount (const PatternView& view)
 {
@@ -37,187 +37,72 @@ inline void pitchLabel (const Raster& r, int mid, int y, int pitch, hdui::Ink c)
     }
 }
 
-// Reserve a row for each used note when the panel has room. Dense phrases use
-// an octave ruler and exact per-step names. The pitch scale spans the whole pattern.
-struct PitchAxis
+// Each bank has sixteen fixed columns so a note keeps its width on long phrases.
+inline void matrix (const Raster& r, const PatternView& v, bool playing)
 {
-    int notes[32] {}, count = 0, low, high;
-    bool semitones = true;
-
-    explicit PitchAxis (const PatternView& v)
+    const int n = stepCount (v);
+    if (!n)
     {
-        const int n = stepCount (v);
-        const auto limits = std::minmax_element (v.pitch, v.pitch + n);
-        low = int (std::floor (*limits.first / 1536.0)) * 12;
-        high = std::max (low + 12, int (std::ceil (*limits.second / 1536.0)) * 12);
-        for (int i = 0; i < n; ++i)
-        {
-            notes[i] = int (std::lround (v.pitch[i] / 128.0));
-            semitones &= v.pitch[i] % 128 == 0;
-        }
-        std::sort (notes, notes + n);
-        count = int (std::unique (notes, notes + n) - notes);
-    }
-
-    int linear (int cv, int top, int bottom) const
-    {
-        return bottom - (cv - low * 128) * (bottom - top) / ((high - low) * 128);
-    }
-
-    // Keep neighbouring labels nine pixels apart; give the spare space to wider intervals.
-    int row (int i, int top, int bottom) const
-    {
-        if (count == 1) return (top + bottom) / 2;
-        const int freeSpace = bottom - top - 9 * (count - 1);
-        return bottom - 9 * i - freeSpace * (notes[i] - notes[0]) / (notes[count - 1] - notes[0]);
-    }
-};
-
-inline void notehead (const Raster& r, int mid, int y, bool gate, bool live, bool narrow)
-{
-    const auto c = live ? ink::live : (gate ? ink::mint : ink::soft);
-    if (narrow)
-    {
-        if (gate) r.box (mid - 1, y - 1, 4, 3, c);
-        else
-        {
-            r.dot (mid, y - 2, c);
-            r.dot (mid, y + 2, c);
-            r.frame (mid - 1, y - 1, 3, 3, c);
-        }
+        r.box (2, 2, 316, 81, ink::field);
+        r.text (117, 39, "Awaiting clock", ink::paper);
         return;
     }
-    if (gate)
-    {
-        r.box (mid - 3, y - 1, 8, 1, c);
-        r.box (mid - 5, y, 11, 2, c);
-        r.box (mid - 4, y + 2, 8, 1, live ? c : ink::pink);
-    }
-    else
-    {
-        r.box (mid - 1, y - 2, 3, 1, c);
-        r.box (mid - 1, y + 2, 3, 1, c);
-        for (int side : { -1, 1 })
+    const int banks = n > 16 ? 2 : 1;
+    constexpr int tall[] = { 0, 15, 33, 50, 66, 82 }, shortRows[] = { 0, 9, 19, 27, 35, 43 };
+    constexpr const char* labels[] = { "STEP", "NOTE", "GATE", "ACC", "SLD" };
+    const int* edges = banks == 1 ? tall : shortRows;
+    for (int bank = 0; bank < banks; ++bank)
+        for (int lane = 0; lane < 5; ++lane)
         {
-            r.dot (mid + 2 * side, y - 1, c);
-            r.dot (mid + 3 * side, y, c);
-            r.dot (mid + 2 * side, y + 1, c);
-        }
-    }
-}
-
-inline void score (const Raster& r, const PatternView& v, const PitchAxis& axis, int x, int y, int w, int h,
-                   bool playing)
-{
-    const int count = stepCount (v), columns = count <= 16 ? 16 : 32;
-    // Each named pitch needs its own eight-pixel cap and one row of leading.
-    const bool namedRows = axis.semitones && (axis.count - 1) * 9 <= h - 35;
-    const int left = x + pitchGutter, width = w - pitchGutter, top = y + 12;
-    const int labelRows = columns / 16;
-    const int labelSpace = namedRows ? 0 : 10 * labelRows + 2;
-    const int bottom = y + h - 23 - labelSpace;
-    const int acc = y + h - 18, slide = y + h - 8;
-    r.box (x, y, w, h, ink::field);
-    auto column = [&](int i) { return left + i * width / columns; };
-    for (int i = 4; i < count; i += 8)
-        r.box (column (i), y, column (std::min (i + 4, count)) - column (i), h, ink::alternate);
-    r.box (x, y, left - x - 1, h, ink::card);
-    r.box (left - 1, y, 1, h, ink::rule);
-    r.text (x + 3, y + 1, "CV", ink::orange);
-    const int active = playing && v.running ? v.current : -1;
-    if (active >= 0 && active < count)
-    {
-        const int mid = (column (active) + column (active + 1)) / 2;
-        const int half = columns == 16 ? 3 : 2;
-        r.box (mid - half, y + 10, 2 * half + 1, h - 10, ink::cursor);
-        r.box (mid - 2, y + 9, 5, 2, ink::live);
-    }
-
-    auto ruledNote = [&](int semitone, int line) {
-        char name[12];
-        noteName (semitone, name);
-        r.right (left - 3, line - 3, name, ink::soft);
-        for (int i = left; i < column (count); i += 3) r.dot (i, line, ink::grid);
-    };
-    if (namedRows)
-        for (int i = 0; i < axis.count; ++i) ruledNote (axis.notes[i], axis.row (i, top, bottom));
-    else
-    {
-        ruledNote (axis.high, top);
-        int lastLine = top;
-        for (int n = axis.high - 12; n > axis.low; n -= 12)
-        {
-            const int line = axis.linear (n * 128, top, bottom);
-            if (line - lastLine >= 10 && bottom - line >= 10)
+            const int y = 1 + bank * 43 + edges[lane], height = edges[lane+1] - edges[lane] - 1;
+            const int cy = y + height / 2, ty = y + (height-8)/2;
+            r.box (2, y, 36, height, ink::card);
+            r.text (6, banks == 2 ? y + (height-6)/2 : ty, labels[lane], ink::paper, banks == 2);
+            for (int col = 0; col < 16; ++col)
             {
-                ruledNote (n, line);
-                lastLine = line;
+                const int i = bank * 16 + col, a = 40 + 279*col/16, b = 40 + 279*(col+1)/16;
+                const int m = (a+b)/2;
+                const bool current = playing && v.running && v.current == i && i < n;
+                const auto fill = current ? ink::live : i >= n ? ink::field : lane == 0 ? ink::header
+                                          : (col/4)%2 ? ink::alternate : ink::metal;
+                r.box (a, y, b-a-1, height, fill);
+                if (i >= n) continue;
+                if (lane == 0)
+                {
+                    const char num[] = { char ('0'+(i+1)/10), char ('0'+(i+1)%10), 0 };
+                    r.text (m-6, ty, num, current ? ink::bg : ink::paper);
+                }
+                else if (lane == 1)
+                {
+                    pitchLabel (r, m, ty, v.pitch[i], ink::bg);
+                    if (v.pitch[i] % 128) r.dot (b-3, y+height-1, ink::cobalt);
+                }
+                else if (lane == 2)
+                {
+                    if ((v.gates >> i) & 1) r.box (m-4, cy-height/4, 9, std::max (3,height/2), ink::bg);
+                    else r.frame (m-3, cy-1, 7, 3, ink::rule);
+                }
+                else if (lane == 3 && ((v.accents >> i) & 1))
+                {
+                    const int size = std::min (4, (height-1)/2);
+                    for (int j = -size; j <= size; ++j)
+                    {
+                        const int half = size - std::abs (j);
+                        r.box (m-half, cy+j, 2*half+1, 1, ink::bg);
+                    }
+                }
+                else if (lane == 4 && ((v.slides >> i) & 1))
+                {
+                    for (int k = 0; k < 9; ++k) r.box (m-4+k, cy+2-k/2, 1, 2, ink::bg);
+                    r.box (m+1, cy-2, 4, 1, ink::bg);
+                    r.box (m+4, cy-2, 1, 4, ink::bg);
+                }
+                else r.box (m-1, cy, 3, 1, ink::rule);
             }
         }
-        ruledNote (axis.low, bottom);
-    }
-
-    int lines[32];
-    for (int i = 0; i < count; ++i)
-    {
-        if (namedRows)
-        {
-            const int note = v.pitch[i] / 128;
-            const auto* at = std::lower_bound (axis.notes, axis.notes + axis.count, note);
-            lines[i] = axis.row (int (at - axis.notes), top, bottom);
-        }
-        else lines[i] = axis.linear (v.pitch[i], top, bottom);
-        if (i == 0 || !((v.slides >> (i - 1)) & 1)) continue;
-        // Connect the two stored pitches. Leave a gap at either end for each notehead.
-        const int from = (column (i - 1) + column (i)) / 2, to = (column (i) + column (i + 1)) / 2;
-        const int dy = lines[i] - lines[i - 1], dx = to - from;
-        const int span = std::max (dx, std::abs (dy));
-        for (int j = 3; j <= span - 3; ++j)
-            r.dot (from + (j * dx + span / 2) / span, lines[i - 1] + j * dy / span, ink::pink);
-    }
-    r.box (left, acc - 3, column (count) - left, 1, ink::grid);
-    r.text (x + 2, acc, "ACC", ink::pink);
-    r.text (x + 2, slide, "SLD", ink::orange);
-    for (int i = 0; i < count; ++i)
-    {
-        const int a = column (i), b = column (i + 1), mid = (a + b) / 2;
-        const bool current = i == active;
-        if (i % 4 != 0) r.dot (mid, y + 6, ink::rule);
-        if (i % 4 == 0)
-        {
-            char index[] = { char ('0' + (i + 1) / 10), char ('0' + (i + 1) % 10), 0 };
-            r.text (a + 2, y + 1, index, ink::orange);
-            r.box (a + 1, y + 10, 12, 1, ink::grid);
-            for (int j = top; j <= bottom; j += 5) r.dot (a, j, ink::rule);
-        }
-        if (!namedRows)
-        {
-            const int stagger = 10 * (i % labelRows);
-            pitchLabel (r, std::clamp (mid, left + 8, x + w - 8), acc - 10 - stagger, v.pitch[i], current ? ink::live : ink::muted);
-        }
-        notehead (r, mid, lines[i], (v.gates >> i) & 1, current, columns == 32);
-        const auto c = current ? ink::live : ink::orange;
-        if ((v.accents >> i) & 1)
-        {
-            const auto accent = current ? ink::live : ink::pink;
-            r.box (mid - 2, acc + 3, 5, 2, accent);
-            r.box (mid - 1, acc + 2, 3, 4, accent);
-        }
-        else r.dot (mid, acc + 4, ink::rule);
-        if ((v.slides >> i) & 1)
-        {
-            const int shaft = columns == 32 ? 2 : 3;
-            r.box (mid - shaft, slide + 4, 2 * shaft + 1, 1, c);
-            r.dot (mid + shaft - 2, slide + 2, c);
-            r.dot (mid + shaft - 1, slide + 3, c);
-            r.dot (mid + shaft - 1, slide + 5, c);
-            r.dot (mid + shaft - 2, slide + 6, c);
-        }
-        else r.dot (mid, slide + 4, ink::rule);
-    }
 }
 
-inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w, int h, bool large, bool playing)
+inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w, int h, bool playing)
 {
     const int n = stepCount (v);
     if (!n)
@@ -225,47 +110,41 @@ inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w
         r.box (x, y, w, h, ink::field);
         r.box (x + 4, y + h / 2 - 13, w - 8, 1, ink::grid);
         r.box (x + 4, y + h / 2 + 13, w - 8, 1, ink::grid);
-        r.caution (x + 6, y + h / 2 - 4, 11, 8, ink::orange);
+        r.caution (x + 6, y + h / 2 - 4, 11, 8, ink::violet);
         r.text (x + 21, y + h / 2 - 4, "Awaiting clock", ink::paper);
         return;
     }
-    const PitchAxis axis (v);
-    if (large)
-    {
-        score (r, v, axis, x, y, w, h, playing);
-        return;
-    }
+    const auto limits = std::minmax_element (v.pitch, v.pitch + n);
+    const int low = int (std::floor (*limits.first / 1536.0)) * 1536;
+    const int high = std::max (low + 1536, int (std::ceil (*limits.second / 1536.0)) * 1536);
     const int columns = n <= 16 ? 16 : 32;
     for (int i = 0; i < n; ++i)
     {
         const int a = x + i * w / columns, b = x + (i + 1) * w / columns;
         const bool current = playing && v.running && v.current == i;
-        const auto c = current ? ink::live : ink::mint;
+        const auto c = current ? ink::live : ink::paper;
         if (current) r.box (a, y, b - a, h, ink::cursor);
         if (i % 4 == 0) r.box (a, y, 1, h - 5, ink::grid);
-        const int line = axis.linear (v.pitch[i], y + 3, y + h - 8);
+        const int line = y + h - 8 - (v.pitch[i] - low) * (h - 11) / (high - low);
         if ((v.gates >> i) & 1) r.box (a + 1, line - 1, std::max (1,b - a - 2), 3, c);
         else r.dot ((a + b) / 2, line, c);
         if ((v.accents >> i) & 1) r.dot ((a + b) / 2, y + h - 4, current ? c : ink::pink);
-        if ((v.slides >> i) & 1) r.box ((a + b) / 2, y + h - 2, std::max (1,(b - a) / 2), 1, current ? c : ink::orange);
+        if ((v.slides >> i) & 1) r.box ((a + b) / 2, y + h - 2, std::max (1,(b - a) / 2), 1, current ? c : ink::violet);
         if (current) r.box (a, y, b - a, 2, ink::live);
     }
 }
 
 inline void scopePanel (const Raster& r, const char* name)
 {
-    r.box (0, 4, r.w - 4, r.h - 9, ink::field);
-    r.box (0, 4, r.w - 4, 2, ink::orange);
-    r.caution (r.w - 30, 4, 26, 2, ink::bg);
-    r.box (5, 10, 63, 12, ink::grid);
-    r.text (8, 12, name, ink::paper);
-    r.box (0, r.h - 6, r.w - 4, 1, ink::rule);
+    r.box (2, 2, r.w - 4, r.h - 5, ink::field);
+    r.box (2, 2, r.w - 4, 14, ink::card);
+    r.text (7, 5, name, ink::paper);
 }
 
 inline void response (const Raster& r, const TextContext& ctx, float cutoff, const char* reading)
 {
     const int kind = int (ctx.filter);
-    const int left = 8, right = r.w - 8, top = 44, bottom = r.h - 24;
+    const int left = 8, right = r.w - 8, top = 36, bottom = r.h - 24;
     const int width = right - left;
     const float k = feedbackOf (kind, ctx.resonance), nominal = nominalHz (kind, cutoff);
     const double ref = filterGain2 (kind, k, ctx.spread,
@@ -276,17 +155,17 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
     auto px = [&] (double hz) {
         return left + int (std::lround (std::clamp (std::log10 (hz / 20.0) / 3.0, 0.0, 1.0) * (width - 1)));
     };
-    scopePanel (r, "RESPONSE");
-    r.text (left, 28, filterChoices[kind], ink::paper);
-    r.right (right, 28, reading, ink::paper);
+    scopePanel (r, "FILTER");
+    r.right (right, 5, filterChoices[kind], ink::paper);
+    r.right (right, 21, reading, ink::muted);
     for (double db : { 0.0, -24.0 })
         r.box (left, py (db), width, 1, ink::grid);
     for (int hz : { 100, 1000, 10000 })
         for (int j = top; j <= bottom; j += 4) r.dot (px (hz), j, ink::rule);
 
     const int edge = px (cutoffHz (cutoff, ctx));
-    for (int j = top; j <= bottom; j += 3) r.dot (edge, j, ink::muted);
-    r.box (edge - 2, bottom + 1, 5, 2, ink::orange);
+    for (int j = top; j <= bottom; j += 3) r.dot (edge, j, ink::violet);
+    r.box (edge - 2, bottom + 1, 5, 2, ink::violet);
     // Two samples per pixel retain the narrow resonant peaks at high feedback.
     int previous = 0;
     for (int i = 0; i <= 2 * (width - 1); ++i)
@@ -296,9 +175,7 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
         const int y = py (10.0 * std::log10 (gain / ref + 1e-12));
         if (i == 0) previous = y;
         const int x = left + i / 2, lo = std::min (previous, y), hi = std::max (previous, y);
-        // A displaced pink edge under the mint line, clipped to the scope.
-        if (x < right - 1 && hi < bottom - 1) r.dot (x + 1, hi + 2, ink::pink);
-        r.box (x, lo, 1, hi - lo + 1, ink::mint);
+        r.box (x, lo, 1, hi - lo + 1, ink::live);
         previous = y;
     }
     r.text (left, bottom + 8, "20 Hz", ink::muted);

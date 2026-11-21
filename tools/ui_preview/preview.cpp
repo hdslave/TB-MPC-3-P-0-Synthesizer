@@ -275,7 +275,7 @@ void damage()
     auto before = r.frame;
     r.key (Key::wheel, 1);
     check (r.paint(), "pending seed updates the heading");
-    check (std::equal (before.begin(), before.begin() + 155 * 320, r.frame.begin()),
+    check (std::equal (before.begin()+98*320, before.begin()+185*320, r.frame.begin()+98*320),
            "pending seed preserves the entire score");
     for (int state : { 0, 1, 17 })
     {
@@ -295,12 +295,12 @@ void damage()
         r.set (P::seed, float (digit * 0x1111));
         r.paint();
         uint64_t glyph = 14695981039346656037ull;
-        for (int y = 165; y < 190; ++y)
-            for (int x = 4; x < 28; ++x)
+        for (int y = 36; y < 63; ++y)
+            for (int x = 22; x < 42; ++x)
             {
-                const auto pixel = r.frame[y * 320 + x];
+                const bool pixel = r.frame[y * 320 + x] == hdui::ink::paper;
                 for (int place = 1; place < 4; ++place)
-                    check (r.frame[y * 320 + x + 24 * place] == pixel, "all four live hex digits");
+                    check ((r.frame[y * 320 + x + 20 * place] == hdui::ink::paper) == pixel, "all four live hex digits");
                 glyph = (glyph ^ pixel) * 1099511628211ull;
             }
         check (std::find (seen.begin(), seen.begin() + digit, glyph) == seen.begin() + digit, "distinct hex glyph");
@@ -308,7 +308,7 @@ void damage()
     }
     before = r.frame;
     r.h.accent = 0x46d9b0;
-    check (r.paint() && std::equal (before.begin(), before.begin() + 191 * 320, r.frame.begin()),
+    check (r.paint() && std::equal (before.begin(), before.begin() + 185 * 320, r.frame.begin()),
            "track color stays on cards");
     r.set (P::tuning, 3);
     check (!r.paint(), "hidden parameter leaves pattern untouched");
@@ -316,7 +316,7 @@ void damage()
     {
         r.go (1);
         r.paint();
-        check (r.screen.animating (r.h) == (group >= 3), "only a visible score requests paints");
+        check (r.screen.animating (r.h), "all playing plates follow the clock");
         for (const auto& p : paramTable)
         {
             r.set (p.id, r.get (p.id) == p.max ? p.min : p.max);
@@ -331,6 +331,65 @@ int changes (const Frame& a, const Frame& b)
     int n = 0;
     for (size_t i = 0; i < a.size(); ++i) n += a[i] != b[i];
     return n;
+}
+
+void motion()
+{
+    for (int group = 0; group < 5; ++group)
+    {
+        Rig r;
+        r.go (group);
+        r.paint();
+        r.v.current = 0;
+        r.mailbox.write (r.v);
+        const auto before = allocations;
+        r.paint();
+        const Frame first = r.frame;
+        r.h.nowMs += 48;
+        check (r.paint(), "drips respond between clock steps");
+        const int count = changes (first, r.frame);
+        check (count > 0 && count <= (group ? 27*3 : 41*5), "only a small strip moves");
+        for (int y = 0; y < hdui::height; ++y)
+            for (int x = 0; x < hdui::width; ++x)
+                if (first[y*320+x] != r.frame[y*320+x])
+                {
+                    const int local = y-18;
+                    const bool tips = group ? x >= 276 && x < 303 && ((local >= 31 && local <= 32) || local == 35)
+                                            : x >= 254 && x < 295 && ((local >= 47 && local <= 49) || (local >= 53 && local <= 54));
+                    check (tips, "motion stays inside the smiley tips");
+                }
+        guardedFrame (r);
+        r.h.nowMs += 48;
+        check (r.paint() && r.frame == first, "drips ease back");
+        r.h.nowMs += 60;
+        check (r.paint(), "drips settle");
+        const auto neutral = r.frame;
+        r.h.nowMs += 400;
+        check (!r.paint(), "clock held on one step settles");
+        r.v.current = 1; // a gate without an accent
+        r.mailbox.write (r.v);
+        r.paint();
+        r.h.nowMs += 60;
+        check (!r.paint(), "ordinary gate has no pulse");
+        r.v.current = 7;
+        r.v.gates |= 1u<<7;
+        r.v.accents |= 1u<<7;
+        r.mailbox.write (r.v);
+        r.paint();
+        r.h.nowMs += 45;
+        check (r.paint(), "gated accent between downbeats triggers");
+        r.h.playing = false;
+        check (r.paint() && !r.screen.animating (r.h), "stopping cancels an active pulse");
+        const int left = group ? 276 : 254;
+        const int right = group ? 303 : 295;
+        for (int y = 18; y < (group ? 60 : 82); ++y)
+            check (std::equal (neutral.begin()+320*y+left, neutral.begin()+320*y+right,
+                               r.frame.begin()+320*y+left), "stopped plate is at rest");
+        r.h.nowMs += 1000;
+        check (!r.paint(), "stopped time causes no writes");
+        guardedFrame (r);
+        check (allocations == before, "animation has no allocations");
+    }
 }
 
 template<class Operation> void timed (const char* name, Rig& r, bool whole, Operation prepare)
@@ -356,8 +415,13 @@ void bench()
     Rig r;
     r.paint (true);
     timed ("full / 16 steps", r, true, [](int) {});
+    r.h.playing = false;
+    r.paint();
     timed ("idle", r, false, [&](int) { ++r.h.nowMs; });
+    r.h.playing = true;
+    r.paint();
     auto step = [&](int) {
+        r.h.nowMs += 120;
         r.v.current = (r.v.current + 1) % r.v.steps;
         r.mailbox.write (r.v);
     };
@@ -384,6 +448,7 @@ void bench()
         int worst = 0;
         for (int i = 0; i < move.v.steps; ++i)
         {
+            move.h.nowMs += 120;
             move.v.current = (move.v.current + 1) % move.v.steps;
             move.mailbox.write (move.v);
             move.paint();
@@ -409,6 +474,23 @@ void bench()
         std::printf ("cursor pixels / %-10s max %d\n", layout::groups[g].name, worst);
         check (worst < 12000, "cursor budget");
     }
+    for (int g : { 0, 1 })
+    {
+        Rig pulse;
+        pulse.go (g);
+        pulse.v.current = 0;
+        pulse.mailbox.write (pulse.v);
+        pulse.paint();
+        int worst = 0;
+        for (int i = 0; i < 6; ++i)
+        {
+            const Frame prev = pulse.frame;
+            pulse.h.nowMs += 30;
+            pulse.paint();
+            worst = std::max (worst, changes (prev, pulse.frame));
+        }
+        std::printf ("animation pixels / %-7s max %d\n", layout::groups[g].name, worst);
+    }
     std::puts ("idle pixels             0");
 }
 
@@ -421,7 +503,7 @@ int main (int argc, char** argv)
     const bool render = !std::strcmp (mode, "--render"), test = !std::strcmp (mode, "--test");
     check (render || test || !std::strcmp (mode, "--hashes"), "expected --render, --test, --bench or --hashes");
     FILE* ref = test ? std::fopen ("tools/ui_preview/hashes.txt", "r") : nullptr;
-    if (test) { check (ref, "golden hash file"); controls(); damage(); }
+    if (test) { check (ref, "golden hash file"); controls(); damage(); motion(); }
     for (unsigned i = 0; i < std::size (names); ++i)
     {
         Rig r;
@@ -445,7 +527,7 @@ int main (int argc, char** argv)
         char extra[2];
         check (std::fscanf (ref, "%1s", extra) == EOF, "golden file has no extra states");
         std::fclose (ref);
-        std::printf ("%zu golden states, controls, K1-K3, allocation checks, idle/whole/stride and lengths 0-32 passed\n", std::size (names));
+        std::printf ("%zu golden states, controls, K1-K3, allocation checks, clocked motion, idle/whole/stride and lengths 0-32 passed\n", std::size (names));
     }
     if (render)
     {
@@ -454,10 +536,20 @@ int main (int argc, char** argv)
         {
             r.v.current = step;
             r.mailbox.write (r.v);
-            r.paint();
-            char s[16];
-            std::snprintf (s, sizeof (s), "step-%02d", step + 1);
-            ppm (s, r.frame);
+            for (int tick = 0; tick < 4; ++tick)
+            {
+                const int frame = 4*step + tick;
+                r.h.nowMs = 1000 + frame*30;
+                r.paint();
+                char s[16];
+                if (!tick)
+                {
+                    std::snprintf (s, sizeof (s), "step-%02d", step+1);
+                    ppm (s, r.frame);
+                }
+                std::snprintf (s, sizeof (s), "motion-%02d", frame);
+                ppm (s, r.frame);
+            }
         }
     }
 }

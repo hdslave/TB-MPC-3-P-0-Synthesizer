@@ -64,6 +64,6 @@ strip = Image.new('RGB',(320*4,240))
 for i in range(4):
     strip.paste(sequence[i+3],(i*320,0))
 strip.save(out/'step-advance-strip.png')
-loop = [scale(im,2) for im in sequence]
+loop = [scale(composite(panel(Image.open(frames/f'motion-{i:02d}.ppm'))),2) for i in range(64)]
 loop[0].save(out/'step-advance.gif',save_all=True,append_images=loop[1:],
-                 duration=125,loop=0,disposal=1,optimize=False)
+                 duration=30,loop=0,disposal=1,optimize=False)
