@@ -1,13 +1,8 @@
-// TB-MPC-3-P-0's page on Melodee's screen (melodee_screen.h, ui/page.h). PATTERN is TB-3PO's own screen: the seed in
-// hex, locked or random, and the pattern's steps (a gated step a bar as high as its pitch, accents bright, slides
-// joined to the next, the step playing lit). There the wheel dials the seed (and locks it, so the pattern dialled
-// stays), Push is Regen, Shift + Push is Seed Back, and K1-K3 are the 303's hands-on three: Cutoff, Resonance, Env
-// Mod. VOICE and TONE list the voice's knobs beside the filter's response; TB-3PO and CLOCK the sequencer's, beside
-// the pattern.
+// TB-MPC-3-P-0 instrument screen. See docs/screen.md for its score and controls.
 #pragma once
 
 #include "params.h"
-#include "ui/page.h"
+#include "ui/groups.h"
 
 #include <atomic>
 
@@ -65,263 +60,374 @@ private:
     std::atomic<uint64_t> data[words64] {};
 };
 
-class Screen final : public hdui::Page
+} // namespace tbmpc
+
+#include "ui/plots.h"
+
+namespace tbmpc
 {
+class Screen final
+{
+    using Raster = hdui::Raster;
+    using Host = hdui::Host;
+    using Ink = hdui::Ink;
+
 public:
-    Screen (const std::atomic<float>* values, const PatternState& pattern) : values (values), pattern (pattern)
+    Screen (const std::atomic<float>* values, const PatternState& pattern) : values (values), pattern (pattern) {}
+
+    void update (uint64_t) { view = pattern.read(); }
+
+    // Keep sampling a moving score, including when Melodee suspends processing between clocks.
+    bool animating (const Host& h) const { return (group == 0 || group >= 3) && h.playing && view.running; }
+
+    void knobs (uint32_t ids[3]) const
     {
-        colours = { 0xff0d110f, 0xff151d18, 0xff1f2b23, 0xff2f4a38, 0xffe8f5e0, 0xff8faf96, 0xff3f5a48, 0xffc8f031, 0xff0d110f };
-    }
-
-    bool animating (const hdui::Host& h) const override { return flashAt != 0 && h.nowMs - flashAt < flashMs; }
-
-    // The audio thread's news, taken before each paint: a new step lights.
-    void update (uint64_t nowMs)
-    {
-        view = pattern.read();
-        if (view.current != seenStep && view.running)
-            flashAt = nowMs;
-        seenStep = view.current;
-    }
-
-protected:
-    int groupCount() const override { return (int) (sizeof (groups) / sizeof (groups[0])); }
-    const hdui::Group& groupAt (int i) const override { return groups[i]; }
-    const char* title() const override { return "TB-MPC-3-P-0"; }
-
-    float value (uint32_t id) const { return values[paramIndex (id)].load (std::memory_order_relaxed); }
-    TextContext context() const
-    {
-        TextContext c;
-        c.resonance = value (ParamId::resonance), c.filter = value (ParamId::filter), c.spread = value (ParamId::peakSpread);
-        return c;
-    }
-
-    void read (uint32_t id, hdui::Value& out) const override
-    {
-        const int index = paramIndex (id);
-        if (index < 0)
-            return;
-        const Param& p = paramTable[index];
-        out.value = value (id);
-        out.min = p.min, out.max = p.max, out.def = p.def;
-        out.kind = p.kind == Kind::continuous ? hdui::Kind::continuous
-                 : p.kind == Kind::integer   ? hdui::Kind::stepped
-                 : p.kind == Kind::choice    ? hdui::Kind::choice
-                                             : hdui::Kind::button;
-        out.bipolar = p.min < 0.0f;
-        formatParam (p, out.value, out.text, sizeof (out.text), context());
-    }
-
-    const char* customLabel (uint32_t) const override { return ""; }
-
-    // PATTERN: the wheel dials the seed (locking it), Push is Regen, Shift + Push Seed Back.
-    bool customInput (int, hdui::Key key, int amount, bool shift, hdui::Edits& out) override
-    {
-        if (key == hdui::Key::wheel)
+        for (int k = 0; k < 3; ++k)
         {
-            const int seed = ((int) value (ParamId::seed) + amount * (shift ? 16 : 1)) & 0xffff;
-            out.set (ParamId::seed, (float) seed);
-            if (value (ParamId::seedMode) < 0.5f)
-                out.set (ParamId::seedMode, 1.0f);
+            const auto id = cardField (k);
+            ids[k] = id != hdui::noParam && paramTable[paramIndex (id)].kind != Kind::button ? id : hdui::noParam;
+        }
+    }
+
+    bool input (hdui::Key key, int amount, bool shift, hdui::Edits& out)
+    {
+        using hdui::Key;
+        if (key == Key::nudge && !editing)
+        {
+            const int next = std::clamp (group + (amount > 0) - (amount < 0), 0, 4);
+            if (next == group) return false;
+            group = next;
+            row = 0;
             return true;
         }
-        if (key == hdui::Key::push)
-            return out.press (shift ? ParamId::seedBack : ParamId::regen), true;
-        return false;
-    }
-
-    void customKnobs (int, uint32_t ids[3]) const override
-    {
-        ids[0] = ParamId::cutoff, ids[1] = ParamId::resonance, ids[2] = ParamId::envMod;
-    }
-
-    void legend (const char* lines[6]) const override
-    {
-        if (groupIndex() == 0)
-            lines[0] = "WHEEL  SEED", lines[1] = "(IT LOCKS)", lines[2] = "PUSH  REGEN", lines[3] = "SHIFT: BACK", lines[4] = "-/+  GROUP",
-            lines[5] = "K CUT RES ENV";
-        else
-            Page::legend (lines);
-    }
-
-    // The header's right: the clock, where the pattern is, and what plays the voice.
-    void drawStatus (hdui::Raster& r, const hdui::Host& h, int right) override
-    {
-        char text[64];
-        hdui::Value clock;
-        read (ParamId::clockDiv, clock);
-        std::snprintf (text, sizeof (text), "%s  STEP %d/%d", clock.text, view.current + 1, view.steps);
-        r.text (right - hdui::textWidth (text), headerY + 1, text, colours.text);
-        const bool notes = value (ParamId::mode) >= 0.5f;
-        const char* mode = notes ? "NOTES PLAY" : (view.running ? "RUNNING" : "WAITING");
-        r.text (right - hdui::textWidth (mode), headerY + 13, mode, notes ? accent (h) : colours.muted);
-    }
-
-    void drawPanel (hdui::Raster& r, const hdui::Host& h, int x, int y, int w, int height) override
-    {
-        const int g = groupIndex();
-        if (g == 1 || g == 2)
-            drawResponse (r, h, x, y, w, height);
-        else
-            drawPattern (r, h, x, y + 20, w, height - 20, false);
-        if (g >= 3)
+        if (group == 0)
         {
-            char seed[8];
-            std::snprintf (seed, sizeof (seed), "%04X", (unsigned) value (ParamId::seed) & 0xffffu);
-            r.text (x, y + 2, seed, accent (h));
-            r.text (x + 34, y + 2, value (ParamId::seedMode) >= 0.5f ? "LOCKED" : "RANDOM", colours.muted);
+            if (key == Key::push)
+                out.press (shift ? ParamId::seedBack : ParamId::regen);
+            else if (key == Key::wheel)
+            {
+                const unsigned seed = unsigned (liveValue (ParamId::seed)) + unsigned (amount) * (shift ? 16u : 1u);
+                out.set (ParamId::seed, float (seed & 0xffffu));
+                if (liveValue (ParamId::seedMode) < 0.5f) out.set (ParamId::seedMode, 1);
+            }
+            else return false;
+            return true;
         }
+        const auto id = fields().fields[row].id;
+        const Param& p = paramTable[paramIndex (id)];
+        if (key == Key::push)
+        {
+            if (p.kind == Kind::button) out.press (id);
+            else editing = !editing;
+        }
+        else if (!editing && key == Key::wheel)
+            row = int (std::clamp<int64_t> (int64_t (row) + amount, 0, fields().count - 1));
+        else if (editing && (key == Key::wheel || key == Key::nudge))
+        {
+            const float delta = p.kind == Kind::continuous
+                ? (p.max - p.min) / (key == Key::nudge ? 16 : (shift ? 1024 : 128)) : 1.f;
+            const float before = liveValue (id);
+            const float next = clampParam (p, before + delta * amount);
+            if (next != before) out.set (id, next);
+        }
+        else return false;
+        return true;
     }
 
-    // PATTERN: the module's screen.
-    void drawCustom (hdui::Raster& r, const hdui::Host& h, int x, int y, int w, int height) override
+    bool paint (const Host& h, uint32_t* pixels, int stride, bool whole)
     {
-        const hdui::Palette& c = colours;
-        const hdui::Ink hi = accent (h);
-        char text[64];
-        // The seed: a dialled one whose pattern has yet to play (it plays from the next clock) is drawn pale, marked
-        // NEXT; the bars are still the pattern playing.
-        const unsigned dialled = (unsigned) value (ParamId::seed) & 0xffffu;
-        const bool pending = dialled != (unsigned) view.seed && value (ParamId::mode) < 0.5f;
-        std::snprintf (text, sizeof (text), "%04X", dialled);
-        r.text (x + 6, y + 2, text, pending ? c.muted : hi, 4, 2);
-        const bool locked = value (ParamId::seedMode) >= 0.5f;
-        drawLock (r, x + 70, y + 6, locked, locked ? c.text : c.muted);
-        const int end = r.text (x + 86, y + 2, locked ? "LOCKED" : "RANDOM", locked ? c.text : c.muted);
-        if (pending)
-            r.text (end + 7, y + 2, "NEXT", hi);
-        hdui::Value v;
-        read (ParamId::density, v);
-        std::snprintf (text, sizeof (text), "DENSITY %s", v.text);
-        r.text (x + 86, y + 15, text, c.muted);
-        read (ParamId::scale, v);
-        r.text (x + w - 6 - hdui::textWidth (v.text, 14), y + 2, v.text, c.text, 14);
-        hdui::Value root, octave;
-        read (ParamId::root, root);
-        read (ParamId::octave, octave);
-        std::snprintf (text, sizeof (text), "ROOT %s  OCT %s", root.text, octave.text);
-        r.text (x + w - 6 - hdui::textWidth (text), y + 15, text, c.muted);
-        drawPattern (r, h, x + 6, y + 32, w - 12, height - 34, true);
+        whole |= lastGroup < 0;
+        const bool page = whole || group != lastGroup;
+        const bool selection = page || row != lastRow || editing != lastEditing;
+        const bool patternChanged = !(lastView == view);
+        const bool transport = lastHost.playing != h.playing;
+        uint64_t parameters = 0;
+        static_assert (ParamId::count <= 64);
+        auto bit = [](uint32_t id) { return uint64_t (1) << id; };
+        bool pots = false;
+        for (unsigned i = 0; i < paramCount; ++i)
+        {
+            const float v = values[i].load (std::memory_order_relaxed);
+            if (sampled[i] != v) parameters |= bit (paramTable[i].id);
+            sampled[i] = v;
+        }
+        const auto responseParams = bit (ParamId::filter) | bit (ParamId::peakSpread) | bit (ParamId::resonance);
+        if (parameters & responseParams) parameters |= bit (ParamId::cutoff); // Cutoff's reading follows the response.
+        for (int k = 0; k < 3; ++k)
+            pots |= lastHost.pot[k] != h.pot[k] || lastHost.engaged[k] != h.engaged[k];
+
+        bool drew = false;
+        if (page)
+            drew |= picture.region<320,25> (pixels, stride, whole, 0, 0, [&](Raster& r) { masthead (r); });
+        if (group == 0)
+        {
+            if (page || parameters || patternChanged || transport)
+                drew |= picture.region<320,63> (pixels, stride, whole, 0, 25, [&](Raster& r) { seedHead (r, h); });
+            if (page || patternChanged || transport)
+                drew |= picture.region<320,82> (pixels, stride, whole, 0, 88, [&](Raster& r) {
+                    plots::sequence (r, view, 4, 0, 312, 80, true, h.playing);
+                });
+        }
+        else
+        {
+            if (selection)
+                drew |= picture.region<180,145> (pixels, stride, whole, 0, 25, [&](Raster& r) { list (r); });
+            else if (parameters)
+            {
+                const int top = firstRow();
+                for (int i = top; i < std::min (fields().count, top + visible); ++i)
+                    if (parameters & bit (fields().fields[i].id))
+                        drew |= picture.region<170,16> (pixels, stride, false, 4, 30 + (i - top) * rowH,
+                                                        [&](Raster& r) { listRow (r, i, 0, 0); });
+            }
+            const bool panelChanged = group < 3 ? (parameters & bit (ParamId::cutoff)) != 0
+                                                : (parameters || patternChanged || transport);
+            if (page || panelChanged)
+                drew |= picture.region<140,145> (pixels, stride, whole, 180, 25, [&](Raster& r) {
+                    if (group < 3)
+                    {
+                        char s[32];
+                        formatted (ParamId::cutoff, s);
+                        plots::response (r, context(), val (ParamId::cutoff), s);
+                    }
+                    else mini (r, h);
+                });
+        }
+        if (selection || parameters || pots || h.shift != lastHost.shift || h.accent != lastHost.accent)
+            drew |= picture.region<320,48> (pixels, stride, whole, 0, 170, [&](Raster& r) {
+                if (h.shift) legend (r);
+                else cards (r, h);
+            });
+        lastGroup = group;
+        lastRow = row;
+        lastEditing = editing;
+        lastView = view;
+        lastHost = h;
+        return drew;
     }
 
 private:
     const std::atomic<float>* values;
     const PatternState& pattern;
-    PatternView view {};
-    int seenStep = -1;
-    uint64_t flashAt = 0;
-    static constexpr uint64_t flashMs = 140;
+    hdui::Picture picture;
+    float sampled[paramCount] {};
+    PatternView view {}, lastView {};
+    Host lastHost {};
+    int group = 0, row = 0, lastGroup = -1, lastRow = 0;
+    bool editing = false, lastEditing = false;
 
-    static void drawLock (hdui::Raster& r, int x, int y, bool locked, hdui::Ink ink)
+    float liveValue (uint32_t id) const { return values[paramIndex (id)].load (std::memory_order_relaxed); }
+    float val (uint32_t id) const { return sampled[paramIndex (id)]; }
+    const hdui::Group& fields() const { return layout::groups[group]; }
+    TextContext context() const { return { val (ParamId::resonance), val (ParamId::filter), val (ParamId::peakSpread) }; }
+
+    template<size_t N> void formatted (uint32_t id, char (&text)[N]) const
     {
-        r.box (x, y + 4, 9, 6, ink);
-        r.frame (x + 2, locked ? y : y - 3, 5, 5, ink); // the shackle: down locked, up open
+        formatParam (paramTable[paramIndex (id)], val (id), text, N, context());
     }
 
-    // The pattern: a gated step a bar from the floor as high as its pitch among the pattern's (accented: bright, with
-    // a cap), a slide a line on to the next step, an ungated step a dot; the step playing lit, steps past Steps not
-    // there.
-    void drawPattern (hdui::Raster& r, const hdui::Host& h, int x, int y, int w, int height, bool big)
+    uint32_t cardField (int k) const
     {
-        const hdui::Palette& c = colours;
-        const hdui::Ink hi = accent (h);
-        const int n = std::clamp (view.steps, 1, 32);
-        const int column = std::max (3, w / n), bar = std::max (2, column - (big ? 3 : 2));
-        int lo = 1 << 20, top = -(1 << 20);
-        for (int s = 0; s < n; ++s)
-            if ((view.gates >> s) & 1u)
-                lo = std::min<int> (lo, view.pitch[s]), top = std::max<int> (top, view.pitch[s]);
-        const int span = std::max (top - lo, 12 * 128);
-        const int floor = y + height - 3, tallest = height - 10;
-        r.box (x, floor + 1, column * n - 1, 1, c.rule);
-        const int fade = flashAt != 0 && h.nowMs - flashAt < flashMs ? (int) (256 - 256 * (h.nowMs - flashAt) / flashMs) : 0;
-        int lastTop = -1, lastX = 0;
-        for (int s = 0; s < n; ++s)
+        constexpr uint32_t performance[] = { ParamId::cutoff, ParamId::resonance, ParamId::envMod };
+        if (!group) return performance[k];
+        return row + k < fields().count ? fields().fields[row + k].id : hdui::noParam;
+    }
+
+    void masthead (const Raster& r) const
+    {
+        using namespace hdui;
+        for (int j = 0; j < 11; ++j)
+            for (int i = 0; i < 28; ++i)
+                r.dot (6 + i, 7 + j, art::inks[art::fold[j][i]]);
+        for (size_t j = 0; j < sizeof (art::wordmark) / sizeof (art::wordmark[0]); ++j)
+            for (size_t i = 0; i < sizeof (art::wordmark[0]); ++i)
+                if (art::wordmark[j][i]) r.dot (42 + int (i), 8 + int (j), ink::paper);
+        r.right (312, 7, fields().name, ink::paper);
+        for (int i = 0; i < 5; ++i)
+            r.box (279 + i * 7, 18, 5, 2, i == group ? ink::soft : ink::rule);
+        r.box (6, 24, 308, 1, ink::rule);
+    }
+
+    void seedHead (const Raster& r, const Host& h) const
+    {
+        using namespace hdui;
+        const unsigned dialled = unsigned (val (ParamId::seed));
+        const int n = plots::stepCount (view);
+        const bool pending = n && dialled != unsigned (view.seed);
+        const bool notes = val (ParamId::mode) >= 0.5f;
+        char s[48];
+        std::snprintf (s, sizeof (s), "%s / %s", pending ? "NEXT" : "SEED",
+                       val (ParamId::seedMode) >= 0.5f ? "LOCKED" : "RANDOM");
+        r.text (8, 4, s, ink::muted);
+        r.hex (5, 14, dialled, ink::paper);
+
+        if (h.playing)
+            for (int i = 0; i < 4; ++i) r.box (144 + i, 5 + i, 1, 7 - 2 * i, ink::soft);
+        else r.box (144, 6, 5, 5, ink::muted);
+        r.text (154, 4, h.playing ? "RUN" : "STOP", ink::paper);
+        if (n && view.current >= 0 && view.current < n)
+            std::snprintf (s, sizeof (s), "%02d/%02d", view.current + 1, n);
+        else std::snprintf (s, sizeof (s), "--/%02d", int (val (ParamId::steps)));
+        r.right (245, 4, s, ink::paper);
+        formatted (ParamId::clockDiv, s);
+        r.right (312, 4, s, ink::paper);
+
+        if (pending)
         {
-            const int cx = x + s * column;
-            const bool gated = (view.gates >> s) & 1u, accented = (view.accents >> s) & 1u, lit = s == view.current && view.running;
-            if (lit)
-                r.box (cx - 1, y, column, height, hdui::mix (c.panel, hi, 36 + fade / 3));
-            if (! gated)
+            std::snprintf (s, sizeof (s), "PENDING  /  SCORE %04X", unsigned (view.seed) & 65535);
+            r.text (144, 17, s, ink::soft);
+        }
+        if (notes) r.text (144, pending ? 30 : 23, "MIDI NOTES / SEQ MUTED", ink::paper);
+        else if (!pending)
+        {
+            r.text (144, 23, "TB-3PO", ink::muted);
+            r.right (245, 23, "STEP", ink::muted);
+            r.right (312, 23, "DIV", ink::muted);
+        }
+        r.box (6, 43, 308, 1, ink::grid);
+        formatted (ParamId::scale, s);
+        r.text (8, 50, s, ink::paper);
+        std::snprintf (s, sizeof (s), "ROOT %s  OCT %+d  DEN %+d",
+                       rootChoices[int (val (ParamId::root))], int (val (ParamId::octave)), int (val (ParamId::density)));
+        r.right (312, 50, s, ink::muted);
+    }
+
+    static constexpr int visible = 8, rowH = 17;
+    int firstRow() const { return std::clamp (row - 3, 0, std::max (0, fields().count - visible)); }
+
+    void listRow (const Raster& r, int i, int x, int y) const
+    {
+        using namespace hdui;
+        const auto& f = fields().fields[i];
+        const bool focus = i == row;
+        if (focus)
+        {
+            r.box (x, y, 170, rowH - 1, ink::selected);
+            r.box (x, y, 2, rowH - 1, ink::soft);
+        }
+        char s[32];
+        formatted (f.id, s);
+        r.text (x + 5, y + 4, f.label, focus ? ink::paper : ink::muted);
+        const int end = x + 164;
+        if (focus && editing)
+        {
+            const int w = int (std::strlen (s)) * 7;
+            r.frame (end - w - 3, y + 1, w + 6, 14, ink::paper);
+        }
+        r.right (end, y + 4, s, focus ? ink::paper : ink::soft);
+    }
+
+    void list (const Raster& r) const
+    {
+        using namespace hdui;
+        const int top = firstRow();
+        for (int i = top; i < std::min (fields().count, top + visible); ++i)
+            listRow (r, i, 4, 5 + (i - top) * rowH);
+        if (fields().count > visible)
+        {
+            const int extent = visible * rowH;
+            r.box (176, 5, 1, extent, ink::grid);
+            r.box (176, 5 + top * extent / fields().count, 1, visible * extent / fields().count, ink::muted);
+        }
+    }
+
+    void mini (const Raster& r, const Host& h) const
+    {
+        using namespace hdui;
+        r.box (0, 4, r.w - 4, r.h - 9, ink::field);
+        char s[32];
+        r.text (8, 12, "SCORE", ink::muted);
+        if (plots::stepCount (view))
+            std::snprintf (s, sizeof (s), "%04X", unsigned (view.seed) & 65535);
+        else std::snprintf (s, sizeof (s), "----");
+        r.right (128, 12, s, ink::paper);
+        plots::sequence (r, view, 5, 31, 125, 52, false, h.playing);
+        if (group == 4)
+        {
+            r.text (8, 95, "SWING", ink::muted);
+            formatted (ParamId::swing, s);
+            r.right (128, 95, s, ink::paper);
+            const int split = int (std::lround (119 * val (ParamId::swing)));
+            r.box (8, 117, split - 1, 4, ink::soft);
+            r.box (8 + split + 1, 117, 118 - split, 4, ink::rule);
+            r.dot (68, 124, ink::muted);
+        }
+        else
+        {
+            r.text (8, 95, h.playing ? "RUN" : "STOP", ink::muted);
+            if (view.current >= 0 && view.current < plots::stepCount (view))
+                std::snprintf (s, sizeof (s), "%02d/%02d", view.current + 1, view.steps);
+            else std::snprintf (s, sizeof (s), "--/--");
+            r.right (128, 95, s, ink::paper);
+            r.text (8, 114, "SEED", ink::muted);
+            formatted (ParamId::seedMode, s);
+            r.right (128, 114, s, ink::soft);
+        }
+    }
+
+    static void legend (const Raster& r, const char* const top[3], const char* const bottom[3])
+    {
+        using namespace hdui;
+        for (int k = 0; k < 3; ++k)
+        {
+            const int x = 4 + 105 * k;
+            r.box (x, 3, 102, 40, ink::field);
+            r.text (x + 5, 10, top[k], ink::muted);
+            r.text (x + 5, 26, bottom[k], ink::paper);
+        }
+    }
+
+    void legend (const Raster& r) const
+    {
+        const char* top[] = { "SHIFT + WHEEL", "SHIFT + PUSH", "MINUS / PLUS" };
+        const char* bottom[] = { "Seed x16", "Seed Back", "Group" };
+        if (group)
+        {
+            top[1] = "PUSH";
+            bottom[0] = editing ? "Fine value" : "Move cursor";
+            bottom[1] = editing ? "Finish edit" : "Edit / press";
+            bottom[2] = editing ? "Coarse value" : "Group";
+        }
+        legend (r, top, bottom);
+    }
+
+    void cards (const Raster& r, const Host& h) const
+    {
+        using namespace hdui;
+        const Ink track = h.accent ? h.accent | 0xff000000u : ink::live;
+        for (int k = 0; k < 3; ++k)
+        {
+            const int x = 4 + 105 * k;
+            const uint32_t id = cardField (k);
+            r.box (x, 3, 102, 40, ink::card);
+            char tag[] = { 'K', char ('1' + k), 0 };
+            r.text (x + 4, 8, tag, ink::muted);
+            if (id == noParam) continue;
+            const auto& p = paramTable[paramIndex (id)];
+            r.text (x + 23, 8, p.name, ink::paper);
+            char s[32];
+            formatted (id, s);
+            if (p.kind == Kind::button)
             {
-                r.box (cx + bar / 2 - 1, floor - 1, 2, 2, c.dim);
-                lastTop = -1;
+                r.text (x + 4, 23, k == 0 ? "Push" : "Button", ink::soft);
                 continue;
             }
-            const int hgt = 4 + (int) ((int64_t) (view.pitch[s] - lo) * (tallest - 4) / span);
-            const int ty = floor - hgt;
-            const hdui::Ink ink = lit ? c.text : (accented ? hi : c.muted);
-            r.box (cx, ty, bar, hgt + 1, hdui::mix (ink, c.bg, accented ? 40 : 110));
-            r.box (cx, ty, bar, accented ? 3 : 1, ink);
-            if (lastTop >= 0) // the step before slid into this one
-                r.line (lastX, lastTop, cx, ty, hi);
-            if ((view.slides >> s) & 1u)
-                lastTop = ty, lastX = cx + bar - 1;
-            else
-                lastTop = -1;
+            // The list has room for every full scale name.
+            if (std::strlen (s) > 13) std::memcpy (s + 11, "..", 3);
+            r.text (x + 4, 21, s, ink::paper);
+            const int start = x + 5, w = 92, rail = 35;
+            const float unit = (val (id) - p.min) / (p.max - p.min);
+            const int at = start + int (std::lround (unit * (w - 1)));
+            r.box (start, rail, w, 2, ink::rule);
+            r.box (start, rail, at - start + 1, 2, track);
+            r.box (at, rail - 2, 2, 5, track);
+            if (h.pot[k] >= 0 && !h.engaged[k])
+            {
+                const int pos = start + std::clamp (int (h.pot[k]), 0, 127) * (w - 1) / 127;
+                r.box (pos - 2, rail - 2, 5, 6, ink::card);
+                r.frame (pos - 2, rail - 2, 5, 6, ink::paper);
+            }
         }
     }
-
-    // The filter's response as Cutoff, Resonance, Filter and Peak Spread set it (Env Mod at rest), 20 Hz to 20 kHz
-    // across, -36 to +24 dB up, with Cutoff's reading marked.
-    void drawResponse (hdui::Raster& r, const hdui::Host& h, int x, int y, int w, int height)
-    {
-        const hdui::Palette& c = colours;
-        const hdui::Ink hi = accent (h);
-        const int kind = (int) value (ParamId::filter);
-        const float spread = value (ParamId::peakSpread), resonance = value (ParamId::resonance);
-        const float k = feedbackOf (kind, resonance), nominal = nominalHz (kind, value (ParamId::cutoff));
-        const int top = y + 14, bottom = y + height - 4, plot = bottom - top;
-        auto yOf = [&] (double dB) { return top + (int) std::lround ((24.0 - std::clamp (dB, -36.0, 24.0)) / 60.0 * plot); };
-        for (double dB : { 0.0, -24.0 })
-            r.box (x, yOf (dB), w, 1, c.rule);
-        for (double f : { 100.0, 1000.0, 10000.0 })
-            r.box (x + (int) std::lround (std::log10 (f / 20.0) / 3.0 * (w - 1)), top, 1, plot, c.rule);
-        // The level at the passband's start (the diode ladder's and three stages' DC; Twin Peak's has none) is 0 dB,
-        // so a peak reads as how far it stands over the rest.
-        const double reference = kind == filterTwinPeak ? filterGain2 (kind, k, spread, std::exp2 (spread * 0.5)) : filterGain2 (kind, k, spread, 1e-3);
-        int lastY = -1;
-        for (int i = 0; i < w; ++i)
-        {
-            const double hz = 20.0 * std::pow (1000.0, (double) i / (w - 1));
-            const double g = filterGain2 (kind, k, spread, hz / nominal);
-            const int py = yOf (10.0 * std::log10 (g / reference + 1e-12));
-            if (lastY >= 0)
-                r.box (x + i, std::min (py, lastY), 1, std::abs (py - lastY) + 1, hi);
-            else
-                r.dot (x + i, py, hi);
-            lastY = py;
-        }
-        hdui::Value cutoff;
-        read (ParamId::cutoff, cutoff);
-        const char* name = filterChoices[kind];
-        r.text (x, y + 1, name, c.text);
-        r.text (x + w - hdui::textWidth (cutoff.text), y + 1, cutoff.text, hi);
-        const double edge = std::clamp (std::log10 (std::max (20.0, std::atof (cutoff.text) * (std::strstr (cutoff.text, "kHz") ? 1000.0 : 1.0)) / 20.0) / 3.0, 0.0, 1.0);
-        r.box (x + (int) std::lround (edge * (w - 1)), bottom - 6, 1, 6, c.text);
-    }
-
-    static constexpr hdui::Field voice[] = {
-        { ParamId::tuning, "TUNING" }, { ParamId::cutoff, "CUTOFF" }, { ParamId::resonance, "RESONANCE" },
-        { ParamId::envMod, "ENV MOD" }, { ParamId::decay, "DECAY" }, { ParamId::accent, "ACCENT" },
-        { ParamId::waveform, "WAVEFORM" }, { ParamId::volume, "VOLUME" },
-    };
-    static constexpr hdui::Field tone[] = {
-        { ParamId::filter, "FILTER" }, { ParamId::peakSpread, "PEAK SPREAD" }, { ParamId::drive, "DRIVE" },
-        { ParamId::glide, "SLIDE" }, { ParamId::slideTime, "SLIDE TIME" }, { ParamId::accentDecay, "ACC DECAY" },
-    };
-    static constexpr hdui::Field sequencer[] = {
-        { ParamId::mode, "MODE" }, { ParamId::seedMode, "SEED MODE" }, { ParamId::seed, "SEED" }, { ParamId::regen, "REGEN" },
-        { ParamId::seedBack, "SEED BACK" }, { ParamId::mutate, "MUTATE" }, { ParamId::density, "DENSITY" },
-        { ParamId::scale, "SCALE" }, { ParamId::root, "ROOT" }, { ParamId::octave, "OCTAVE" }, { ParamId::steps, "STEPS" },
-        { ParamId::gate, "GATE" }, { ParamId::transpose, "TRANSPOSE" },
-    };
-    static constexpr hdui::Field clock[] = {
-        { ParamId::clockDiv, "CLOCK DIV" }, { ParamId::swing, "SWING" }, { ParamId::reset, "RESET" },
-    };
-    static constexpr hdui::Group groups[] = {
-        { "PATTERN", nullptr, 0 }, { "VOICE", voice, 8 }, { "TONE", tone, 6 }, { "TB-3PO", sequencer, 13 }, { "CLOCK", clock, 3 },
-    };
 };
 } // namespace tbmpc
