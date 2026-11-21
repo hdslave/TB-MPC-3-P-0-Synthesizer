@@ -292,7 +292,7 @@ private:
         tuneMoved = true;
     }
 
-    float sample()
+    [[gnu::always_inline]] float sample()
     {
         // Pitch: the slide, then the oscillator's increment (worked out only when the pitch or the tuning moves).
         slide();

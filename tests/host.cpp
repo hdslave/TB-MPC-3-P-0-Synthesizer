@@ -575,8 +575,8 @@ void testStopRestartJump()
     // A jump into the middle of a step waits for the next clock.
     Instance b;
     b.setup ({ { "Seed Mode", 1.0 }, { "Seed", 0x303 }, { "Density", -7 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 } });
-    const uint64_t jump = 128 * 100;
-    b.render (48000 * 2, 128, l, r, [jump] (uint64_t at) {
+    constexpr uint64_t jump = 128 * 100;
+    b.render (48000 * 2, 128, l, r, [] (uint64_t at) {
         if (at < jump) return playingFrom (0.0, 120.0, rate48, at);
         return playingFrom (3.3, 120.0, rate48, at - jump); // the next clock is at beat 3.5: 0.2 beat on
     });

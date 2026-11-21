@@ -136,7 +136,7 @@ public:
         if (EndOfADCLag() && ! Gate (1))
         {
             int step_pv = step;
-            step = get_next_step (step);
+            step = (uint8_t) get_next_step (step);
             if (step_is_slid (step_pv))
             {
                 slide_start_cv = get_pitch_for_step (step_pv);

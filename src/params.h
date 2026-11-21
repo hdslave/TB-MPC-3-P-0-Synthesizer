@@ -12,7 +12,7 @@
 #include <strings.h>
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.1.0"
+#define TBMPC_VERSION "0.1.1"
 #endif
 
 namespace tbmpc
@@ -86,7 +86,7 @@ using P = Param;
 // In the order a host lists them, three to a page as Melodee's Edit page shows them: the 303's panel (Tuning,
 // Cutoff, Resonance; Env Mod, Decay, Accent; Waveform, Volume and the slide), then TB-3PO's settings (the seed;
 // density, scale, root; octave, length, transpose) and the clock.
-inline const Param paramTable[] = {
+inline constexpr Param paramTable[] = {
     CONT (tuning, "Tuning", "Voice", -12.0f, 12.0f, 0.0f, semitones),
     CONT (cutoff, "Cutoff", "Voice", 0.0f, 1.0f, 0.35f, cutoffHz),
     CONT (resonance, "Resonance", "Voice", 0.0f, 1.0f, 0.6f, percent),

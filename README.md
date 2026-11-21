@@ -117,15 +117,15 @@ Instructions a 128-frame block (48 kHz), counted by callgrind (`tools/bench.sh`)
 
 | Case | Instructions | Share of a block on one A55 core |
 |---|---|---|
-| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 31,695 | 0.66 % |
-| Typical: the default patch | 20,279 | 0.42 % |
-| Stopped | 677 | 0.01 % |
+| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 26,296 | 0.55 % |
+| Typical: the default patch | 16,716 | 0.35 % |
+| Stopped | 748 | 0.02 % |
 
 The voice runs at the host's rate. A sounding sample costs one exp2 for the cutoff and one division: the diode
 ladder's zero-delay solve has five denominators that are polynomials in the cutoff, so their reciprocals come from
 one division of their product (about 107 cycles a sample on llvm-mca's Cortex-A55 model, against 140 with a
 division each). The pitch's exp2 runs only while the pitch slides or Tuning moves; with the VCA shut only the
-envelopes run, then nothing.
+envelopes run, then nothing. The voice's sample is compiled into the run's loop rather than called.
 
 ## Install
 
@@ -145,7 +145,7 @@ statically and needs only the MPC's libc and libm.
 
 ## Tests
 
-`make test` runs both:
+`make test` runs all three:
 
 - `tests/reference.cpp` holds the port against the applet: `tests/applet.h` is the applet's `Controller()` and the
   code it calls, copied from the module's source with only the hardware replaced, ticked 16,667 times a second with
@@ -158,6 +158,11 @@ statically and needs only the MPC's libc and libm.
   where the pattern puts it at several tempos and rates, gates half a step long, stop, restart and jumps, the same
   output for any block size, Random and Locked seeds and Regen, transposing by MIDI note and by knob, the accent,
   Cutoff, both slides, bounded output at random settings, and the demo renders of the presets.
+- `tests/fingerprint.cpp` renders 38 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
+  MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset), every seed locked,
+  and hashes every output sample's bits against `tests/fingerprint.txt`: work meant to keep the sound, such as a
+  speed-up, must leave every hash as it is. A change meant to change the sound updates them with
+  `make fingerprint-update` (inside the build image). The hashes hold for Melodee's build image and these flags.
 
 ## Credits
 

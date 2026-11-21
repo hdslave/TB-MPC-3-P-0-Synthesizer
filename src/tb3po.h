@@ -245,24 +245,10 @@ public:
     int32_t gateCv = 0;                     // 0, gateNormal or gateAccent
     bool opened = false;                    // this step set the gate (its half-step timer starts)
 
-    // The applet's slide, one tick of the module's 16.67 kHz update: meant as an exponential glide, its integer
-    // arithmetic moves down by 3/128 semitone a tick and never up (an upward slide holds the step before's pitch).
-    static int32_t slideTick (int32_t current, int32_t start, int32_t end)
-    {
-        if (current == end)
-            return current;
-        int32_t x = end;
-        x -= current;
-        x >>= 18;
-        x *= 3;
-        current += x;
-        if (start < end)
-            current = current < start ? start : (current > end ? end : current);
-        else
-            current = current < end ? end : (current > start ? start : current);
-        return current;
-    }
-    // The same after `ticks` ticks (counting the step's own tick as 1), without running them.
+    // The applet's slide after `ticks` ticks of the module's 16.67 kHz update (the step's own tick is the first). It
+    // was meant as an exponential glide; its integer arithmetic (the difference >> 18, times 3, each tick) moves down
+    // by 3/128 semitone a tick and never up: an upward slide holds the step before's pitch. tests/reference.cpp holds
+    // this against the applet's own code tick by tick.
     static int32_t slideAfter (int32_t start, int32_t end, int64_t ticks)
     {
         if (end >= start)
@@ -271,9 +257,8 @@ public:
         return at < end ? end : (int32_t) at;
     }
 
-    // --- What the pattern is (for tests and the README) ---
+    // --- What the pattern is (for the tests) ---
     int currentStep() const { return step; }
-    int steps() const { return numSteps; }
     uint16_t currentSeed() const { return seed; }
     bool gated (int s) const { return (gates >> s) & 1u; }
     bool slid (int s) const { return (slides >> s) & 1u; }
@@ -281,7 +266,6 @@ public:
     bool octaveUp (int s) const { return (octUps >> s) & 1u; }
     bool octaveDown (int s) const { return (octDowns >> s) & 1u; }
     int note (int s) const { return notes[s]; }
-    int32_t pitchOf (int s) const { return pitchFor (s); }
     int effectiveRoot() const
     {
         const int maxRoot = scaleSize > 12 ? 12 : scaleSize;

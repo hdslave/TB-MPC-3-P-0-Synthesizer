@@ -1,7 +1,8 @@
 # TB-MPC-3-P-0: a CLAP bass synthesizer with the TB-3PO sequencer for the Akai MPC Sample (64-bit ARM Linux, Cortex-A55).
 # Build inside a Linux arm64 image with ./build.sh, which runs `make all test`.
 #   make            build/TB-MPC-3-P-0.clap
-#   make test       the tests against the built plug-in (tests/host.cpp) and the port against the applet (tests/reference.cpp)
+#   make test       the tests against the built plug-in (tests/host.cpp), the port against the applet (tests/reference.cpp)
+#                   and the sound's fingerprint (tests/fingerprint.cpp: the output to the bit, against tests/fingerprint.txt)
 #   make bench      build/bench: renders a busy pattern; tools/bench.sh counts its instructions
 CXX ?= g++
 OUT := build
@@ -10,13 +11,14 @@ WARN := -Wall -Wextra -Werror
 # traps or exceptions.
 OPT := -O3 -mcpu=cortex-a55 -ffp-contract=fast -fno-math-errno -fno-trapping-math
 CXXFLAGS := -std=c++17 $(OPT) $(WARN) -fno-exceptions -fno-rtti -fvisibility=hidden -fPIC -Ithird_party/clap/include -Isrc
-# Only clap_entry is exported; libstdc++ and libgcc are linked in so the MPC needs nothing beyond libc and libm.
-LDFLAGS := -shared -static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-z,now -Wl,-O1 -Wl,--version-script=src/exports.map
+# Only clap_entry is exported; libstdc++ and libgcc are linked in so the MPC needs nothing beyond libc and libm. -s
+# leaves out the symbol table (the code is the same; the exported clap_entry stays).
+LDFLAGS := -shared -s -static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-z,now -Wl,-O1 -Wl,--version-script=src/exports.map
 
 SOURCES := src/tbmpc.cpp
 HEADERS := $(wildcard src/*.h)
 
-.PHONY: all test bench clean scales
+.PHONY: all test bench clean scales fingerprint-update
 all: $(OUT)/TB-MPC-3-P-0.clap
 
 $(OUT)/TB-MPC-3-P-0.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
@@ -31,9 +33,18 @@ $(OUT)/reference: tests/reference.cpp tests/applet.h $(HEADERS) Makefile
 	@mkdir -p $(OUT)
 	$(CXX) -std=c++17 -O2 $(WARN) -Isrc tests/reference.cpp -o $@
 
-test: $(OUT)/TB-MPC-3-P-0.clap $(OUT)/host $(OUT)/reference
+$(OUT)/fingerprint: tests/fingerprint.cpp tests/fingerprint_scenarios.h Makefile
+	@mkdir -p $(OUT)
+	$(CXX) -std=c++17 -O2 $(WARN) -Ithird_party/clap/include tests/fingerprint.cpp -ldl -o $@
+
+test: $(OUT)/TB-MPC-3-P-0.clap $(OUT)/host $(OUT)/reference $(OUT)/fingerprint
 	$(OUT)/reference
 	$(OUT)/host $(OUT)/TB-MPC-3-P-0.clap $(OUT)
+	$(OUT)/fingerprint $(OUT)/TB-MPC-3-P-0.clap tests/fingerprint.txt > /dev/null
+
+# The sound's hashes after a change meant to change the sound (see tests/fingerprint.cpp).
+fingerprint-update: $(OUT)/TB-MPC-3-P-0.clap $(OUT)/fingerprint
+	$(OUT)/fingerprint $(OUT)/TB-MPC-3-P-0.clap > tests/fingerprint.txt
 
 $(OUT)/bench: tests/bench.cpp $(SOURCES) $(HEADERS) Makefile
 	@mkdir -p $(OUT)

@@ -28,6 +28,11 @@
 
 namespace tbmpc
 {
+// A clock less than this many frames away is due now. CLAP gives the song's place in steps of 2^-31 beats, which
+// at 48 kHz is about 1e-5 frames: a clock that falls on a block's first frame could otherwise come a frame late, by
+// how the host's rounding fell for that block, so the sound would depend on the block size.
+constexpr double clockSlack = 1.0e-3;
+
 class Engine
 {
 public:
@@ -151,13 +156,13 @@ public:
                     regrid();
                 const double next = (double) (lastClock + 1) * stepBeats();
                 const double ahead = (next - position) / perFrame;
-                if (ahead <= 1.0e-6)
+                if (ahead <= clockSlack)
                 {
                     ++lastClock;
                     clock (lastClock);
                     continue;
                 }
-                const double untilClock = std::ceil (ahead - 1.0e-6);
+                const double untilClock = std::ceil (ahead - clockSlack);
                 if (untilClock < (double) run)
                     run = (uint32_t) untilClock;
             }
@@ -185,8 +190,6 @@ public:
             frames -= run;
         }
     }
-
-    const Tb3po& sequencer() const { return seq; }
 
 private:
     double stepBeats() const { return clockDivBeats[(int) knob[ParamId::clockDiv]]; }
