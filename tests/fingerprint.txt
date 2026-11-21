@@ -70,3 +70,5 @@ random04-4 77bcbb4cf3a19539
 random04-5 db71c1e1939d53d5
 random04-6 749b69ce8f054385
 random04-7 a69d0b334222c135
+loop-wrap-128 636dc68c3dfa81a9
+loop-wrap-32 636dc68c3dfa81a9

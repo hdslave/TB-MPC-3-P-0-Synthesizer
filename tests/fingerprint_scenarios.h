@@ -2,6 +2,8 @@
 // picks a new seed from the clock, so the sound would differ from run to run.
 #pragma once
 
+#include <cmath>
+
 namespace
 {
 // The parameters of TB-MPC-3-P-0 0.1, in its table's order: the random scenarios draw for these.
@@ -249,6 +251,22 @@ std::vector<Scenario> scenarios()
         s.values.push_back ({ "Seed Mode", 1.0 });
         s.seconds = 3.0, s.bpm = 132.0;
         s.events = { { 41000, Event::param, "Filter", (double) (r % 3) }, { 77000, Event::param, "Drive", 0.1 * r } };
+        list.push_back (s);
+    }
+    // A 4-beat loop at 110 BPM wrapping inside a block, told at the next block as Melodee does, in whole blocks and in
+    // parts of 32 frames (the place told only at each 128), the pattern resetting every bar.
+    for (uint32_t part : { 128u, 32u })
+    {
+        Scenario s;
+        s.name = "loop-wrap-" + std::to_string (part);
+        s.preset = "acid-line";
+        s.values = { { "Seed Mode", 1.0 }, { "Steps", 13 }, { "Reset", 1 } };
+        s.bpm = 110.0, s.seconds = 10.0, s.block = part;
+        s.transport = [] (uint64_t at, double bpm, double rate) -> std::pair<bool, double> {
+            const uint64_t block = at / 128 * 128;
+            const double perFrame = bpm / 60.0 / rate;
+            return { true, std::fmod ((double) block * perFrame, 4.0) + (double) (at - block) * perFrame };
+        };
         list.push_back (s);
     }
     return list;

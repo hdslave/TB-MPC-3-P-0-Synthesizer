@@ -96,11 +96,13 @@ struct Events
 struct OutEvents
 {
     std::vector<std::pair<clap_id, double>> values;
+    std::vector<uint32_t> times; // each value's frame in its block
     clap_output_events out { this, [] (const clap_output_events* o, const clap_event_header* h) {
         if (h->space_id == CLAP_CORE_EVENT_SPACE_ID && h->type == CLAP_EVENT_PARAM_VALUE)
         {
             const auto* v = reinterpret_cast<const clap_event_param_value*> (h);
             static_cast<OutEvents*> (o->ctx)->values.push_back ({ v->param_id, v->value });
+            static_cast<OutEvents*> (o->ctx)->times.push_back (h->time);
         }
         return true;
     } };
@@ -604,6 +606,137 @@ void testStopRestartJump()
     hits = onsets (l, 1e-3f, 1e-4f, 96);
     const long expected = (long) jump + 4800;
     CHECK (std::find_if (hits.begin(), hits.end(), [&] (long h) { return h > (long) jump + 3000 && h < expected - 10; }) == hits.end());
+}
+
+// Where the notes of a locked pattern start (frames) when clock k comes at frame frameOf (k): as expectedNotes, for a
+// clock that changes pace (a tempo or a Clock Div change) or runs on through a loop.
+std::vector<long> expectedNotesAt (uint16_t seed, int density, int scale, int steps, int clocks, const std::function<double (int)>& frameOf)
+{
+    tbmpc::Tb3po t;
+    t.start (1);
+    t.setScale (scale);
+    t.setDensity (density + 7);
+    t.setSteps (steps);
+    t.setSeed (seed);
+    t.setLocked (true);
+    t.reset (0);
+    std::vector<long> out;
+    int32_t gate = 0;
+    for (int k = 0; k < clocks; ++k)
+    {
+        t.clock();
+        if (t.gateCv > 0 && gate == 0)
+            out.push_back (std::lround (frameOf (k)));
+        if (t.opened)
+            t.halfStepPassed();
+        gate = t.gateCv;
+    }
+    return out;
+}
+
+// Each note found where expected: its onset within a millisecond after.
+bool notesAt (const std::vector<long>& found, const std::vector<long>& expect, double rate)
+{
+    if (std::getenv ("TBMPC_DEBUG"))
+    {
+        std::printf ("debug notes: expected %zu, found %zu:", expect.size(), found.size());
+        for (size_t i = 0; i < found.size() || i < expect.size(); ++i)
+            std::printf (" %ld/%ld", i < found.size() ? found[i] : -1, i < expect.size() ? expect[i] : -1);
+        std::printf ("\n");
+    }
+    if (found.size() != expect.size() || expect.size() < 6)
+        return false;
+    for (size_t i = 0; i < found.size(); ++i)
+        if (found[i] < expect[i] || found[i] >= expect[i] + (long) (rate / 1000))
+            return false;
+    return true;
+}
+
+void testLoopsAndClockChanges()
+{
+    std::vector<float> l, r, lb, rb;
+    // A 4-beat loop at 110 BPM whose end falls inside a block (frame 104,727.3), the host telling of the wrap only at
+    // the next block as Melodee does (in its own blocks of 128, also when it plays the plug-in in parts of 32): the
+    // clocks run on to the loop's end, which is its start. With Reset at Play the pattern runs on through the loop
+    // (13 steps over 16 clocks), so every note lands where a song with no loop puts it: the clock at the loop's end is
+    // not played twice (the pattern would step twice). And the sound is the very sound of a host that tells the wrap on
+    // its frame (blocks of one frame), with Reset at Play and every bar.
+    constexpr double perFrame = 110.0 / 60.0 / rate48, loopEnd = 4.0 / perFrame, step = 0.25 / perFrame;
+    auto told = [] (uint64_t at) {
+        const uint64_t block = at / 128 * 128; // Melodee's block: the place at its start, counted on through it
+        return Transport { true, 110.0, std::fmod ((double) block * perFrame, 4.0) + (double) (at - block) * perFrame };
+    };
+    auto exact = [] (uint64_t at) { return Transport { true, 110.0, std::fmod ((double) at * perFrame, 4.0) }; };
+    const uint32_t frames = (uint32_t) (loopEnd + 2.0 * rate48);
+    for (const char* reset : { "Play", "1 Bar" })
+    {
+        auto patch = [&] (Instance& a) {
+            auto p = timingPatch (0x5a17);
+            p.push_back ({ "Density", 5 });
+            p.push_back ({ "Steps", 13 });
+            p.push_back ({ "Reset", a.valueOf ("Reset", reset) });
+            return p;
+        };
+        Instance b;
+        b.setup (patch (b));
+        b.render (frames, 1, lb, rb, exact);
+        for (uint32_t part : { 128u, 32u })
+        {
+            Instance a;
+            a.setup (patch (a));
+            a.render (frames, part, l, r, told);
+            CHECK (l == lb);
+            if (std::string (reset) == "Play")
+                CHECK (notesAt (onsets (l, 1e-3f, 1e-4f, 96), expectedNotesAt (0x5a17, 5, tbmpc::appletDefaultScale, 13, (int) std::ceil (frames / step - 1e-9),
+                                                                            [=] (int k) { return k * step; }), rate48));
+        }
+    }
+    // Drift: a tempo change inside a block (120 to 125 BPM at frame 24,000, 64 frames before the next block) moves the
+    // host's place a few frames from where the clocks counted: the clock played 64 frames ago is not played again, and
+    // the notes go on at the new tempo, the pattern in step.
+    {
+        Instance a;
+        auto p = timingPatch (0x5a17);
+        p.push_back ({ "Density", 5 });
+        a.setup (p);
+        a.render (96000, 128, l, r, [] (uint64_t at) {
+            if (at < 24064) return playingFrom (0.0, 120.0, rate48, at);
+            return Transport { true, 125.0, 1.0 + (double) (at - 24000) * 125.0 / 60.0 / rate48 };
+        });
+        CHECK (notesAt (onsets (l, 1e-3f, 1e-4f, 96), expectedNotesAt (0x5a17, 5, tbmpc::appletDefaultScale, 16, 4 + (int) ((96000 - 24000) / 5760.0 + 1),
+                                                                    [] (int k) { return k <= 4 ? k * 6000.0 : 24000.0 + (k - 4) * 5760.0; }), rate48));
+    }
+    // Clock Div changed on a downbeat while playing (1/16 to 1/8 at beat 2): that downbeat's clock still comes.
+    {
+        Instance a;
+        auto p = timingPatch (0x5a17);
+        p.push_back ({ "Density", 5 });
+        a.setup (p);
+        a.render (96000, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); }, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 48000) a.set (e, "Clock Div", a.valueOf ("Clock Div", "1/8"));
+        });
+        CHECK (notesAt (onsets (l, 1e-3f, 1e-4f, 96), expectedNotesAt (0x5a17, 5, tbmpc::appletDefaultScale, 16, 12,
+                                                                    [] (int k) { return k < 8 ? k * 6000.0 : 48000.0 + (k - 8) * 12000.0; }), rate48));
+    }
+    // A flush while active (the host's way between process calls) takes a button too: Regen acts and returns to 0. A
+    // press stamped past its block (a host's mistake) is answered inside the block.
+    {
+        Instance a;
+        a.setup (timingPatch (0x5a17));
+        Events e;
+        e.param (0, a.id ("Regen"), 1.0);
+        OutEvents out;
+        a.params->flush (a.plugin, &e.in, &out.out);
+        CHECK (std::find (out.values.begin(), out.values.end(), std::pair<clap_id, double> { a.id ("Regen"), 0.0 }) != out.values.end());
+        OutEvents late;
+        a.render (1280, 128, l, r, [] (uint64_t) { return Transport { false, 120.0, 0.0 }; }, [&] (uint64_t at, uint32_t, Events& ev) {
+            if (at == 128 * 5) ev.param (135, a.id ("Regen"), 1.0);
+        }, &late);
+        bool inside = ! late.times.empty();
+        for (uint32_t t : late.times)
+            inside &= t <= 127;
+        CHECK (inside);
+    }
 }
 
 void testBlockSizes()
@@ -1662,6 +1795,7 @@ int main (int argc, char** argv)
     testPresets();
     testTiming();
     testStopRestartJump();
+    testLoopsAndClockChanges();
     testBlockSizes();
     testSeed();
     testTranspose();

@@ -61,6 +61,8 @@ public:
         gateOffPending = false;
         regenPressed = false;
         frameCount = 0;
+        clockedAt = -(int64_t (1) << 40); // no clock played yet
+        clockedReset = false;
         held = 0;
     }
 
@@ -219,9 +221,12 @@ public:
             playing = false;
             return;
         }
-        // A Play, or a place other than where the last block ended (a jump, a loop going round): line up again.
+        // A Play, or a place other than where the last block ended by more than a block (a jump, a loop going
+        // round): line up again. Less than that is drift (a tempo change inside the last block), followed as it is:
+        // the clocks already played are not played again, one passed is played at once.
         const bool started = ! playing;
-        if (started || std::fabs (beats - position) > 0.5 * perFrame)
+        const double moved = std::fabs (beats - position);
+        if (started || (moved > 0.5 * perFrame && moved >= window * perFrame))
             relocate (beats, window, started);
         playing = true;
         position = beats;
@@ -322,12 +327,18 @@ private:
     void relocate (double beats, double window, bool started)
     {
         const int64_t b = clockAtOrBefore (beats);
-        // Just past a clock (less than a block: a loop's wrap inside the last block, a Play landing a hair late):
+        const double late = (beats - clockBeat (b)) / perFrame; // frames since the host's clock b
+        // A jump whose clock b came on the very frame a clock played here: a loop gone round inside a block (the host
+        // tells only at the next one, so the clocks ran on past the loop's end; its end is its start). That clock was
+        // b: it is not played again (the pattern would step twice); a bar reset that b would have made, it makes now.
+        // Otherwise, just past a clock (less than a block: a Play landing a hair late, a wrap seen early enough):
         // that clock comes at once; further in, the next is the first.
-        const double late = (beats - clockBeat (b)) / perFrame;
-        lastClock = b - (late < window ? 1 : 0);
+        const bool played = ! started && std::fabs ((double) ((int64_t) frameCount - clockedAt) - late) <= 2.0;
+        lastClock = played ? b : b - (late < window ? 1 : 0);
         position = beats;
         regridWanted = false;
+        if (played && resetClock (b) && ! clockedReset)
+            resetPulse();
         const int64_t first = lastClock + 1;
         if (resetEvery() > 0)
         {
@@ -345,10 +356,11 @@ private:
             resetPulse();
     }
 
-    // Clock Div changed: count clocks on the new grid from here, without a burst of them.
+    // Clock Div changed: count clocks on the new grid from here, without a burst of them. A clock of the new grid due
+    // on this frame (in the last frame's time) still comes.
     void regrid()
     {
-        lastClock = clockAtOrBefore (position);
+        lastClock = clockAtOrBefore (position - perFrame * (1.0 - clockSlack));
         regridWanted = false;
     }
 
@@ -362,7 +374,9 @@ private:
 
     void clock (int64_t k)
     {
-        if (resetClock (k))
+        clockedAt = (int64_t) frameCount;
+        clockedReset = resetClock (k);
+        if (clockedReset)
             resetPulse();
         seq.clock();
         remember();
@@ -462,5 +476,7 @@ private:
     int64_t lastClock = -1;
     uint32_t gateOffIn = 0, lastBlock = 0, draws = 0;
     uint64_t frameCount = 0; // frames rendered since prepare()
+    int64_t clockedAt = 0;   // the frame the last clock came on
+    bool clockedReset = false; // and whether it was a bar reset
 };
 } // namespace tbmpc

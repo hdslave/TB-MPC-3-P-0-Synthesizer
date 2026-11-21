@@ -100,9 +100,15 @@ the MPC's faders (Melodee's fader can send both to a plug-in track).
 
 | Control | Range | What it does |
 |---|---|---|
-| Clock Div | 1/2 – 1/64, with triplets | One clock a step, on every multiple of this from the song's top while the host plays. 1/16 by default. |
+| Clock Div | 1/2 – 1/64, with triplets | One clock a step, on every multiple of this from the song's top while the host plays. 1/16 by default. Changed while playing, the clocks count on the new grid from there; one due on that frame comes. |
 | Swing | 50 – 75 % | The second clock of each pair comes late, at that share of the pair, as an MPC's swing does (66 %: a triplet shuffle). A swung step's gate is half of its own length. Melodee's own swing moves only its notes, so set this to match. |
 | Reset | Play / 1, 2, 4, 8 Bars / Off | The applet's Regen input. **Play**: a reset when the host starts. **N Bars**: a reset on every N bars from the song's top; a Play or a jump between them places the pattern as if it had run from the last one. **Off**: only Regen resets. |
+
+A loop that wraps inside a block is told only at the next block (Melodee tells the song's place at its own blocks,
+even when it plays a plug-in in smaller parts), so the clocks run on to the loop's end, which is its start: the clock
+played there stands for the downbeat, and the pattern does not step twice (a bar reset the downbeat would have made
+comes when the host tells, at most a block late). A tempo change inside a block moves the host's place a few frames
+from where the clocks counted: followed as it is, no clock played twice.
 
 ## Mode: Notes
 
@@ -228,8 +234,11 @@ statically and needs only the MPC's libc and libm.
   pitches, slides and gate changes at the same frames, and the slide's pitch every tick. It also checks that a
   mismatch would be caught.
 - `tests/host.cpp` loads the plug-in as a host does: ports, parameters and their text, state, presets, every note
-  where the pattern puts it at several tempos and rates, gates half a step long, stop, restart and jumps, the same
-  output for any block size, Random and Locked seeds and Regen, Seed Back (locked and random, twice, with nothing to go
+  where the pattern puts it at several tempos and rates, gates half a step long, stop, restart and jumps, a loop
+  wrapping inside a block and told a block late (every note where a song with no loop puts it, and the very sound of a
+  host telling the wrap on its frame, in whole blocks and in Melodee's smaller parts, with Reset at Play and every
+  bar), a tempo change inside a block, Clock Div changed on a downbeat, a button pressed through a flush and one
+  stamped past its block, the same output for any block size, Random and Locked seeds and Regen, Seed Back (locked and random, twice, with nothing to go
   back to), Swing (notes and gate lengths), Mode: Notes (a note's pitch, a glide without a new note, back to a held
   note, the accent at velocity 100, TB-3PO silent, a switch back), Gate (20 and 90 %), Mutate (each step from the new
   seed's pattern or the old one's, as the new seed picks; 0 and 100 % whole; Locked unchanged), pitch bend and the mod
@@ -239,10 +248,11 @@ statically and needs only the MPC's libc and libm.
   their levels, Cutoff's text by Resonance and Filter and the host asked to read it again), the screen's page (it
   draws, its controls set the values the host then hears, its buttons press; pictures in `build/screen-*.png`), bounded
   output at random settings, and the demo renders of the presets.
-- `tests/fingerprint.cpp` renders 72 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
+- `tests/fingerprint.cpp` renders 74 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
   MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and
-  switches between them, Twin Peak's spread moving, 18 dB ringing, Slide Time, Accent Decay, random 0.4 patches), every
+  switches between them, Twin Peak's spread moving, 18 dB ringing, Slide Time, Accent Decay, random 0.4 patches, a
+  loop wrapping inside a block in whole blocks and in parts), every
   seed locked,
   and hashes every output sample's bits against `tests/fingerprint.txt`: work meant to keep the sound, such as a
   speed-up, must leave every hash as it is. A change meant to change the sound updates them with
