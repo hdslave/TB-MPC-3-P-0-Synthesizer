@@ -63,6 +63,7 @@ private:
 } // namespace tbmpc
 
 #include "ui/plots.h"
+#include "ui/pitch_roll.h"
 
 namespace tbmpc
 {
@@ -71,6 +72,14 @@ class Screen final
     using Raster = hdui::Raster;
     using Host = hdui::Host;
     using Ink = hdui::Ink;
+
+    enum class Theme { pressPlate, blacklight };
+    struct Changes
+    {
+        bool page, selection, score, publication, position, panel;
+        uint64_t parameters;
+    };
+    static uint64_t bit (uint32_t id) { return uint64_t (1) << id; }
 
 public:
     Screen (const std::atomic<float>* values, const PatternState& pattern) : values (values), pattern (pattern) {}
@@ -114,16 +123,21 @@ public:
             return true;
         }
         const auto id = fields().fields[row].id;
-        const Param& p = paramTable[paramIndex (id)];
+        if (key == Key::push && id == hdui::noParam)
+        {
+            theme = theme == Theme::pressPlate ? Theme::blacklight : Theme::pressPlate;
+            return true;
+        }
         if (key == Key::push)
         {
-            if (p.kind == Kind::button) out.press (id);
+            if (paramTable[paramIndex (id)].kind == Kind::button) out.press (id);
             else editing = !editing;
         }
         else if (!editing && key == Key::wheel)
             row = int (std::clamp<int64_t> (int64_t (row) + amount, 0, fields().count - 1));
         else if (editing && (key == Key::wheel || key == Key::nudge))
         {
+            const auto& p = paramTable[paramIndex (id)];
             const float delta = p.kind == Kind::continuous
                 ? (p.max - p.min) / (key == Key::nudge ? 16 : (shift ? 1024 : 128)) : 1.f;
             const float before = liveValue (id);
@@ -136,14 +150,14 @@ public:
 
     bool paint (const Host& h, uint32_t* pixels, int stride, bool whole)
     {
-        whole |= lastGroup < 0;
+        whole |= lastGroup < 0 || theme != paintedTheme;
+        picture.background = theme == Theme::blacklight ? hdui::ticketInk.bg : hdui::pressInk.bg;
         const bool page = whole || group != lastGroup;
         const bool selection = page || row != lastRow || editing != lastEditing;
         const bool patternChanged = !(lastView == view);
         const bool transport = lastHost.playing != h.playing;
         uint64_t parameters = 0;
         static_assert (ParamId::count <= 64);
-        auto bit = [](uint32_t id) { return uint64_t (1) << id; };
         bool pots = false;
         for (unsigned i = 0; i < paramCount; ++i)
         {
@@ -160,46 +174,20 @@ public:
         const bool position = page || transport || publication || lastView.current != view.current
                               || lastView.running != view.running;
         const int slip = dripOffset (h);
-        bool drew = false;
-        if (page || (parameters & bit (ParamId::mode)))
-            drew |= picture.region<320,18> (pixels, stride, whole, 0, 0, [&](Raster& r) { title (r); });
-        if (group == 0)
-        {
-            if (position || slip != lastSlip || (parameters & (bit (ParamId::seed) | bit (ParamId::seedMode) | bit (ParamId::steps))))
-                drew |= picture.region<320,64> (pixels, stride, whole, 0, 18, [&](Raster& r) { patternPlate (r, h, slip); });
-            if (page || (parameters & (bit (ParamId::root) | bit (ParamId::scale) | bit (ParamId::clockDiv)
-                                    | bit (ParamId::octave) | bit (ParamId::density))))
-                drew |= picture.region<320,16> (pixels, stride, whole, 0, 82, [&](Raster& r) { metadata (r); });
-            if (page || transport || patternChanged)
-                drew |= picture.region<320,87> (pixels, stride, whole, 0, 98, [&](Raster& r) {
-                    plots::matrix (r, view, h.playing);
-                });
-        }
-        else
-        {
-            if (selection || slip != lastSlip || (parameters & bit (fields().fields[row].id)))
-                drew |= picture.region<320,42> (pixels, stride, whole, 0, 18, [&](Raster& r) { editorPlate (r, slip); });
-            if (selection || parameters)
-                drew |= picture.region<160,125> (pixels, stride, whole, 0, 60, [&](Raster& r) { list (r); });
-            const bool panelChanged = group < 3 ? (parameters & bit (ParamId::cutoff)) != 0
-                                                : (parameters || patternChanged || transport);
-            if (page || panelChanged)
-                drew |= picture.region<160,125> (pixels, stride, whole, 160, 60, [&](Raster& r) {
-                    if (group < 3)
-                    {
-                        char s[32];
-                        formatted (ParamId::cutoff, s);
-                        plots::response (r, context(), val (ParamId::cutoff), s);
-                    }
-                    else mini (r, h);
-                });
-        }
+        const bool panel = group < 3 ? (parameters & bit (ParamId::cutoff)) != 0
+                                     : (parameters || patternChanged || transport);
+        const Changes changed { page, selection, page || transport || patternChanged, publication, position, panel, parameters };
+        bool drew = theme == Theme::blacklight ? paintBlacklight (pixels, stride, whole, h, slip, changed)
+                                               : paintPressPlate (pixels, stride, whole, h, slip, changed);
         if (selection || parameters || pots || h.shift != lastHost.shift || h.accent != lastHost.accent)
             drew |= picture.region<320,33> (pixels, stride, whole, 0, 185, [&](Raster& r) {
                 if (h.shift) legend (r);
+                else if (themeRow()) themeHint (r);
+                else if (theme == Theme::blacklight) ticketCards (r, h);
                 else cards (r, h);
             });
         lastSlip = slip;
+        paintedTheme = theme;
         lastGroup = group;
         lastRow = row;
         lastEditing = editing;
@@ -215,6 +203,7 @@ private:
     float sampled[paramCount] {};
     PatternView view {}, lastView {};
     Host lastHost {};
+    Theme theme = Theme::pressPlate, paintedTheme = Theme::pressPlate;
     int group = 0, row = 0, lastGroup = -1, lastRow = 0;
     bool editing = false, lastEditing = false;
     bool pulse = false;
@@ -228,7 +217,33 @@ private:
 
     template<size_t N> void formatted (uint32_t id, char (&text)[N]) const
     {
-        formatParam (paramTable[paramIndex (id)], val (id), text, N, context());
+        if (id == hdui::noParam)
+            std::snprintf (text, N, "%s", theme == Theme::pressPlate ? "Press Plate" : "Blacklight Transfer");
+        else formatParam (paramTable[paramIndex (id)], val (id), text, N, context());
+    }
+
+    bool pendingSeed() const
+    {
+        return plots::stepCount (view) && unsigned (val (ParamId::seed)) != unsigned (view.seed);
+    }
+
+    bool themeRow() const { return group != 0 && fields().fields[row].id == hdui::noParam; }
+
+    void themeHint (const Raster& r) const
+    {
+        using namespace hdui;
+        if (theme == Theme::pressPlate)
+        {
+            r.box (0, 2, 320, 31, ink::metal);
+            r.text (8, 12, "PUSH TO SWITCH", ink::bg);
+            r.right (312, 12, "Blacklight Transfer", ink::bg);
+        }
+        else
+        {
+            r.box (4, 0, 312, 1, ticketInk.violet);
+            r.text (8, 11, "PUSH TO SWITCH", ticketInk.muted);
+            r.right (312, 11, "Press Plate", ticketInk.paper);
+        }
     }
 
     uint32_t cardField (int k) const
@@ -263,6 +278,43 @@ private:
         return 0;
     }
 
+    bool paintPressPlate (uint32_t* pixels, int stride, bool whole, const Host& h, int slip, const Changes& d)
+    {
+        bool drew = false;
+        if (d.page || (d.parameters & bit (ParamId::mode)))
+            drew |= picture.region<320,18> (pixels, stride, whole, 0, 0, [&](Raster& r) { title (r); });
+        if (group == 0)
+        {
+            if (d.position || slip != lastSlip || (d.parameters & (bit (ParamId::seed) | bit (ParamId::seedMode) | bit (ParamId::steps))))
+                drew |= picture.region<320,64> (pixels, stride, whole, 0, 18, [&](Raster& r) { patternPlate (r, h, slip); });
+            if (d.page || (d.parameters & (bit (ParamId::root) | bit (ParamId::scale) | bit (ParamId::clockDiv)
+                                    | bit (ParamId::octave) | bit (ParamId::density))))
+                drew |= picture.region<320,16> (pixels, stride, whole, 0, 82, [&](Raster& r) { metadata (r); });
+            if (d.score)
+                drew |= picture.region<320,87> (pixels, stride, whole, 0, 98, [&](Raster& r) {
+                    plots::matrix (r, view, h.playing);
+                });
+        }
+        else
+        {
+            if (d.selection || slip != lastSlip || (!themeRow() && (d.parameters & bit (fields().fields[row].id))))
+                drew |= picture.region<320,42> (pixels, stride, whole, 0, 18, [&](Raster& r) { editorPlate (r, slip); });
+            if (d.selection || d.parameters)
+                drew |= picture.region<160,125> (pixels, stride, whole, 0, 60, [&](Raster& r) { list (r); });
+            if (d.page || d.panel)
+                drew |= picture.region<160,125> (pixels, stride, whole, 160, 60, [&](Raster& r) {
+                    if (group < 3)
+                    {
+                        char s[32];
+                        formatted (ParamId::cutoff, s);
+                        plots::response (r, context(), val (ParamId::cutoff), s);
+                    }
+                    else mini (r, h);
+                });
+        }
+        return drew;
+    }
+
     void title (const Raster& r) const
     {
         using namespace hdui;
@@ -282,7 +334,7 @@ private:
     void patternPlate (const Raster& r, const Host& h, int slip) const
     {
         using namespace hdui;
-        r.plate (art::hero);
+        r.stamp (0, 0, art::hero, art::palette);
         if (slip)
         {
             r.slip (254, 47, 41, 3, slip);
@@ -290,8 +342,8 @@ private:
         }
         const int n = plots::stepCount (view);
         const unsigned seed = unsigned (val (ParamId::seed));
-        const bool pending = n && seed != unsigned (view.seed);
-        r.hex (22, 18, seed, ink::paper);
+        const bool pending = pendingSeed();
+        r.hex (22, 18, seed, ink::paper, art::digits, 20);
         r.text (108, pending ? 16 : 18, pending ? "PENDING" : "SEED", pending ? ink::violet : ink::steel);
         r.text (108, pending ? 26 : 32, val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM", ink::live);
         const int transportX = pending ? 182 : 169;
@@ -331,7 +383,7 @@ private:
     void editorPlate (const Raster& r, int slip) const
     {
         using namespace hdui;
-        r.plate (art::editor);
+        r.stamp (0, 0, art::editor, art::palette);
         if (slip)
         {
             r.slip (276, 31, 27, 2, slip);
@@ -384,7 +436,7 @@ private:
             std::snprintf (s, sizeof (s), "%04X", unsigned (view.seed) & 65535);
         else std::snprintf (s, sizeof (s), "----");
         r.right (153, 5, s, ink::paper);
-        plots::sequence (r, view, 6, 24, 147, 52, h.playing);
+        plots::sequence (r, view, 6, 24, 147, 52, h.playing, pressInk);
         if (group == 4)
         {
             r.text (8, 85, "SWING", ink::muted);
@@ -408,15 +460,17 @@ private:
         }
     }
 
-    static void legend (const Raster& r, const char* const top[3], const char* const bottom[3])
+    void legend (const Raster& r, const char* const top[3], const char* const bottom[3]) const
     {
         using namespace hdui;
         for (int k = 0; k < 3; ++k)
         {
             const int x = 320*k/3, w = 320*(k+1)/3-x;
-            r.box (x+1, 2, w-1, 31, ink::metal);
-            r.text (x + 5, 5, top[k], ink::bg);
-            r.reading (x + 4, 14, x+w-2, bottom[k], ink::bg);
+            const bool ticket = theme == Theme::blacklight;
+            if (ticket) r.box (x+2, 0, w-4, 1, ticketInk.violet);
+            else r.box (x+1, 2, w-1, 31, ink::metal);
+            r.text (x+5, 5, top[k], ticket ? ticketInk.muted : ink::bg);
+            r.reading (x+4, 14, x+w-2, bottom[k], ticket ? ticketInk.paper : ink::bg);
         }
     }
 
@@ -428,7 +482,7 @@ private:
         {
             top[1] = "PUSH";
             bottom[0] = editing ? "Fine value" : "Move cursor";
-            bottom[1] = editing ? "Finish edit" : "Edit / press";
+            bottom[1] = themeRow() ? "Switch theme" : editing ? "Finish edit" : "Edit / press";
             bottom[2] = editing ? "Coarse value" : "Group";
         }
         legend (r, top, bottom);
@@ -487,5 +541,16 @@ private:
             }
         }
     }
+
+    bool paintBlacklight (uint32_t* pixels, int stride, bool whole, const Host& h, int slip, const Changes& d);
+    void ticketTitle (const Raster& r) const;
+    static void passArt (const Raster& r, int slip);
+    void passData (const Raster& r) const;
+    void transportRow (const Raster& r, const Host& h) const;
+    void ticketList (const Raster& r) const;
+    void ticketMini (const Raster& r, const Host& h) const;
+    void ticketCards (const Raster& r, const Host& h) const;
 };
 } // namespace tbmpc
+
+#include "ui/blacklight.h"

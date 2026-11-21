@@ -3,6 +3,7 @@
 
 #include "font.h"
 #include "identity.h"
+#include "blacklight_art.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,6 +23,16 @@ constexpr Ink grid = 0xff373b3d, muted = 0xffa7ada9, paper = 0xfffcf2d8, live = 
 constexpr Ink metal = 0xffd2cfc1, alternate = 0xffbdbeb3, steel = 0xffacaea8, header = 0xff474c49;
 constexpr Ink cobalt = 0xff5255ed, violet = 0xffaaa4ff, pink = 0xffef52bd, cursor = 0xff35450f;
 }
+
+struct PlotPalette
+{
+    Ink bg, field, grid, rule, paper, muted, live, cursor, pink, violet;
+};
+
+inline constexpr PlotPalette pressInk { ink::bg, ink::field, ink::grid, ink::rule, ink::paper,
+                                        ink::muted, ink::live, ink::cursor, ink::pink, ink::violet };
+inline constexpr PlotPalette ticketInk { 0xff090a23, 0xff141060, 0xff312c55, 0xff544e7f, 0xfff1efff,
+                                         0xffcac0fa, 0xffc5ff06, 0xff2d2261, 0xffff4bc9, 0xffb2a9ff };
 
 struct Field { uint32_t id; const char* label; };
 struct Group { const char* name; const Field* fields; int count; };
@@ -83,12 +94,12 @@ struct Raster
     }
 
     template<size_t Rows, size_t W>
-    void plate (const uint8_t (&data)[Rows][W]) const
+    void stamp (int x, int y, const uint8_t (&data)[Rows][W], const Ink* palette) const
     {
-        if (w != int (W) || h != int (Rows)) return;
+        if (x < 0 || y < 0 || x + int (W) > w || y + int (Rows) > h) return;
         for (size_t j = 0; j < Rows; ++j)
             for (size_t i = 0; i < W; ++i)
-                px[j * W + i] = art::palette[data[j][i]];
+                px[(y + j) * w + x + i] = palette[data[j][i]];
     }
 
     // Move only a narrow printed strip across the hanging tips of the smiley.
@@ -157,10 +168,13 @@ struct Raster
                     if (bits & 1) dot (x + int (i) * 8 + k, y + j, color);
     }
 
-    void hex (int x, int y, unsigned seed, Ink color) const
+    template<size_t Rows, size_t Bytes>
+    void hex (int x, int y, unsigned seed, Ink color, const uint8_t (&digits)[Rows][Bytes], int advance) const
     {
-        for (int shift = 12; shift >= 0; shift -= 4, x += 20)
-            mask (x, y, art::digits + 27 * ((seed >> shift) & 15), 27, color);
+        static_assert (Rows % 16 == 0);
+        constexpr int h = int (Rows/16);
+        for (int shift = 12; shift >= 0; shift -= 4, x += advance)
+            mask (x, y, digits + h * ((seed >> shift) & 15), h, color);
     }
 };
 
@@ -169,12 +183,14 @@ struct Raster
 class Picture
 {
 public:
+    Ink background = ink::bg;
+
     template<int W, int H, typename Draw>
     bool region (Ink* dest, int stride, bool whole, int x, int y, Draw draw, int first = 0, int end = W)
     {
         static_assert (W * H <= capacity);
         Raster r { scratch, W, H };
-        std::fill_n (scratch, W * H, ink::bg);
+        std::fill_n (scratch, W * H, background);
         draw (r);
         bool touched = false;
         for (int j = 0; j < H; ++j)

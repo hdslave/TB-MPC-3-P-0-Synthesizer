@@ -102,16 +102,16 @@ inline void matrix (const Raster& r, const PatternView& v, bool playing)
         }
 }
 
-inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w, int h, bool playing)
+inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w, int h, bool playing, const hdui::PlotPalette& palette)
 {
     const int n = stepCount (v);
     if (!n)
     {
-        r.box (x, y, w, h, ink::field);
-        r.box (x + 4, y + h / 2 - 13, w - 8, 1, ink::grid);
-        r.box (x + 4, y + h / 2 + 13, w - 8, 1, ink::grid);
-        r.caution (x + 6, y + h / 2 - 4, 11, 8, ink::violet);
-        r.text (x + 21, y + h / 2 - 4, "Awaiting clock", ink::paper);
+        r.box (x, y, w, h, palette.field);
+        r.box (x + 4, y + h / 2 - 13, w - 8, 1, palette.grid);
+        r.box (x + 4, y + h / 2 + 13, w - 8, 1, palette.grid);
+        r.caution (x + 6, y + h / 2 - 4, 11, 8, palette.violet);
+        r.text (x + 21, y + h / 2 - 4, "Awaiting clock", palette.paper);
         return;
     }
     const auto limits = std::minmax_element (v.pitch, v.pitch + n);
@@ -122,15 +122,15 @@ inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w
     {
         const int a = x + i * w / columns, b = x + (i + 1) * w / columns;
         const bool current = playing && v.running && v.current == i;
-        const auto c = current ? ink::live : ink::paper;
-        if (current) r.box (a, y, b - a, h, ink::cursor);
-        if (i % 4 == 0) r.box (a, y, 1, h - 5, ink::grid);
+        const auto c = current ? palette.live : palette.paper;
+        if (current) r.box (a, y, b - a, h, palette.cursor);
+        if (i % 4 == 0) r.box (a, y, 1, h - 5, palette.grid);
         const int line = y + h - 8 - (v.pitch[i] - low) * (h - 11) / (high - low);
         if ((v.gates >> i) & 1) r.box (a + 1, line - 1, std::max (1,b - a - 2), 3, c);
         else r.dot ((a + b) / 2, line, c);
-        if ((v.accents >> i) & 1) r.dot ((a + b) / 2, y + h - 4, current ? c : ink::pink);
-        if ((v.slides >> i) & 1) r.box ((a + b) / 2, y + h - 2, std::max (1,(b - a) / 2), 1, current ? c : ink::violet);
-        if (current) r.box (a, y, b - a, 2, ink::live);
+        if ((v.accents >> i) & 1) r.dot ((a + b) / 2, y + h - 4, current ? c : palette.pink);
+        if ((v.slides >> i) & 1) r.box ((a + b) / 2, y + h - 2, std::max (1,(b - a) / 2), 1, current ? c : palette.violet);
+        if (current) r.box (a, y, b - a, 2, palette.live);
     }
 }
 
@@ -143,8 +143,11 @@ inline void scopePanel (const Raster& r, const char* name)
 
 inline void response (const Raster& r, const TextContext& ctx, float cutoff, const char* reading)
 {
+    const bool detailed = reading != nullptr;
+    const auto& palette = detailed ? hdui::pressInk : hdui::ticketInk;
     const int kind = int (ctx.filter);
-    const int left = 8, right = r.w - 8, top = 36, bottom = r.h - 24;
+    const int left = detailed ? 8 : 7, right = r.w - (detailed ? 8 : 6);
+    const int top = detailed ? 36 : 5, bottom = r.h - (detailed ? 24 : 16);
     const int width = right - left;
     const float k = feedbackOf (kind, ctx.resonance), nominal = nominalHz (kind, cutoff);
     const double ref = filterGain2 (kind, k, ctx.spread,
@@ -155,17 +158,21 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
     auto px = [&] (double hz) {
         return left + int (std::lround (std::clamp (std::log10 (hz / 20.0) / 3.0, 0.0, 1.0) * (width - 1)));
     };
-    scopePanel (r, "FILTER");
-    r.right (right, 5, filterChoices[kind], ink::paper);
-    r.right (right, 21, reading, ink::muted);
+    if (detailed)
+    {
+        scopePanel (r, "FILTER");
+        r.right (right, 5, filterChoices[kind], palette.paper);
+        r.right (right, 21, reading, palette.muted);
+    }
     for (double db : { 0.0, -24.0 })
-        r.box (left, py (db), width, 1, ink::grid);
+        r.box (left, py (db), width, 1, palette.grid);
     for (int hz : { 100, 1000, 10000 })
-        for (int j = top; j <= bottom; j += 4) r.dot (px (hz), j, ink::rule);
+        for (int j = top; j <= bottom; j += 4) r.dot (px (hz), j, palette.rule);
 
     const int edge = px (cutoffHz (cutoff, ctx));
-    for (int j = top; j <= bottom; j += 3) r.dot (edge, j, ink::violet);
-    r.box (edge - 2, bottom + 1, 5, 2, ink::violet);
+    const auto marker = detailed ? palette.violet : hdui::ticketInk.pink;
+    for (int j = top; j <= bottom; j += 3) r.dot (edge, j, marker);
+    r.box (edge - 2, bottom + 1, 5, 2, marker);
     // Two samples per pixel retain the narrow resonant peaks at high feedback.
     int previous = 0;
     for (int i = 0; i <= 2 * (width - 1); ++i)
@@ -175,10 +182,10 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
         const int y = py (10.0 * std::log10 (gain / ref + 1e-12));
         if (i == 0) previous = y;
         const int x = left + i / 2, lo = std::min (previous, y), hi = std::max (previous, y);
-        r.box (x, lo, 1, hi - lo + 1, ink::live);
+        r.box (x, lo, 1, hi - lo + 1, palette.live);
         previous = y;
     }
-    r.text (left, bottom + 8, "20 Hz", ink::muted);
-    r.right (right, bottom + 8, "20 kHz", ink::muted);
+    r.text (left, bottom + (detailed ? 8 : 5), "20 Hz", palette.muted);
+    r.right (right, bottom + (detailed ? 8 : 5), "20 kHz", palette.muted);
 }
 } // namespace tbmpc::plots

@@ -113,3 +113,21 @@ for name, size, width, height, baseline in [('reading',18,16,19,14), ('lead',23,
 angles = [radians(135 + 270*i/48) for i in range(49)]
 contents += table('dial', [(round(64*cos(a)),round(64*sin(a))) for a in angles], 'int8_t')
 put(UI/'identity.h', contents + ['}'])
+
+source = Image.open(EXPLORE/'blacklight/master.png').convert('RGB')
+sticker = source.resize((77,96), Image.Resampling.LANCZOS).quantize(colors=128,dither=Image.Dither.NONE)
+sticker.save(ART/'blacklight-pass.png', optimize=True)
+palette = bytes(sticker.getpalette())
+inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
+ticket = header + ['namespace hdui::blacklightArt {', 'inline constexpr uint32_t palette[] = {' + ','.join(inks) + '};']
+data = sticker.tobytes()
+ticket += table('sticker', [data[i:i+77] for i in range(0,len(data),77)])
+
+digits = []
+for ch in '0123456789ABCDEF':
+    canvas = Image.new('L',(18,23))
+    width = 13 if ch == '1' else 17
+    canvas.paste(outline(bold,ch,(width,23)),((18-width)//2,0))
+    digits.extend(bits(canvas))
+ticket += table('digits', digits)
+put(UI/'blacklight_art.h', ticket + ['}'])

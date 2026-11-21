@@ -2,6 +2,7 @@
 #pragma once
 #include "../params.h"
 #include "page.h"
+#include <iterator>
 
 namespace tbmpc::layout
 {
@@ -22,8 +23,9 @@ inline constexpr hdui::Field sequencer[] = {
 };
 inline constexpr hdui::Field clock[] = {
     { ParamId::clockDiv, "CLOCK DIV" }, { ParamId::swing, "SWING" }, { ParamId::reset, "RESET" },
+    { hdui::noParam, "THEME" },
 };
 inline constexpr hdui::Group groups[] = {
-    { "PATTERN", nullptr, 0 }, { "VOICE", voice, 8 }, { "TONE", tone, 6 }, { "TB-3PO", sequencer, 13 }, { "CLOCK", clock, 3 },
+    { "PATTERN", nullptr, 0 }, { "VOICE", voice, 8 }, { "TONE", tone, 6 }, { "TB-3PO", sequencer, 13 }, { "CLOCK", clock, int (std::size (clock)) },
 };
 } // namespace tbmpc::layout

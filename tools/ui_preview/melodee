@@ -10,9 +10,11 @@ docker --context colima-melodee run --rm --platform linux/arm64 \
     sh -c 'MELODEE_PLUGIN_STAGE=/tmp/stage /melodee/build/melodee --melodee-plugin-screen \
         /plug/build/TB-MPC-3-P-0.clap /plug/build/melodee-shots \
         png:1 wheel:2 png:2 plus png:3 wheel:1 push wheel:6 push png:4 shift png:5 shift stage png:6 \
-        edit plus push wheel:1 push png:7 push wheel:1 push png:8 plus png:9 plus png:10' \
+        edit plus push wheel:1 push png:7 push wheel:1 push png:8 plus png:9 plus png:10 \
+        wheel:3 png:11 push png:12 stage minus minus minus minus png:13 \
+        plus plus plus plus wheel:3 push minus minus minus minus edit png:14' \
     > build/melodee-shots/host.txt
-for n in 1 2 3 4 5 6 7 8 9 10; do
+for n in 1 2 3 4 5 6 7 8 9 10 11 12 13 14; do
     cp "build/melodee-shots/$n.png" "build/melodee-shots/$n@2x.png" "$dest/"
 done
 cp build/melodee-shots/host.txt "$dest/"

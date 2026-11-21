@@ -1,10 +1,12 @@
 """Publish RGB and RGB565 proofs from the native C++ renderer."""
+import sys
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 root = Path(__file__).resolve().parents[2]
-frames = root/'build/ui-preview/frames'
-out = root/'assets/previews'
+blacklight = '--blacklight' in sys.argv[1:]
+frames = root/'build/ui-preview'/('frames-blacklight' if blacklight else 'frames')
+out = root/'build/ui-preview/blacklight-gallery' if blacklight else root/'assets/previews'
 out.mkdir(exist_ok=True)
 chrome = Image.open(root/'tools/ui_preview/edit-keys.png').convert('RGB')
 labels = {

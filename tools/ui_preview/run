@@ -2,15 +2,22 @@
 set -eu
 cd "$(dirname "$0")/../.."
 out=build/ui-preview
-mkdir -p "$out/frames"
+mkdir -p "$out/frames" "$out/frames-blacklight"
 exe="$out/preview-$(uname -s)-$(uname -m)"
 ${CXX:-c++} -std=c++17 -O3 ${CPU_FLAGS:-} -Wall -Wextra -Werror -fno-exceptions -fno-rtti -Isrc \
     tools/ui_preview/preview.cpp -o "$exe"
-"$exe" "${1:---render}"
+mode=${1:---render}
+if [ "$#" -gt 1 ]; then
+    "$exe" "$mode" "$2"
+else
+    "$exe" "$mode"
+    case "$mode" in --test|--bench) "$exe" "$mode" --blacklight ;; esac
+fi
 if [ "${1:---render}" = --render ]; then
+    if [ "$#" -gt 0 ]; then shift; fi
     if python3 -c 'import PIL' 2>/dev/null; then
-        python3 tools/ui_preview/gallery.py
+        python3 tools/ui_preview/gallery.py "$@"
     else
-        uv run --with pillow python tools/ui_preview/gallery.py
+        uv run --with pillow python tools/ui_preview/gallery.py "$@"
     fi
 fi
