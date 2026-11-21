@@ -97,7 +97,8 @@ struct Rig
 
 constexpr const char* names[] = {
     "pattern-16", "pattern-32", "pending", "random", "notes", "voice-303", "voice-twin", "voice-18db",
-    "tone-drive", "tb3po-scale", "clock-swing", "shift", "pickup", "track-coral", "track-mint", "track-violet", "track-yellow"
+    "tone-drive", "tb3po-scale", "clock-swing", "shift", "pickup", "track-coral", "track-mint", "track-violet", "track-yellow",
+    "dense-32", "pending-notes"
 };
 
 void configure (Rig& r, int i)
@@ -134,7 +135,19 @@ void configure (Rig& r, int i)
     if (i == 11) r.h.shift = true;
     if (i == 12) { r.h.engaged[1] = false; r.h.pot[1] = 17; }
     constexpr uint32_t tracks[] = { 0xff7a5c, 0x46d9b0, 0x9d8cff, 0xe8d94a };
-    if (i >= 13) r.h.accent = tracks[i - 13];
+    if (i >= 13 && i <= 16) r.h.accent = tracks[i - 13];
+    if (i == 17)
+    {
+        r.v.steps = 32;
+        r.v.current = 31;
+        r.set (P::steps, 32);
+        for (int step = 0; step < 32; ++step) r.v.pitch[step] = int16_t ((step * 7 % 24) * 128 + step % 3 * 32);
+    }
+    if (i == 18)
+    {
+        r.set (P::seed, 0x0DE1);
+        r.set (P::mode, 1);
+    }
     r.mailbox.write (r.v);
 }
 
@@ -256,11 +269,40 @@ void damage()
     auto before = r.frame;
     r.key (Key::wheel, 1);
     check (r.paint(), "pending seed updates the heading");
-    check (std::equal (before.begin() + 88 * 320, before.begin() + 170 * 320, r.frame.begin() + 88 * 320),
+    check (std::equal (before.begin(), before.begin() + 155 * 320, r.frame.begin()),
            "pending seed preserves the entire score");
+    for (int state : { 0, 1, 17 })
+    {
+        Rig steps;
+        configure (steps, state);
+        for (int i = 0; i < steps.v.steps; ++i)
+        {
+            steps.v.current = (i * 7) % steps.v.steps;
+            steps.mailbox.write (steps.v);
+            steps.paint();
+            guardedFrame (steps);
+        }
+    }
+    std::array<uint64_t, 16> seen {};
+    for (unsigned digit = 0; digit < 16; ++digit)
+    {
+        r.set (P::seed, float (digit * 0x1111));
+        r.paint();
+        uint64_t glyph = 14695981039346656037ull;
+        for (int y = 165; y < 190; ++y)
+            for (int x = 4; x < 28; ++x)
+            {
+                const auto pixel = r.frame[y * 320 + x];
+                for (int place = 1; place < 4; ++place)
+                    check (r.frame[y * 320 + x + 24 * place] == pixel, "all four live hex digits");
+                glyph = (glyph ^ pixel) * 1099511628211ull;
+            }
+        check (std::find (seen.begin(), seen.begin() + digit, glyph) == seen.begin() + digit, "distinct hex glyph");
+        seen[digit] = glyph;
+    }
     before = r.frame;
     r.h.accent = 0x46d9b0;
-    check (r.paint() && std::equal (before.begin(), before.begin() + 170 * 320, r.frame.begin()),
+    check (r.paint() && std::equal (before.begin(), before.begin() + 191 * 320, r.frame.begin()),
            "track color stays on cards");
     r.set (P::tuning, 3);
     check (!r.paint(), "hidden parameter leaves pattern untouched");
@@ -326,7 +368,7 @@ void bench()
     auto resonance = [&](int i) { r.set (P::resonance, i % 2 ? .71f : .82f); };
     timed ("full / live resonance", r, true, resonance);
     timed ("partial / live resonance", r, false, resonance);
-    for (int state : { 0, 1, 4, 9, 10 })
+    for (int state : { 0, 1, 4, 9, 10, 17 })
     {
         Rig move;
         configure (move, state);
@@ -397,7 +439,7 @@ int main (int argc, char** argv)
         char extra[2];
         check (std::fscanf (ref, "%1s", extra) == EOF, "golden file has no extra states");
         std::fclose (ref);
-        std::puts ("17 golden states, controls, K1-K3, allocation checks, idle/whole/stride and lengths 0-32 passed");
+        std::printf ("%zu golden states, controls, K1-K3, allocation checks, idle/whole/stride and lengths 0-32 passed\n", std::size (names));
     }
     if (render)
     {

@@ -14,6 +14,7 @@ labels = {
     'tone-drive': 'Drive edit', 'tb3po-scale': 'Longest scale name', 'clock-swing': 'Swing  /  66%',
     'shift': 'Shift', 'pickup': 'K2 pickup', 'track-coral': 'Coral  /  FF7A5C',
     'track-mint': 'Mint  /  46D9B0', 'track-violet': 'Violet  /  9D8CFF', 'track-yellow': 'Yellow  /  E8D94A',
+    'dense-32': 'Microtonal phrase  /  32 steps', 'pending-notes': 'Pending seed  /  MIDI notes',
 }
 
 
@@ -38,10 +39,10 @@ def composite(im):
 
 font = ImageFont.truetype(str(root/'assets/fonts/DepartureMono-Regular.otf'),22)
 display = ImageFont.truetype(str(root/'assets/fonts/Michroma-Regular.ttf'),38)
-sheet = Image.new('RGB',(24 + 3*664, 100 + ((len(labels)+2)//3)*536),'#0a0f0d')
+sheet = Image.new('RGB',(24 + 3*664, 100 + ((len(labels)+2)//3)*536),'#0c0e10')
 draw = ImageDraw.Draw(sheet)
-draw.text((24,12),'TB-MPC-3-P-0',font=display,fill='#edf0db')
-draw.text((24,64),'RGB565   /   2x',font=font,fill='#aab9a6')
+draw.text((24,12),'TB-MPC-3-P-0',font=display,fill='#f1f1dd')
+draw.text((24,64),'RGB565   /   2x',font=font,fill='#a6aea5')
 for i,(name,label) in enumerate(labels.items()):
     dest = out/'states'/name
     dest.mkdir(parents=True,exist_ok=True)
@@ -54,7 +55,7 @@ for i,(name,label) in enumerate(labels.items()):
     shown.save(dest/'composite.png')
     x,y = 24 + i%3*664, 102 + i//3*536
     sheet.paste(scale(shown,2),(x,y))
-    draw.text((x,y+485),label,font=font,fill='#c6d2bb')
+    draw.text((x,y+485),label,font=font,fill='#cad0c2')
 sheet.save(out/'contact-sheet-2x.png',optimize=True)
 
 sequence = [composite(panel(Image.open(frames/f'step-{i:02d}.ppm'))) for i in range(1,17)]
@@ -62,5 +63,6 @@ strip = Image.new('RGB',(320*4,240))
 for i in range(4):
     strip.paste(sequence[i+3],(i*320,0))
 strip.save(out/'step-advance-strip.png')
-sequence[0].save(out/'step-advance.gif',save_all=True,append_images=sequence[1:],
+loop = [scale(im,2) for im in sequence]
+loop[0].save(out/'step-advance.gif',save_all=True,append_images=loop[1:],
                  duration=125,loop=0,disposal=1,optimize=False)

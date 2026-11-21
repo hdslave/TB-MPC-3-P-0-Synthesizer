@@ -17,9 +17,10 @@ constexpr uint32_t noParam = 0xffffffffu;
 using Ink = uint32_t;
 namespace ink
 {
-constexpr Ink bg = 0xff0a0f0d, field = 0xff111914, card = 0xff18211c, selected = 0xff28362b;
-constexpr Ink rule = 0xff354739, grid = 0xff26352b, muted = 0xffaab9a6, soft = 0xffc6d2bb;
-constexpr Ink paper = 0xffedf0db, live = 0xffdcfa57, cursor = 0xff344322;
+constexpr Ink bg = 0xff0c0e10, field = 0xff111416, card = 0xff171b1c, selected = 0xff312e40;
+constexpr Ink rule = 0xff555d58, grid = 0xff303733, muted = 0xffa6aea5, soft = 0xffcad0c2;
+constexpr Ink violet = 0xffc5b0fb, slide = 0xff786e89, alternate = 0xff14181a;
+constexpr Ink paper = 0xfff1f1dd, live = 0xffddff3c, cursor = 0xff394123, label = 0xffd7f143;
 }
 
 struct Field { uint32_t id; const char* label; };
@@ -91,15 +92,19 @@ struct Raster
         text (end - font::glyphWidth * int (std::strlen (s)), y, s, c);
     }
 
-    void hex (int x, int y, unsigned seed, Ink c) const
+    template<size_t Bytes>
+    void mask (int x, int y, const uint8_t (*data)[Bytes], int rows, Ink color) const
     {
-        for (int shift = 12; shift >= 0; shift -= 4, x += 32)
-        {
-            const auto& digit = art::hexDigits[(seed >> shift) & 15];
-            for (int j = 0; j < 26; ++j)
-                for (uint32_t bits = digit[j], k = 0; bits; bits >>= 1, ++k)
-                    if (bits & 1) dot (x + int (k), y + j, c);
-        }
+        for (int j = 0; j < rows; ++j)
+            for (size_t i = 0; i < Bytes; ++i)
+                for (int bits = data[j][i], k = 0; bits; bits >>= 1, ++k)
+                    if (bits & 1) dot (x + int (i) * 8 + k, y + j, color);
+    }
+
+    void hex (int x, int y, unsigned seed, Ink color) const
+    {
+        for (int shift = 12; shift >= 0; shift -= 4, x += 24)
+            mask (x, y, art::digits + 25 * ((seed >> shift) & 15), 25, color);
     }
 };
 
@@ -109,7 +114,7 @@ class Picture
 {
 public:
     template<int W, int H, typename Draw>
-    bool region (Ink* dest, int stride, bool whole, int x, int y, Draw draw)
+    bool region (Ink* dest, int stride, bool whole, int x, int y, Draw draw, int first = 0, int end = W)
     {
         static_assert (W * H <= capacity);
         Raster r { scratch, W, H };
@@ -120,8 +125,8 @@ public:
         {
             auto* old = prior + (y + j) * width + x;
             const auto* row = scratch + j * W;
-            if (! whole && std::memcmp (old, row, W * sizeof (Ink)) == 0) continue;
-            int left = 0, right = W;
+            int left = whole ? 0 : first, right = whole ? W : end;
+            if (!whole && std::memcmp (old + left, row + left, (right - left) * sizeof (Ink)) == 0) continue;
             if (! whole)
             {
                 while (old[left] == row[left]) ++left;
@@ -135,7 +140,7 @@ public:
     }
 
 private:
-    static constexpr int capacity = 320 * 84;
+    static constexpr int capacity = 320 * 155;
     Ink prior[width * height], scratch[capacity];
 };
 } // namespace hdui
