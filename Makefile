@@ -16,7 +16,7 @@ CXXFLAGS := -std=c++17 $(OPT) $(WARN) -fno-exceptions -fno-rtti -fvisibility=hid
 LDFLAGS := -shared -s -static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-z,now -Wl,-O1 -Wl,--version-script=src/exports.map
 
 SOURCES := src/tbmpc.cpp
-HEADERS := $(wildcard src/*.h)
+HEADERS := $(wildcard src/*.h src/ui/*.h)
 
 .PHONY: all test bench clean scales fingerprint-update
 all: $(OUT)/TB-MPC-3-P-0.clap
@@ -25,7 +25,7 @@ $(OUT)/TB-MPC-3-P-0.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
 	@mkdir -p $(OUT)
 	$(CXX) $(CXXFLAGS) $(SOURCES) $(LDFLAGS) -o $@
 
-$(OUT)/host: tests/host.cpp tests/wav.h $(HEADERS) Makefile
+$(OUT)/host: tests/host.cpp tests/wav.h tests/png.h $(HEADERS) Makefile
 	@mkdir -p $(OUT)
 	$(CXX) -std=c++17 -O2 $(WARN) -Ithird_party/clap/include -Isrc tests/host.cpp -ldl -o $@
 

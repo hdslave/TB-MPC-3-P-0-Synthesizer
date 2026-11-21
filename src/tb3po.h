@@ -290,7 +290,7 @@ public:
         return at < end ? end : (int32_t) at;
     }
 
-    // --- What the pattern is (for the tests) ---
+    // --- What the pattern is (for the tests and the screen) ---
     int currentStep() const { return step; }
     uint16_t currentSeed() const { return seed; }
     uint16_t playingSeed() const { return patternSeed; } // the seed the pattern now playing was made from
@@ -300,6 +300,8 @@ public:
     bool octaveUp (int s) const { return (octUps >> s) & 1u; }
     bool octaveDown (int s) const { return (octDowns >> s) & 1u; }
     int note (int s) const { return notes[s]; }
+    int stepCount() const { return numSteps; }
+    int32_t pitchOfStep (int s) const { return pitchFor (s); } // its pitch CV (1/128 semitone), for the screen
     int effectiveRoot() const
     {
         const int maxRoot = scaleSize > 12 ? 12 : scaleSize;

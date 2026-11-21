@@ -119,6 +119,10 @@ public:
             seedBack();
     }
 
+    // For the screen: the pattern, and whether the host's clock is moving it (TB-3PO mode, the host playing).
+    const Tb3po& sequencer() const { return seq; }
+    bool running() const { return playing && ! notesMode; }
+
     // A MIDI note. TB-3PO: it transposes the pattern from the next step, and holds (as a CV keyboard's last note
     // does). Notes: it plays.
     void note (int key, float velocity)

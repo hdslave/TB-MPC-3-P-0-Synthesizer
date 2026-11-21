@@ -26,7 +26,7 @@ int main (int argc, char** argv)
 
     // The patch: worst keeps the voice sounding all the time (every step gated, 1/64 steps so a gate never ends
     // before the next, slides and accents at full); typical is the default patch on a locked seed; stopped renders
-    // with the transport stopped and nothing sounding.
+    // with the transport stopped and nothing sounding; twin and 18db are worst through the other filters, Drive full.
     std::vector<std::pair<uint32_t, double>> values;
     using namespace tbmpc::ParamId;
     if (mode == "worst")
@@ -34,6 +34,9 @@ int main (int argc, char** argv)
                    { decay, 1.0 }, { glide, 1 }, { waveform, 1 } };
     else if (mode == "typical")
         values = { { seedMode, 1 }, { seed, 0x5a17 } };
+    else if (mode == "twin" || mode == "18db") // worst, through Twin Peak (two ladders) or 18 dB, with Drive full
+        values = { { seedMode, 1 }, { seed, 0x5a17 }, { density, -7 }, { clockDiv, 9 }, { resonance, 1.0 }, { envMod, 1.0 }, { accent, 1.0 },
+                   { decay, 1.0 }, { glide, 1 }, { waveform, 1 }, { filter, mode == "twin" ? 1.0 : 2.0 }, { drive, 1.0 } };
 
     struct Events
     {

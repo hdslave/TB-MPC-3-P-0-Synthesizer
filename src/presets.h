@@ -29,24 +29,24 @@ using namespace ParamId;
 // Choices by their place in the list: Waveform Saw 0, Square 1; Slide TB-3PO 0, 303 1; Seed Mode Random 0, Locked 1;
 // Scale by its row in scales.h (Semitone 0, Dorian 2, Phrygian 3, Aeolian 6); Density as shown (-7..+7).
 constexpr PresetValue acidLine[] = {
-    { seedMode, 1.0f }, { seed, 0x5a17 }, { scale, 6.0f }, { density, 5.0f }, { cutoff, 0.28f }, { resonance, 0.78f },
+    { seedMode, 1.0f }, { seed, 0x5a17 }, { scale, 6.0f }, { density, 5.0f }, { cutoff, 0.465f }, { resonance, 0.78f },
     { envMod, 0.62f }, { decay, 0.3f }, { accent, 0.8f },
 };
 constexpr PresetValue rootPulse[] = {
-    { seedMode, 1.0f }, { seed, 0x0303 }, { scale, 0.0f }, { density, -7.0f }, { cutoff, 0.22f }, { resonance, 0.85f },
+    { seedMode, 1.0f }, { seed, 0x0303 }, { scale, 0.0f }, { density, -7.0f }, { cutoff, 0.42f }, { resonance, 0.85f },
     { envMod, 0.7f }, { decay, 0.25f }, { accent, 1.0f },
 };
 constexpr PresetValue squareLead[] = {
     { seedMode, 1.0f }, { seed, 0xbeef }, { scale, 3.0f }, { density, 6.0f }, { octave, 1.0f }, { waveform, 1.0f },
-    { glide, 1.0f }, { cutoff, 0.42f }, { resonance, 0.7f }, { envMod, 0.45f }, { decay, 0.45f }, { accent, 0.5f },
+    { glide, 1.0f }, { cutoff, 0.571f }, { resonance, 0.7f }, { envMod, 0.45f }, { decay, 0.45f }, { accent, 0.5f },
 };
 constexpr PresetValue dubSteps[] = {
     { seedMode, 1.0f }, { seed, 0x1d0b }, { scale, 2.0f }, { density, 3.0f }, { steps, 12.0f }, { octave, -1.0f },
-    { cutoff, 0.32f }, { resonance, 0.5f }, { envMod, 0.35f }, { decay, 0.75f }, { accent, 0.4f }, { volume, 0.8f },
+    { cutoff, 0.496f }, { resonance, 0.5f }, { envMod, 0.35f }, { decay, 0.75f }, { accent, 0.4f }, { volume, 0.8f },
 };
 // Mode: Notes: played by MIDI notes (held over another: a glide; velocity 100 and up: an accent).
 constexpr PresetValue noteBass[] = {
-    { mode, 1.0f }, { cutoff, 0.26f }, { resonance, 0.74f }, { envMod, 0.62f }, { decay, 0.38f }, { accent, 0.8f },
+    { mode, 1.0f }, { cutoff, 0.45f }, { resonance, 0.74f }, { envMod, 0.62f }, { decay, 0.38f }, { accent, 0.8f },
 };
 } // namespace presetValues
 

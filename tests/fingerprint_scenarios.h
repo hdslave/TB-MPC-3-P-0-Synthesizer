@@ -7,6 +7,10 @@ namespace
 // The parameters of TB-MPC-3-P-0 0.1, in its table's order: the random scenarios draw for these.
 const std::vector<std::string> order01 { "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent", "Waveform", "Volume", "Slide",
     "Seed Mode", "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset" };
+// 0.4's: every parameter but the ones that would silence or reseed it (Mode, the buttons, Seed Mode).
+const std::vector<std::string> order04 { "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent", "Waveform", "Volume", "Slide",
+    "Slide Time", "Accent Decay", "Drive", "Filter", "Peak Spread", "Seed", "Mutate", "Density", "Scale", "Root", "Octave", "Steps",
+    "Gate", "Transpose", "Clock Div", "Swing", "Reset" };
 
 std::vector<Scenario> scenarios()
 {
@@ -162,6 +166,89 @@ std::vector<Scenario> scenarios()
             s.events.push_back ({ (uint64_t) (6000 + i * 6000), Event::midi, "", (double) ((0xe0u << 16) | ((uint32_t) (bendValue & 0x7f) << 8) | (uint32_t) (bendValue >> 7)) });
             s.events.push_back ({ (uint64_t) (9000 + i * 6000), Event::midi, "", (double) ((0xb0u << 16) | (1u << 8) | (uint32_t) wheel) });
         }
+        list.push_back (s);
+    }
+    // 0.4: Drive at a third and full, and turned while it plays; each filter, Twin Peak's spread moving, the three
+    // stages ringing on their own at full Resonance; Slide Time short and long (the 303 glide and a note's); Accent
+    // Decay long; random patches over every 0.4 parameter.
+    for (double drive : { 0.3, 1.0 })
+    {
+        Scenario s;
+        s.name = "drive-" + std::to_string ((int) std::lround (drive * 100));
+        s.preset = "acid-line";
+        s.values = { { "Drive", drive } };
+        s.seconds = 4.0;
+        list.push_back (s);
+    }
+    Scenario driveTurned;
+    driveTurned.name = "drive-turned";
+    driveTurned.preset = "root-pulse";
+    driveTurned.seconds = 4.0;
+    for (int i = 0; i < 16; ++i)
+        driveTurned.events.push_back ({ (uint64_t) (4000 + i * 11000), Event::param, "Drive", 0.5 + 0.5 * std::sin (i * 0.5) });
+    list.push_back (driveTurned);
+    for (const char* filter : { "Twin Peak", "18 dB" })
+        for (const char* preset : { "acid-line", "dub-steps" })
+        {
+            Scenario s;
+            s.name = std::string ("filter-") + (filter[0] == 'T' ? "twin-peak-" : "18db-") + preset;
+            s.preset = preset;
+            s.values = { { "Filter", filter[0] == 'T' ? 1.0 : 2.0 } };
+            s.seconds = 4.0;
+            list.push_back (s);
+        }
+    Scenario spread;
+    spread.name = "twin-peak-spread";
+    spread.preset = "acid-line";
+    spread.values = { { "Filter", 1.0 }, { "Resonance", 0.95 } };
+    spread.seconds = 4.0;
+    for (int i = 0; i < 16; ++i)
+        spread.events.push_back ({ (uint64_t) (3000 + i * 11000), Event::param, "Peak Spread", 2.25 + 1.75 * std::sin (i * 0.6) });
+    list.push_back (spread);
+    Scenario ringing;
+    ringing.name = "18db-self-oscillating";
+    ringing.preset = "dub-steps";
+    ringing.values = { { "Filter", 2.0 }, { "Resonance", 1.0 } };
+    ringing.seconds = 4.0;
+    list.push_back (ringing);
+    Scenario switching;
+    switching.name = "filter-switched";
+    switching.preset = "acid-line";
+    switching.seconds = 4.0;
+    for (int i = 0; i < 9; ++i)
+        switching.events.push_back ({ (uint64_t) (9000 + i * 19000), Event::param, "Filter", (double) ((i + 1) % 3) });
+    list.push_back (switching);
+    for (double slide : { 0.0, 1.0 })
+        for (const char* preset : { "square-lead", "note-bass" })
+        {
+            Scenario s;
+            s.name = std::string ("slide-time-") + (slide > 0.5 ? "long-" : "short-") + preset;
+            s.preset = preset;
+            s.values = { { "Slide Time", slide } };
+            s.seconds = 4.0;
+            if (preset[0] == 'n')
+                for (int i = 0; i < 8; ++i) // a legato line: each note held over the next
+                {
+                    const double key = 36 + (i * 7) % 13;
+                    s.events.push_back ({ (uint64_t) i * 12000, Event::noteOn, "", key });
+                    s.events.push_back ({ (uint64_t) i * 12000 + 15000, Event::noteOff, "", key });
+                }
+            list.push_back (s);
+        }
+    Scenario accentLong;
+    accentLong.name = "accent-decay-long";
+    accentLong.preset = "root-pulse";
+    accentLong.values = { { "Accent Decay", 1.0 } };
+    accentLong.seconds = 4.0;
+    list.push_back (accentLong);
+    for (uint32_t r = 0; r < 8; ++r)
+    {
+        Scenario s;
+        s.name = "random04-" + std::to_string (r);
+        s.values = randomValues (4000 + r, {}, order04);
+        s.values.push_back ({ "Seed Mode", 1.0 });
+        s.seconds = 3.0, s.bpm = 132.0;
+        s.events = { { 41000, Event::param, "Filter", (double) (r % 3) }, { 77000, Event::param, "Drive", 0.1 * r } };
         list.push_back (s);
     }
     return list;

@@ -6,6 +6,9 @@
 // this test uses the same port (src/tb3po.h) to know where the notes must be.
 //   host TB-MPC-3-P-0.clap OUT_FOLDER
 #include "wav.h"
+#include "png.h"
+#include "melodee_screen.h"
+#include "params.h"
 #include "tb3po.h"
 
 #include <clap/clap.h>
@@ -31,12 +34,17 @@ const clap_plugin_entry* entry = nullptr;
 const clap_plugin_factory* factory = nullptr;
 
 // The host side: log, and the two a preset load tells (counted); the plug-in must cope without the rest.
-int rescans = 0, presetsLoaded = 0, presetErrors = 0;
+int rescans = 0, textRescans = 0, callbacks = 0, flushes = 0, paints = 0, presetsLoaded = 0, presetErrors = 0;
 const void* hostExtension (const clap_host*, const char* id)
 {
     static const clap_host_log log { [] (const clap_host*, clap_log_severity s, const char* m) { std::printf ("  [plug-in log %d] %s\n", (int) s, m); } };
-    static const clap_host_params params { [] (const clap_host*, clap_param_rescan_flags f) { rescans += (f & CLAP_PARAM_RESCAN_VALUES) != 0; },
-                                           [] (const clap_host*, clap_id, clap_param_clear_flags) {}, [] (const clap_host*) {} };
+    static const clap_host_params params { [] (const clap_host*, clap_param_rescan_flags f) {
+                                               rescans += (f & CLAP_PARAM_RESCAN_VALUES) != 0;
+                                               textRescans += (f & CLAP_PARAM_RESCAN_TEXT) != 0;
+                                           },
+                                           [] (const clap_host*, clap_id, clap_param_clear_flags) {}, [] (const clap_host*) { ++flushes; } };
+    static const clap_host_melodee_screen screen { [] (const clap_host*) { ++paints; } };
+    if (std::strcmp (id, CLAP_EXT_MELODEE_SCREEN_HOST) == 0) return &screen;
     static const clap_host_preset_load presetLoad {
         [] (const clap_host*, uint32_t, const char*, const char*, int32_t, const char*) { ++presetErrors; },
         [] (const clap_host*, uint32_t, const char*, const char*) { ++presetsLoaded; },
@@ -49,7 +57,7 @@ const void* hostExtension (const clap_host*, const char* id)
 
 clap_host host {
     CLAP_VERSION, nullptr, "TB-MPC-3-P-0 test host", "tests", "", "1",
-    hostExtension, [] (const clap_host*) {}, [] (const clap_host*) {}, [] (const clap_host*) {},
+    hostExtension, [] (const clap_host*) {}, [] (const clap_host*) {}, [] (const clap_host*) { ++callbacks; },
 };
 
 // Input events for one process call, in time order.
@@ -367,7 +375,7 @@ void testParameters()
 {
     Instance a;
     const uint32_t count = a.params->count (a.plugin);
-    CHECK (count == 25);
+    CHECK (count == 30);
     std::map<clap_id, int> seen;
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -384,7 +392,8 @@ void testParameters()
         CHECK (std::fabs (back - v) <= 0.02 * (info.max_value - info.min_value) + 1e-9);
     }
     for (const char* name : { "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent", "Waveform", "Volume", "Slide", "Seed Mode",
-                              "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset", "Mode", "Seed Back", "Swing", "Gate", "Mutate" })
+                              "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset", "Mode", "Seed Back", "Swing", "Gate", "Mutate",
+                              "Drive", "Slide Time", "Accent Decay", "Filter", "Peak Spread" })
         CHECK (a.ids.count (name) == 1);
     // The seed reads as the module shows it, four hex digits; density as -7..+7; the applet's first scale.
     char text[64] = {};
@@ -832,6 +841,9 @@ void testSwing()
         a.render (48000 * 6, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); });
         const auto expect = expectedNotes (0x303, 4, tbmpc::appletDefaultScale, 16, 6000.0, 48, swing);
         const auto found = onsets (l, 1e-3f, 1e-4f, 96);
+        if (std::getenv ("TBMPC_DEBUG"))
+            for (size_t i = 0; i < std::max (found.size(), expect.size()); ++i)
+                std::printf ("debug swing %.2f: %ld expected %ld\n", swing, i < found.size() ? found[i] : -1L, i < expect.size() ? (long) expect[i] : -1L);
         CHECK (expect.size() > 8 && found.size() == expect.size());
         bool near = found.size() == expect.size();
         for (size_t i = 0; near && i < found.size(); ++i)
@@ -1107,7 +1119,7 @@ void testGateAndMutate()
 void testBendAndWheel()
 {
     // Mode: Notes, a clean saw on C3 (130.8 Hz). Pitch bend and the mod wheel do what Tuning and Cutoff do: full bend
-    // up (16383) is Tuning at +1.99976 semitones, the wheel at 127 is Cutoff 3 octaves up (of its 5.3), to the bit
+    // up (16383) is Tuning at +1.99976 semitones, the wheel at 127 is Cutoff 3 octaves up (of its 7), to the bit
     // once they have eased in (the note comes after). All notes off (CC 123) closes the gate.
     auto stopped = [] (uint64_t) { return Transport { false, 120.0, 0.0 }; };
     auto render = [&] (std::vector<std::pair<std::string, double>> extra, uint8_t status, uint8_t d1, uint8_t d2) {
@@ -1123,7 +1135,7 @@ void testBendAndWheel()
         return l;
     };
     const auto bent = render ({}, 0xe0, 0x7f, 0x7f), tuned = render ({ { "Tuning", 8191.0 * 2.0 / 8192.0 } }, 0, 0, 0);
-    const auto wheeled = render ({}, 0xb0, 1, 127), opened = render ({ { "Cutoff", 0.1 + 3.0 / 5.3 } }, 0, 0, 0);
+    const auto wheeled = render ({}, 0xb0, 1, 127), opened = render ({ { "Cutoff", 0.1 + 3.0 / 7.0 } }, 0, 0, 0);
     const auto plain = render ({}, 0, 0, 0);
     auto rmsDiff = [] (const std::vector<float>& a, const std::vector<float>& b) {
         double d = 0, e = 0;
@@ -1192,18 +1204,18 @@ void demos (const std::string& folder)
     // pattern every Play.
     struct Demo { const char* file; const char* preset; std::vector<std::pair<std::string, double>> values; bool notes = false; };
     std::vector<Demo> list {
-        { "demo-acid-line.wav", "acid-line", { { "Seed Mode", 1 }, { "Seed", 0x5a17 }, { "Scale", 6 }, { "Density", 5 }, { "Cutoff", 0.28 },
+        { "demo-acid-line.wav", "acid-line", { { "Seed Mode", 1 }, { "Seed", 0x5a17 }, { "Scale", 6 }, { "Density", 5 }, { "Cutoff", 0.465 },
                                                { "Resonance", 0.78 }, { "Env Mod", 0.62 }, { "Decay", 0.3 }, { "Accent", 0.8 } } },
-        { "demo-root-pulse.wav", "root-pulse", { { "Seed Mode", 1 }, { "Seed", 0x0303 }, { "Scale", 0 }, { "Density", -7 }, { "Cutoff", 0.22 },
+        { "demo-root-pulse.wav", "root-pulse", { { "Seed Mode", 1 }, { "Seed", 0x0303 }, { "Scale", 0 }, { "Density", -7 }, { "Cutoff", 0.42 },
                                                  { "Resonance", 0.85 }, { "Env Mod", 0.7 }, { "Decay", 0.25 }, { "Accent", 1.0 } } },
         { "demo-square-lead.wav", "square-lead", { { "Seed Mode", 1 }, { "Seed", 0xbeef }, { "Scale", 3 }, { "Density", 6 }, { "Octave", 1 },
-                                                   { "Waveform", 1 }, { "Slide", 1 }, { "Cutoff", 0.42 }, { "Resonance", 0.7 }, { "Env Mod", 0.45 },
+                                                   { "Waveform", 1 }, { "Slide", 1 }, { "Cutoff", 0.571 }, { "Resonance", 0.7 }, { "Env Mod", 0.45 },
                                                    { "Decay", 0.45 }, { "Accent", 0.5 } } },
         { "demo-dub-steps.wav", "dub-steps", { { "Seed Mode", 1 }, { "Seed", 0x1d0b }, { "Scale", 2 }, { "Density", 3 }, { "Steps", 12 },
-                                               { "Octave", -1 }, { "Cutoff", 0.32 }, { "Resonance", 0.5 }, { "Env Mod", 0.35 }, { "Decay", 0.75 },
+                                               { "Octave", -1 }, { "Cutoff", 0.496 }, { "Resonance", 0.5 }, { "Env Mod", 0.35 }, { "Decay", 0.75 },
                                                { "Accent", 0.4 }, { "Volume", 0.8 } } },
         // Note Bass is played by notes: a two-bar line, some held over the next (glides), some loud (accents).
-        { "demo-note-bass.wav", "note-bass", { { "Mode", 1 }, { "Cutoff", 0.26 }, { "Resonance", 0.74 }, { "Env Mod", 0.62 }, { "Decay", 0.38 },
+        { "demo-note-bass.wav", "note-bass", { { "Mode", 1 }, { "Cutoff", 0.45 }, { "Resonance", 0.74 }, { "Env Mod", 0.62 }, { "Decay", 0.38 },
                                                { "Accent", 0.8 } }, true },
     };
     // The line: sixteenths at 120 BPM (6,000 frames), as (step, key, steps held, velocity); played on repeat.
@@ -1253,6 +1265,363 @@ void demos (const std::string& folder)
 }
 } // namespace
 
+void testDriveSlideAccentDecay()
+{
+    auto t = [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); };
+    auto stopped = [] (uint64_t) { return Transport { false, 120.0, 0.0 }; };
+    auto rms = [] (const std::vector<float>& x, size_t from, size_t to) {
+        double s = 0;
+        for (size_t i = from; i < to; ++i) s += (double) x[i] * x[i];
+        return std::sqrt (s / (double) (to - from));
+    };
+    auto brightness = [] (const std::vector<float>& x, size_t from, size_t to) {
+        double d = 0, e = 0;
+        for (size_t i = from + 1; i < to; ++i)
+            d += (double) (x[i] - x[i - 1]) * (x[i] - x[i - 1]), e += (double) x[i] * x[i];
+        return std::sqrt (d / (e + 1e-30));
+    };
+    // Drive: brighter (more harmonics) the further it turns, its level kept within a few dB of the dry voice, never
+    // past full scale, and nothing at all at 0 (the fingerprints hold that to the bit).
+    auto pattern = [&] (double drive, std::vector<std::pair<std::string, double>> extra = {}) {
+        Instance a;
+        std::vector<std::pair<std::string, double>> v { { "Seed Mode", 1.0 }, { "Seed", 0x5a17 }, { "Density", 6 }, { "Drive", drive } };
+        v.insert (v.end(), extra.begin(), extra.end());
+        a.setup (v);
+        std::vector<float> l, r;
+        a.render (48000 * 4, 128, l, r, t);
+        return l;
+    };
+    double lastBright = 0.0;
+    for (auto patch : std::vector<std::vector<std::pair<std::string, double>>> { {}, { { "Cutoff", 0.15 }, { "Resonance", 0.9 } }, { { "Waveform", 1.0 }, { "Cutoff", 0.7 } } })
+    {
+        // (Brightness counted from the first drive on: the anti-aliasing's half-sample average takes a little off the
+        // very top, so a light drive is not brighter than none by this measure.)
+        const auto dry = pattern (0.0, patch);
+        lastBright = 0.0;
+        for (double drive : { 0.25, 0.5, 0.75, 1.0 })
+        {
+            const auto wet = pattern (drive, patch);
+            const double level = rms (wet, 0, wet.size()) / rms (dry, 0, dry.size()), bright = brightness (wet, 0, wet.size());
+            float peak = 0.0f;
+            for (float v : wet) peak = std::max (peak, std::fabs (v));
+            if (std::getenv ("TBMPC_DEBUG"))
+                std::printf ("debug drive %.2f: level %+.2f dB, brightness %.4f, peak %.3f\n", drive, 20.0 * std::log10 (level), bright, peak);
+            CHECK (level > 0.71 && level < 2.0); // -3 .. +6 dB
+            CHECK (bright > lastBright);
+            CHECK (std::isfinite (peak) && peak <= 1.0f);
+            lastBright = bright;
+        }
+    }
+    // Slide Time: a note held over another glides to it, there in about the time the knob reads. At 15 ms it has
+    // arrived 100 ms on; at 600 ms it is still under half way.
+    auto hz = [] (const std::vector<float>& x, size_t from, size_t to) { return crossings (x, from, to) * 48000.0 / (double) (to - from); };
+    auto glide = [&] (double slideKnob) {
+        Instance a;
+        a.setup ({ { "Mode", 1.0 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 }, { "Accent", 0.0 }, { "Slide Time", slideKnob } });
+        std::vector<float> l, r;
+        a.render (48000, 128, l, r, stopped, [] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 48, 0.6);
+            if (at == 128 * 100) e.note (0, CLAP_EVENT_NOTE_ON, 60, 0.6); // an octave up, held over the first
+        });
+        return hz (l, 12800 + 4800, 12800 + 4800 + 2400); // 100 to 150 ms after the glide starts
+    };
+    double fast = 0, slow = 0, slideKnob = -1;
+    Instance k;
+    CHECK ((slideKnob = k.valueOf ("Slide Time", "15 ms")) >= 0.0 && (fast = glide (slideKnob)) > 0);
+    CHECK ((slideKnob = k.valueOf ("Slide Time", "600 ms")) >= 0.0 && (slow = glide (slideKnob)) > 0);
+    if (std::getenv ("TBMPC_DEBUG"))
+        std::printf ("debug slide: 15 ms %.1f Hz, 600 ms %.1f Hz (130.8 -> 261.6)\n", fast, slow);
+    CHECK (std::fabs (fast - 261.6) < 6.0 && slow < 190.0);
+    char text[64] = {};
+    k.params->value_to_text (k.plugin, k.id ("Slide Time"), k.value ("Slide Time"), text, sizeof (text));
+    CHECK (std::string (text) == "60 ms");
+    // Accent Decay: an accented note's filter sweep falls more slowly the longer it is (its default, the shortest,
+    // is the 303's).
+    auto accented = [&] (double accentDecay) {
+        Instance a;
+        a.setup ({ { "Mode", 1.0 }, { "Cutoff", 0.25 }, { "Resonance", 0.3 }, { "Env Mod", 0.9 }, { "Accent", 1.0 }, { "Accent Decay", accentDecay } });
+        std::vector<float> l, r;
+        a.render (48000, 128, l, r, stopped, [] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 36, 1.0);
+        });
+        return brightness (l, 24000, 33600); // 500 to 700 ms in
+    };
+    const double shortest = accented (0.0), longest = accented (1.0);
+    if (std::getenv ("TBMPC_DEBUG"))
+        std::printf ("debug accent decay: brightness 500-700 ms %.4f (200 ms) %.4f (2 s)\n", shortest, longest);
+    CHECK (longest > 1.5 * shortest);
+}
+
+void testFilters()
+{
+    auto stopped = [] (uint64_t) { return Transport { false, 120.0, 0.0 }; };
+    // A held C1 (32.7 Hz, as the 303's service notes play it), Env Mod and Accent at 0: Resonance full.
+    auto held = [&] (std::vector<std::pair<std::string, double>> extra) {
+        Instance a;
+        std::vector<std::pair<std::string, double>> v { { "Mode", 1.0 }, { "Env Mod", 0.0 }, { "Accent", 0.0 }, { "Resonance", 1.0 } };
+        v.insert (v.end(), extra.begin(), extra.end());
+        a.setup (v);
+        std::vector<float> l, r;
+        a.render (48000, 128, l, r, stopped, [] (uint64_t at, uint32_t, Events& e) { if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 24, 0.6); });
+        return l;
+    };
+    auto magnitude = [] (const std::vector<float>& x, size_t from, size_t to, double hz) {
+        double re = 0, im = 0;
+        for (size_t i = from; i < to; ++i)
+        {
+            const double ph = 2.0 * M_PI * hz * (double) i / 48000.0;
+            re += x[i] * std::cos (ph), im += x[i] * std::sin (ph);
+        }
+        return std::sqrt (re * re + im * im) / (double) (to - from);
+    };
+    auto strongest = [&] (const std::vector<float>& x) {
+        double best = 0, at = 0;
+        for (double hz = 150.0; hz < 3000.0; hz += 2.0)
+        {
+            const double m = magnitude (x, 12000, 36000, hz);
+            if (m > best) best = m, at = hz;
+        }
+        return at;
+    };
+    // The calibration: Cutoff at its middle, Resonance full, the peak at about 500 Hz in each filter (Twin Peak's
+    // lower one: its upper is put 4 octaves away). The harmonics are 32.7 Hz apart.
+    for (auto patch : std::vector<std::vector<std::pair<std::string, double>>> { { { "Filter", 0.0 } }, { { "Filter", 2.0 } }, { { "Filter", 1.0 }, { "Peak Spread", 4.0 } } })
+    {
+        patch.push_back ({ "Cutoff", 0.5 });
+        const double at = strongest (held (patch));
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug filter %.0f: strongest at %.0f Hz\n", patch[0].second, at);
+        CHECK (at > 450.0 && at < 550.0);
+    }
+    // Each filter sounds its own; Twin Peak's spread moves its upper peak.
+    const auto f303 = held ({ { "Cutoff", 0.5 }, { "Resonance", 0.7 } }), twin = held ({ { "Cutoff", 0.5 }, { "Resonance", 0.7 }, { "Filter", 1.0 } });
+    const auto eighteen = held ({ { "Cutoff", 0.5 }, { "Resonance", 0.7 }, { "Filter", 2.0 } });
+    const auto wide = held ({ { "Cutoff", 0.5 }, { "Resonance", 0.7 }, { "Filter", 1.0 }, { "Peak Spread", 3.0 } });
+    CHECK (f303 != twin && f303 != eighteen && twin != eighteen && twin != wide);
+    // Twin Peak passes a band: little of the fundamental (32.7 Hz), unlike the low passes.
+    CHECK (magnitude (twin, 12000, 36000, 32.7) < 0.25 * magnitude (f303, 12000, 36000, 32.7));
+    // The patterns' level in each filter: within a few dB of the diode ladder's.
+    auto t = [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); };
+    auto pattern = [&] (double filter) {
+        Instance a;
+        a.setup ({ { "Seed Mode", 1.0 }, { "Seed", 0x5a17 }, { "Density", 6 }, { "Filter", filter } });
+        std::vector<float> l, r;
+        a.render (48000 * 4, 128, l, r, t);
+        double e = 0;
+        float peak = 0;
+        for (float v : l) e += (double) v * v, peak = std::max (peak, std::fabs (v));
+        CHECK (std::isfinite (peak) && peak <= 1.0f);
+        return std::sqrt (e / (double) l.size());
+    };
+    const double level303 = pattern (0.0);
+    for (double filter : { 1.0, 2.0 })
+    {
+        const double dB = 20.0 * std::log10 (pattern (filter) / level303);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug filter %.0f level against the 303's: %+.2f dB\n", filter, dB);
+        CHECK (std::fabs (dB) < 4.0);
+    }
+    // Cutoff reads what is heard: the diode ladder's edge with no Resonance is a ninth of its nominal frequency
+    // (430.5 Hz at the middle), near its peak from 10 % on; the text follows Filter too, and reads back.
+    Instance a;
+    char text[64] = {};
+    auto cutoffText = [&] () {
+        a.params->value_to_text (a.plugin, a.id ("Cutoff"), 0.5, text, sizeof (text));
+        return std::atof (text);
+    };
+    a.setup ({ { "Resonance", 0.0 } });
+    const double none = cutoffText();
+    double back = -1;
+    CHECK (a.params->text_to_value (a.plugin, a.id ("Cutoff"), text, &back) && std::fabs (back - 0.5) < 0.01);
+    a.setup ({ { "Resonance", 0.6 } });
+    const double some = cutoffText();
+    a.setup ({ { "Filter", 2.0 }, { "Resonance", 0.0 } });
+    const double three = cutoffText();
+    if (std::getenv ("TBMPC_DEBUG"))
+        std::printf ("debug cutoff text at the middle: 303 %.0f Hz (Resonance 0), %.0f Hz (60 %%); 18 dB %.0f Hz (0)\n", none, some, three);
+    CHECK (none > 45.0 && none < 57.0 && some > 450.0 && some < 520.0 && three > 135.0 && three < 152.0);
+    // Moving Resonance asks the host (from its main thread) to read the texts again.
+    a.plugin->on_main_thread (a.plugin); // what the host does after the setups above asked
+    const int callbacksBefore = callbacks, textBefore = textRescans;
+    std::vector<float> l, r;
+    a.render (128, 128, l, r, stopped, [&] (uint64_t at, uint32_t, Events& e) { if (at == 0) e.param (0, a.id ("Resonance"), 0.3); });
+    CHECK (callbacks > callbacksBefore);
+    a.plugin->on_main_thread (a.plugin);
+    CHECK (textRescans == textBefore + 1);
+}
+
+// Melodee's screen: the page draws, answers the wheel, Push and Minus / Plus, names K1-K3, sends what it changes to
+// the host and the engine. Its pictures go to OUT_FOLDER/screen-*.png for a look.
+void testScreen (const std::string& folder)
+{
+    Instance a;
+    const auto* screen = static_cast<const clap_plugin_melodee_screen*> (a.plugin->get_extension (a.plugin, CLAP_EXT_MELODEE_SCREEN));
+    CHECK (screen != nullptr);
+    if (screen == nullptr)
+        return;
+    std::vector<uint32_t> pixels (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_HEIGHT, 0);
+    melodee_screen_canvas_t canvas {};
+    canvas.pixels = pixels.data();
+    canvas.width = MELODEE_SCREEN_WIDTH, canvas.height = MELODEE_SCREEN_HEIGHT, canvas.stride = MELODEE_SCREEN_WIDTH;
+    canvas.accent = 0xffc8f031;
+    for (auto& k : canvas.knobs)
+        k = { -1, true };
+    uint64_t now = 1000;
+    auto paint = [&] (bool whole = false) { canvas.whole = whole, canvas.now_ms = now; return screen->paint (a.plugin, &canvas); };
+    auto shot = [&] (const char* name) { paint (true); CHECK (writePng ((folder + "/screen-" + name + ".png").c_str(), pixels.data(), 320, 218, 320, 2)); };
+    auto in = [&] (uint32_t kind, int value, bool shift = false) { melodee_screen_input_t e { kind, value, shift }; return screen->input (a.plugin, &e); };
+    auto knobs = [&] () { std::vector<clap_id> ids (3); screen->knobs (a.plugin, ids.data()); return ids; };
+    double beats = 0.0;
+    auto play = [&] (uint32_t frames, bool playing, OutEvents* out = nullptr) {
+        std::vector<float> l, r;
+        const double from = beats;
+        a.render (frames, 128, l, r, [&] (uint64_t at) { return playing ? playingFrom (from, 120.0, 48000.0, at) : Transport { false, 120.0, 0.0 }; }, {}, out);
+        if (playing)
+            beats += frames / 24000.0;
+        now += frames * 1000 / 48000;
+        return l;
+    };
+
+    CHECK (paint (true));
+    CHECK (! paint());
+    // A value moved from outside the page (a pot, automation, a preset) asks for a paint.
+    int before = paints;
+    a.setup ({ { "Cutoff", 0.3 } });
+    CHECK (paints > before);
+    before = paints;
+    CHECK (a.loadPreset ("acid-line"));
+    CHECK (paints > before);
+    CHECK (a.loadPreset ("default"));
+    // PATTERN: K1-K3 are Cutoff, Resonance, Env Mod. In Seed Mode Random, Push (Regen) brings a new seed.
+    CHECK ((knobs() == std::vector<clap_id> { a.id ("Cutoff"), a.id ("Resonance"), a.id ("Env Mod") }));
+    a.setup ({ { "Seed Mode", 0.0 } });
+    play (128, false);
+    const double seedBefore = a.value ("Seed");
+    CHECK (in (MELODEE_SCREEN_PUSH, 0));
+    play (128, false);
+    CHECK (a.value ("Seed") != seedBefore);
+    // The wheel dials the seed and locks it; the host hears both after the next block.
+    const double seed = a.value ("Seed");
+    const int flushesBefore = flushes;
+    CHECK (in (MELODEE_SCREEN_WHEEL, 3));
+    CHECK (flushes > flushesBefore);
+    CHECK (a.value ("Seed") == std::fmod (seed + 3.0, 65536.0) && a.value ("Seed Mode") == 1.0);
+    OutEvents told;
+    play (128, false, &told);
+    CHECK (std::any_of (told.values.begin(), told.values.end(), [&] (auto& v) { return v.first == a.id ("Seed"); }));
+    CHECK (std::any_of (told.values.begin(), told.values.end(), [&] (auto& v) { return v.first == a.id ("Seed Mode") && v.second == 1.0; }));
+    // Playing: the page asks to be painted as the steps go by.
+    a.setup ({ { "Seed", 0x5a17 }, { "Density", 5 }, { "Scale", 6 } });
+    const int paintsBefore = paints;
+    play (48000 * 2 + 3000, true);
+    CHECK (paints > paintsBefore + 8);
+    canvas.playing = true;
+    shot ("pattern");
+    canvas.shift = true;
+    shot ("pattern-shift");
+    canvas.shift = false;
+    // VOICE: Plus; K1-K3 follow the cursor; the filter's response beside.
+    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
+    CHECK ((knobs() == std::vector<clap_id> { a.id ("Tuning"), a.id ("Cutoff"), a.id ("Resonance") }));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 1));
+    shot ("voice");
+    // TONE: Filter edited to Twin Peak a detent on; its response.
+    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
+    CHECK (in (MELODEE_SCREEN_PUSH, 0));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 1));
+    CHECK (a.value ("Filter") == a.valueOf ("Filter", "Twin Peak"));
+    shot ("tone-twin-peak");
+    CHECK (in (MELODEE_SCREEN_WHEEL, 1));
+    CHECK (in (MELODEE_SCREEN_PUSH, 0));
+    shot ("tone-18db");
+    // TB-3PO: Regen is a button: no pot; Push presses it.
+    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 3));
+    CHECK (knobs()[0] == CLAP_INVALID_ID);
+    shot ("tb-3po");
+    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
+    CHECK (! in (MELODEE_SCREEN_NUDGE, 1)); // the last group
+    shot ("clock");
+}
+
+void testReviewFixes()
+{
+    // A state saved by 0.1 - 0.3 (version 1, Cutoff over 5.3 octaves from 130 Hz) loads at the same frequency.
+    {
+        Instance a;
+        std::vector<uint8_t> v1;
+        auto put = [&] (const void* d, size_t n) { v1.insert (v1.end(), (const uint8_t*) d, (const uint8_t*) d + n); };
+        const uint32_t header[2] = { 1, 2 };
+        put ("TB3P", 4), put (header, sizeof (header));
+        const struct { uint32_t id; float value; } pairs[2] = { { a.id ("Cutoff"), 0.35f }, { a.id ("Resonance"), 0.6f } };
+        put (pairs, sizeof (pairs));
+        struct Reader { const std::vector<uint8_t>* v; size_t at; } reader { &v1, 0 };
+        clap_istream is { &reader, [] (const clap_istream* s, void* to, uint64_t n) -> int64_t {
+            auto* r = static_cast<Reader*> (s->ctx);
+            const size_t k = std::min<size_t> ((size_t) n, r->v->size() - r->at);
+            std::memcpy (to, r->v->data() + r->at, k);
+            r->at += k;
+            return (int64_t) k;
+        } };
+        CHECK (a.state->load (a.plugin, &is));
+        const double expected = 0.5 + (std::log2 (130.0 / 430.5) + 5.3 * 0.35) / 7.0; // 469 Hz nominal, as it was
+        CHECK (std::fabs (a.value ("Cutoff") - expected) < 1e-4 && std::fabs (a.value ("Cutoff") - 0.518) < 0.002);
+        // A state saved now loads as it was saved.
+        std::vector<uint8_t> saved;
+        clap_ostream os { &saved, [] (const clap_ostream* s, const void* d, uint64_t n) -> int64_t {
+            auto* v = static_cast<std::vector<uint8_t>*> (s->ctx);
+            v->insert (v->end(), (const uint8_t*) d, (const uint8_t*) d + n);
+            return (int64_t) n;
+        } };
+        CHECK (a.state->save (a.plugin, &os));
+        Instance b;
+        Reader again { &saved, 0 };
+        is.ctx = &again;
+        CHECK (b.state->load (b.plugin, &is) && b.value ("Cutoff") == a.value ("Cutoff"));
+    }
+    // Twin Peak's Cutoff reading follows its lower peak smoothly, whichever peak is taller. (From 5 % of Resonance:
+    // under it the knob's square-root taper itself moves the feedback fastest, and every filter's reading with it.)
+    {
+        double worst = 0.0;
+        for (float spread : { 0.5f, 0.75f, 0.9f, 1.5f, 3.0f })
+        {
+            float last = tbmpc::cutoffEdgeRatio (tbmpc::filterTwinPeak, 0.05f, spread);
+            for (int i = 11; i <= 200; ++i)
+            {
+                const float ratio = tbmpc::cutoffEdgeRatio (tbmpc::filterTwinPeak, (float) i / 200.0f, spread);
+                worst = std::max (worst, (double) std::fabs (std::log2 (ratio / last)));
+                CHECK (ratio < 1.05f); // at or under the lower peak, never past it into the band
+                last = ratio;
+            }
+        }
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug twin peak reading: largest jump %.3f octaves a 0.5 %% turn\n", worst);
+        CHECK (worst < 0.1);
+    }
+    // Twin Peak at the top: the band stays open, so an accent (opening the filter further) is still the louder.
+    {
+        auto stopped = [] (uint64_t) { return Transport { false, 120.0, 0.0 }; };
+        auto note = [&] (double velocity) {
+            Instance a;
+            a.setup ({ { "Mode", 1.0 }, { "Filter", 1.0 }, { "Cutoff", 1.0 }, { "Env Mod", 0.5 }, { "Accent", 1.0 }, { "Resonance", 0.5 } });
+            std::vector<float> l, r;
+            a.render (2400, 128, l, r, stopped, [&] (uint64_t at, uint32_t, Events& e) { if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 36, velocity); });
+            double s = 0;
+            for (float v : l) s += (double) v * v;
+            return std::sqrt (s / (double) l.size());
+        };
+        const double plain = note (0.6), accented = note (1.0);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug twin peak at the top: plain %.4f, accented %.4f\n", plain, accented);
+        CHECK (accented > plain);
+    }
+    // Typed as "60 ms", Slide Time is its default exactly (the 303's glide, to the bit).
+    {
+        Instance a;
+        CHECK (a.valueOf ("Slide Time", "60 ms") == a.value ("Slide Time"));
+    }
+}
+
 int main (int argc, char** argv)
 {
     if (argc < 3)
@@ -1287,6 +1656,10 @@ int main (int argc, char** argv)
     testSeedBack();
     testNotes();
     testGateAndMutate();
+    testDriveSlideAccentDecay();
+    testFilters();
+    testScreen (argv[2]);
+    testReviewFixes();
     testBendAndWheel();
     testExtremes();
     demos (argv[2]);

@@ -17,8 +17,11 @@ host transport ──clock (Clock Div)──► TB-3PO ──pitch CV (with its 
                ──reset (Reset)─────►        ──gate (3 V; 5 V = accent)──► MEG, VEG, accent
 MIDI note ──transpose (as CV 1)───►
 
-VCO ──► 4-pole diode ladder (cutoff: Cutoff, Env Mod x MEG, accent sweep) ──► VCA (VEG + accent) ──► Volume ──► out
+VCO ──► Filter: 303 diode ladder / Twin Peak / 18 dB (cutoff: Cutoff, Env Mod x MEG, accent sweep)
+    ──► VCA (VEG + accent) ──► Drive ──► Volume ──► out
 ```
+
+On the MPC it draws its own page on the screen (see [The screen](#the-screen)).
 
 ## Controls
 
@@ -29,17 +32,46 @@ In the order Melodee's Edit page lists them, three to a page.
 | Control | Range | What it does |
 |---|---|---|
 | Tuning | ±12 semitones | The VCO's pitch. 0 V from the sequencer is C2 (65.4 Hz). |
-| Cutoff | 130 Hz – 5.1 kHz | The diode ladder's cutoff before the envelope and accent open it. |
-| Resonance | 0 – 100 % | The ladder's feedback, up to just short of self-oscillation; the passband thins (about -6 dB) as on a 303. It also slows the accent sweep. |
+| Cutoff | 7 octaves | The filter's cutoff before the envelope and accent open it, calibrated as the 303's service notes set the 303's: at its middle, with Resonance full, the resonant peak is at 500 Hz, in each filter. It reads what you hear (see [Filter](#filter)), so its text moves with Resonance and Filter. |
+| Resonance | 0 – 100 % | The filter's feedback: the 303's and Twin Peak's up to just short of self-oscillation, 18 dB's into it at the top (from 86 %); the passband thins (about -6 dB) as on a 303. It also slows the accent sweep. |
 | Env Mod | 0 – 100 % | How far the MEG opens the filter (up to 4.5 octaves) and how far it lowers the cutoff's floor (up to 1.3 octaves), as on the 303. |
-| Decay | 200 ms – 2 s | The MEG's decay (to -40 dB). An accented step always takes the shortest. |
+| Decay | 200 ms – 2 s | The MEG's decay (to -40 dB). An accented step takes Accent Decay's (by default the shortest, as on the 303). |
 | Accent | 0 – 100 % | How much an accented step (TB-3PO's 5 V gate) lifts the VCA (up to +7 dB) and opens the filter through the accent sweep. Accents in a row at high resonance build up. |
 | Waveform | Saw / Square | |
 | Volume | 0 – 100 % | |
-| Slide | TB-3PO / 303 | **TB-3PO**: the applet's slide as the module plays it (see below). **303**: a fixed-time glide both ways (time constant 20 ms, there in about 60 ms). |
+| Slide | TB-3PO / 303 | **TB-3PO**: the applet's slide as the module plays it (see below). **303**: a glide both ways, as long as Slide Time. |
+| Slide Time | 15 – 600 ms | — (new): the 303 glide's time to arrive (95 %), for Slide: 303 and the glides of Mode: Notes. 60 ms (a time constant of 20 ms) is the 303's and the default. The applet's slide keeps its own speed. |
+| Accent Decay | 200 ms – 2 s | — (new): the MEG's decay on an accented step. Its default, the shortest, is the 303's, whose accented steps always take it; longer lets an accent's sweep hang. |
+| Drive | 0 – 100 % | — (new): after the VCA, a soft clipper driven up to +30 dB, anti-aliased (first-order antiderivative). Its level is made up so a playing pattern stays within about -2 to +3 dB of the dry voice; a held, dark note (few harmonics of its own) still grows louder as it gains them, up to about +12 dB. 0 is no drive at all. |
+| Filter | 303 / Twin Peak / 18 dB | — (new): see [Filter](#filter). |
+| Peak Spread | 0.5 – 4 octaves | — (new): Twin Peak's upper peak, this far over the lower (Cutoff's). |
 
 The VCA's own envelope is fixed, as on the 303: it opens in 1 ms, decays slowly while the gate is held and closes
 in a few ms when the gate shuts.
+
+### Filter
+
+- **303**: the 303's 4-pole diode ladder (as before). Its stages are coupled, so with Resonance at 0 its passband
+  ends at about a ninth of its nominal frequency (an octave or so of 6 dB/octave slope first); from about 10 %
+  Resonance on, the feedback flattens it out close to the resonant peak. Its range is 38 Hz – 4.9 kHz nominal: the
+  top where it was before the calibration, more room at the bottom. (The presets kept their sound: their Cutoff
+  moved to where the same filter now sits. So do projects saved by 0.1 - 0.3: their Cutoff is moved as they load. A
+  host's automation of Cutoff recorded before 0.4 is not, and plays about an octave darker.)
+- **Twin Peak**: two 4-pole transistor-style ladders on the same input, each with its own feedback and clip, the
+  lower subtracted from the upper, after Rob Hordijk's TwinPeak arrangement. Below both they cancel; between them the
+  band passes, a resonant peak at each edge (Cutoff the lower, Peak Spread the upper); above, 24 dB/octave. At the
+  very top the lower peak stops half an octave under the upper's ceiling, so the band never closes. Vowel-like
+  with resonance, thin in the bass by design. About as loud as the 303 filter (-1.6 dB on the tests' pattern).
+- **18 dB**: three equal stages in a loop, the 18 dB/octave ladder of acid filters such as Doepfer's A-103. Brighter
+  than the diode ladder with Resonance low, and it self-oscillates at the top of Resonance (from 86 %), at about
+  the peak's pitch.
+
+Calibration: the 303's service notes ask for the resonance to sit at about 500 Hz with Cutoff at its middle and
+Resonance full. Each filter is placed so (Env Mod at 0; the tests play C1 and find the strongest harmonic at 490 Hz,
+the nearest to 500 of C1's, in all three). Cutoff's text is the frequency you hear as the edge, worked out from the
+filter's response with Resonance as it is and Env Mod at 0: the top of the passband (3 dB under its highest point)
+for 303 and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0 a 303 Cutoff at its middle reads
+51 Hz, at 60 % 490 Hz. (Env Mod lowers the floor further, as on the 303; the mod wheel raises it.)
 
 ### TB-3PO
 
@@ -120,6 +152,23 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 - **Root keeps its knob.** The applet moves its root setting into a shorter scale's range; here the knob stays and
   the root used is limited.
 
+## The screen
+
+In Melodee (melodee-hdslave with its plug-in screen), the plug-in draws its own page in place of the parameter list:
+
+- **PATTERN**, TB-3PO's own screen: the seed in hex, locked or random, the density, scale, root and octave, and the
+  pattern (a gated step a bar as high as its pitch, accents bright, slides joined to the next step, the step playing
+  lit). The wheel dials the seed and locks it, so the pattern you dial is kept; it plays from the next clock (until
+  then the seed shows pale, marked NEXT, over the pattern still playing); Push is Regen; Shift + Push is Seed Back.
+  K1-K3: Cutoff, Resonance, Env Mod.
+- **VOICE** and **TONE**: the voice's knobs, beside the filter's live response (Cutoff's reading marked).
+- **TB-3PO** and **CLOCK**: the sequencer's, beside the pattern.
+
+On a list the controls are hdslave Machine's: the wheel moves a row; Push edits it (the wheel then changes it: a
+choice a step, a knob 1/128, 1/1024 with Shift; Push again leaves), or presses a button; Minus / Plus change group
+(while editing, a choice or a whole number a step, a knob a sixteenth of its range); K1-K3 turn the cursor's row and the two under it, with Melodee's takeover
+(a hollow mark shows where to move a pot). Hold Shift for these. Another host never asks for the page.
+
 ## Presets
 
 | Preset | Seed | Patch |
@@ -139,9 +188,11 @@ Instructions a 128-frame block (48 kHz), counted by callgrind (`tools/bench.sh`)
 
 | Case | Instructions | Share of a block on one A55 core |
 |---|---|---|
-| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 25,988 | 0.54 % |
-| Typical: the default patch | 16,460 | 0.34 % |
-| Stopped | 567 | 0.01 % |
+| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 27,780 | 0.58 % |
+| The same through Twin Peak (two ladders), Drive full | 37,150 | 0.77 % |
+| The same through 18 dB, Drive full | 27,590 | 0.57 % |
+| Typical: the default patch | 17,938 | 0.37 % |
+| Stopped | 612 | 0.01 % |
 
 The voice runs at the host's rate. A sounding sample costs one exp2 for the cutoff and one division: the diode
 ladder's zero-delay solve has five denominators that are polynomials in the cutoff, so their reciprocals come from
@@ -183,10 +234,16 @@ statically and needs only the MPC's libc and libm.
   note, the accent at velocity 100, TB-3PO silent, a switch back), Gate (20 and 90 %), Mutate (each step from the new
   seed's pattern or the old one's, as the new seed picks; 0 and 100 % whole; Locked unchanged), pitch bend and the mod
   wheel (the same sound as Tuning and Cutoff turned as far; all notes off), transposing by MIDI note and by knob, the accent,
-  Cutoff, both slides, bounded output at random settings, and the demo renders of the presets.
-- `tests/fingerprint.cpp` renders 49 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
+  Cutoff, both slides, Drive (brighter as it turns, its level within -3 .. +6 dB of the dry voice), Slide Time (15 ms
+  there, 600 ms under half way, 100 ms on), Accent Decay, the filters (the 500 Hz calibration in each, Twin Peak's band,
+  their levels, Cutoff's text by Resonance and Filter and the host asked to read it again), the screen's page (it
+  draws, its controls set the values the host then hears, its buttons press; pictures in `build/screen-*.png`), bounded
+  output at random settings, and the demo renders of the presets.
+- `tests/fingerprint.cpp` renders 72 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
-  MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel), every seed locked,
+  MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and
+  switches between them, Twin Peak's spread moving, 18 dB ringing, Slide Time, Accent Decay, random 0.4 patches), every
+  seed locked,
   and hashes every output sample's bits against `tests/fingerprint.txt`: work meant to keep the sound, such as a
   speed-up, must leave every hash as it is. A change meant to change the sound updates them with
   `make fingerprint-update` (inside the build image). The hashes hold for Melodee's build image and these flags.
@@ -196,7 +253,10 @@ statically and needs only the MPC's libc and libm.
 - TB-3PO: Logarhythm, for the Hemisphere Suite (Benisphere Suite), MIT license.
 - The quantizer and its scales: Emilie Gillet (Mutable Instruments Braids), re-implemented by Bryan Head; the
   Hemisphere framework: Jason Justian. MIT license; see `licenses/MIT-oc-firmware.txt`.
-- The diode ladder's linear model: Vadim Zavalishin, *The Art of VA Filter Design*.
+- The diode ladder's linear model and the zero-delay ladders: Vadim Zavalishin, *The Art of VA Filter Design*.
+- The screen's type: Departure Mono, copyright 2022–2024 Helena Zhang, SIL Open Font License 1.1
+  (`licenses/OFL-departure-mono.txt`); its glyphs are rasterized into `src/ui/font.h`. The screen extension's header,
+  `src/melodee_screen.h`, is melodee-hdslave's, MIT.
 - CLAP headers: MIT license, `third_party/clap/LICENSE`.
 
 TB-303 is a trademark of Roland Corporation and MPC of inMusic Brands; this project is not affiliated with either.
