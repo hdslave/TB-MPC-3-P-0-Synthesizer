@@ -56,6 +56,14 @@ clap_host host {
 struct Events
 {
     struct Any { union { clap_event_header header; clap_event_param_value param; clap_event_note note; clap_event_midi midi; }; };
+    void midiMessage (uint32_t time, uint8_t status, uint8_t data1, uint8_t data2)
+    {
+        Any a {};
+        a.midi.header = { sizeof (clap_event_midi), time, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, 0 };
+        a.midi.port_index = 0;
+        a.midi.data[0] = status, a.midi.data[1] = data1, a.midi.data[2] = data2;
+        list.push_back (a);
+    }
     std::vector<Any> list;
     clap_input_events in { this, [] (const clap_input_events* e) { return (uint32_t) static_cast<const Events*> (e->ctx)->list.size(); },
                            [] (const clap_input_events* e, uint32_t i) { return &static_cast<const Events*> (e->ctx)->list[i].header; } };
@@ -359,7 +367,7 @@ void testParameters()
 {
     Instance a;
     const uint32_t count = a.params->count (a.plugin);
-    CHECK (count == 23);
+    CHECK (count == 25);
     std::map<clap_id, int> seen;
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -376,7 +384,7 @@ void testParameters()
         CHECK (std::fabs (back - v) <= 0.02 * (info.max_value - info.min_value) + 1e-9);
     }
     for (const char* name : { "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent", "Waveform", "Volume", "Slide", "Seed Mode",
-                              "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset", "Mode", "Seed Back", "Swing" })
+                              "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset", "Mode", "Seed Back", "Swing", "Gate", "Mutate" })
         CHECK (a.ids.count (name) == 1);
     // The seed reads as the module shows it, four hex digits; density as -7..+7; the applet's first scale.
     char text[64] = {};
@@ -1003,6 +1011,147 @@ void testNotes()
     CHECK (peak (48000, 96000) > 0.01f);
 }
 
+void testGateAndMutate()
+{
+    // Gate 20 %: plain notes sound until a fifth of the step and are silent well before the next; 90 %: until nine
+    // tenths (sixteenths at 120 BPM: 6,000 frames).
+    for (double gate : { 0.2, 0.9 })
+    {
+        Instance b;
+        b.setup ({ { "Seed Mode", 1.0 }, { "Seed", 0x303 }, { "Density", -7 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 },
+                   { "Accent", 0.0 }, { "Gate", gate } });
+        std::vector<float> l, r;
+        b.render (48000 * 4, 128, l, r, [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); });
+        tbmpc::Tb3po t;
+        t.start (1);
+        t.setDensity (0);
+        t.setSeed (0x303);
+        t.setLocked (true);
+        t.reset (0);
+        auto peak = [&] (long from, long to) { float m = 0; for (long i = from; i < to; ++i) m = std::max (m, std::fabs (l[(size_t) i])); return m; };
+        int plain = 0;
+        for (int k = 0; k < 30; ++k)
+        {
+            const int prev = t.currentStep();
+            t.clock();
+            if (k < 1 || t.slid (t.currentStep()) || t.slid (prev))
+                continue;
+            const long at = k * 6000, open = (long) (6000 * gate);
+            CHECK (peak (at + open - 300, at + open - 10) > 0.01f);
+            if (gate < 0.5)
+                CHECK (peak (at + open + 2400, at + 5990) < 1e-4f);
+            ++plain;
+        }
+        CHECK (plain >= 5);
+    }
+    // Mutate on the sequencer itself: a Random reset with Mutate takes each step from the new seed's pattern or keeps
+    // the old one's, as the new seed's own pick says; 0 % and 100 % are the new pattern whole; Locked changes nothing.
+    auto same = [] (const tbmpc::Tb3po& a, int sa, const tbmpc::Tb3po& b, int sb) {
+        return a.note (sa) == b.note (sb) && a.gated (sa) == b.gated (sb) && a.slid (sa) == b.slid (sb) && a.accented (sa) == b.accented (sb)
+               && a.octaveUp (sa) == b.octaveUp (sb) && a.octaveDown (sa) == b.octaveDown (sb);
+    };
+    double taken = 0.0;
+    int trials = 0;
+    bool exact = true, whole = true, locked = true;
+    for (uint32_t trial = 0; trial < 200; ++trial)
+    {
+        const float mutate = trial < 100 ? 0.25f : 0.6f;
+        tbmpc::Tb3po m;
+        m.start (1);
+        m.setSeed ((uint16_t) (trial * 977 + 3));
+        m.setLocked (true);
+        m.reset (0);
+        tbmpc::Tb3po old = m;
+        m.setLocked (false);
+        m.reset (trial * 7919 + 11, mutate);
+        tbmpc::Tb3po fresh;
+        fresh.start (1);
+        fresh.setSeed (m.currentSeed());
+        fresh.setLocked (true);
+        fresh.reset (0);
+        tbmpc::TeensyRandom pick;
+        pick.randomSeed ((uint32_t) m.currentSeed() + 5u);
+        int fromNew = 0;
+        for (int s = 0; s < 32; ++s)
+        {
+            const bool takesNew = pick.between (0, 1000) < (int) std::lround (mutate * 1000.0f);
+            exact &= takesNew ? same (m, s, fresh, s) : same (m, s, old, s);
+            fromNew += takesNew;
+        }
+        if (trial < 100)
+            taken += fromNew / 32.0, ++trials;
+        // 0 % and 100 %: the new seed's pattern, whole.
+        for (float all : { 0.0f, 1.0f })
+        {
+            tbmpc::Tb3po w = old;
+            w.reset (trial * 7919 + 11, all);
+            tbmpc::Tb3po f;
+            f.start (1);
+            f.setSeed (w.currentSeed());
+            f.setLocked (true);
+            f.reset (0);
+            for (int s = 0; s < 32; ++s)
+                whole &= same (w, s, f, s);
+        }
+        // Locked: the same pattern again, whatever Mutate says.
+        tbmpc::Tb3po k = old;
+        k.setLocked (true);
+        k.reset (trial * 31 + 1, 0.5f);
+        for (int s = 0; s < 32; ++s)
+            locked &= same (k, s, old, s);
+    }
+    CHECK (exact && whole && locked);
+    CHECK (std::fabs (taken / trials - 0.25) < 0.05);
+}
+
+void testBendAndWheel()
+{
+    // Mode: Notes, a clean saw on C3 (130.8 Hz). Pitch bend and the mod wheel do what Tuning and Cutoff do: full bend
+    // up (16383) is Tuning at +1.99976 semitones, the wheel at 127 is Cutoff 3 octaves up (of its 5.3), to the bit
+    // once they have eased in (the note comes after). All notes off (CC 123) closes the gate.
+    auto stopped = [] (uint64_t) { return Transport { false, 120.0, 0.0 }; };
+    auto render = [&] (std::vector<std::pair<std::string, double>> extra, uint8_t status, uint8_t d1, uint8_t d2) {
+        Instance a;
+        std::vector<std::pair<std::string, double>> v { { "Mode", 1.0 }, { "Cutoff", 0.1 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 }, { "Accent", 0.0 } };
+        v.insert (v.end(), extra.begin(), extra.end());
+        a.setup (v);
+        std::vector<float> l, r;
+        a.render (48000, 128, l, r, stopped, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0 && status != 0) e.midiMessage (0, status, d1, d2);
+            if (at == 128 * 40) e.note (0, CLAP_EVENT_NOTE_ON, 48, 0.6);
+        });
+        return l;
+    };
+    const auto bent = render ({}, 0xe0, 0x7f, 0x7f), tuned = render ({ { "Tuning", 8191.0 * 2.0 / 8192.0 } }, 0, 0, 0);
+    const auto wheeled = render ({}, 0xb0, 1, 127), opened = render ({ { "Cutoff", 0.1 + 3.0 / 5.3 } }, 0, 0, 0);
+    const auto plain = render ({}, 0, 0, 0);
+    auto rmsDiff = [] (const std::vector<float>& a, const std::vector<float>& b) {
+        double d = 0, e = 0;
+        for (size_t i = 0; i < a.size(); ++i) d += (double) (a[i] - b[i]) * (a[i] - b[i]), e += (double) b[i] * b[i];
+        return std::sqrt (d / (e + 1e-30));
+    };
+    if (std::getenv ("TBMPC_DEBUG"))
+        std::printf ("debug bend/wheel: %.6f %.6f against plain %.3f %.3f\n", rmsDiff (bent, tuned), rmsDiff (wheeled, opened), rmsDiff (bent, plain), rmsDiff (wheeled, plain));
+    CHECK (rmsDiff (bent, tuned) < 1e-4 && rmsDiff (wheeled, opened) < 1e-4);
+    CHECK (rmsDiff (bent, plain) > 0.1 && rmsDiff (wheeled, plain) > 0.1);
+    // Bent while the note plays: its pitch moves (130.8 -> 146.8 Hz).
+    auto hz = [] (const std::vector<float>& x, size_t from, size_t to) { return crossings (x, from, to) * 48000.0 / (double) (to - from); };
+    std::vector<float> l, r;
+    Instance a;
+    a.setup ({ { "Mode", 1.0 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 }, { "Accent", 0.0 } });
+    a.render (96000, 128, l, r, stopped, [] (uint64_t at, uint32_t, Events& e) {
+        if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 48, 0.6);
+        if (at == 128 * 200) e.midiMessage (0, 0xe0, 0x7f, 0x7f);
+        if (at == 128 * 600) e.midiMessage (0, 0xb0, 123, 0);
+    });
+    CHECK (std::fabs (hz (l, 1000, 25000) - 130.8) < 2.0);
+    CHECK (std::fabs (hz (l, 28000, 76000) - 146.8) < 2.0);
+    float after = 0.0f;
+    for (size_t i = 128 * 600 + 2400; i < l.size(); ++i)
+        after = std::max (after, std::fabs (l[i]));
+    CHECK (after < 1e-4f);
+}
+
 void testExtremes()
 {
     // Random settings, every one in its range, at a fast tempo: the output stays a number and within full scale.
@@ -1137,6 +1286,8 @@ int main (int argc, char** argv)
     testSwing();
     testSeedBack();
     testNotes();
+    testGateAndMutate();
+    testBendAndWheel();
     testExtremes();
     demos (argv[2]);
     entry->deinit();

@@ -167,6 +167,8 @@ void handle (Plugin& p, const clap_event_header* e, const clap_output_events* ou
                 p.engine.note (key, (float) velocity / 127.0f);
             else if (status == 0x80 || status == 0x90)
                 p.engine.noteOff (key);
+            else
+                p.engine.midi (status, key, velocity); // pitch bend, the mod wheel, all notes off
             break;
         }
         default: break;

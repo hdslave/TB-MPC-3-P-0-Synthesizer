@@ -13,6 +13,8 @@
 //   Swing: the second clock of each pair comes later, at Swing's share of the pair, as an MPC's swing does; a
 //     swung step's gate is half of its own length.
 //   Seed Back: the seeds whose patterns played, the last 16, to go back to; going back locks the seed.
+//   Gate: the half-step timer's share of the step (half by default, as the applet). Mutate: see Tb3po::reset.
+//   Pitch bend and the mod wheel: they bend the voice and open its filter, in either mode.
 //   Mode: Notes: MIDI notes play the voice instead of TB-3PO (whose count goes on, unheard, so switching back lands
 //     in time): a note over a held one glides to it with the 303's glide and keeps the gate open, a velocity of 100
 //     or more accents, and letting go of the newest note goes back to the one still held.
@@ -101,7 +103,9 @@ public:
                 break;
             case ParamId::regen:
             case ParamId::seedBack:
-            case ParamId::swing: break;
+            case ParamId::swing:
+            case ParamId::gate:
+            case ParamId::mutate: break;
             default: voice.set (id, v); break;
         }
     }
@@ -138,6 +142,20 @@ public:
         else
             voice.pitch (cv, cv);
         voice.gate (true, heldAccent[held - 1]);
+    }
+
+    // A MIDI message other than a note: pitch bend (+-2 semitones), the mod wheel (CC 1), all notes off (CC 120, 123).
+    void midi (int status, int data1, int data2)
+    {
+        if (status == 0xe0)
+            voice.bendTo ((float) (((data2 << 7) | data1) - 8192) * (bendSemitones / 8192.0f));
+        else if (status == 0xb0 && data1 == 1)
+            voice.modWheelTo ((float) data2 / 127.0f);
+        else if (status == 0xb0 && (data1 == 120 || data1 == 123) && notesMode && held > 0)
+        {
+            held = 0;
+            voice.gate (false, false);
+        }
     }
 
     void noteOff (int key)
@@ -333,7 +351,7 @@ private:
     void resetPulse()
     {
         const uint16_t before = seq.currentSeed();
-        seq.reset (entropy());
+        seq.reset (entropy(), knob[ParamId::mutate]);
         if (seq.currentSeed() != before)
             changed |= 1u << 0;
     }
@@ -353,7 +371,7 @@ private:
             gateOffPending = true;
             // Half the step: at Swing 50 % half a grid, as before Swing; swung, half of this step's own length.
             const double length = swung() ? clockBeat (k + 1) - clockBeat (k) : stepBeats();
-            gateOffIn = (uint32_t) std::max (1.0, std::floor (0.5 * length / perFrame));
+            gateOffIn = (uint32_t) std::max (1.0, std::floor ((double) knob[ParamId::gate] * length / perFrame));
         }
         TBMPC_TRACE (0);
     }

@@ -137,6 +137,33 @@ std::vector<Scenario> scenarios()
         noteBass.events.push_back ({ on + (i == 2 || i == 5 ? 13000 : 6000), Event::noteOff, "", (double) line[i] });
     }
     list.push_back (noteBass);
+    // 0.3: Gate short and long; pitch bend and the mod wheel in both modes. (Mutate acts only on Random resets,
+    // whose seeds come from the clock: tests/host.cpp checks it on the sequencer itself.)
+    for (double gate : { 0.15, 0.9 })
+    {
+        Scenario s;
+        s.name = "gate-" + std::to_string ((int) std::lround (gate * 100));
+        s.preset = "acid-line";
+        s.values = { { "Gate", gate } };
+        s.seconds = 5.0;
+        list.push_back (s);
+    }
+    for (bool notes : { true, false })
+    {
+        Scenario s;
+        s.name = std::string ("bend-wheel-") + (notes ? "notes" : "tb-3po");
+        s.preset = notes ? "note-bass" : "acid-line";
+        s.seconds = 4.0;
+        if (notes)
+            s.events = { { 2000, Event::noteOn, "", 43.0 }, { 150000, Event::noteOff, "", 43.0 } };
+        for (int i = 0; i < 24; ++i) // a bend up and back down, the wheel up and down
+        {
+            const int bendValue = 8192 + (int) (8191.0 * std::sin (i * 0.4)), wheel = (int) (63.5 + 63.5 * std::sin (i * 0.27));
+            s.events.push_back ({ (uint64_t) (6000 + i * 6000), Event::midi, "", (double) ((0xe0u << 16) | ((uint32_t) (bendValue & 0x7f) << 8) | (uint32_t) (bendValue >> 7)) });
+            s.events.push_back ({ (uint64_t) (9000 + i * 6000), Event::midi, "", (double) ((0xb0u << 16) | (1u << 8) | (uint32_t) wheel) });
+        }
+        list.push_back (s);
+    }
     return list;
 }
 } // namespace

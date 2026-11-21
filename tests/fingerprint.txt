@@ -43,3 +43,7 @@ notes-playing 8e33b7c596532005
 notes-stopped 8e33b7c596532005
 mode-switch 9fbc2eadebb97fa5
 preset-note-bass f6428d06b4aff585
+gate-15 ef8ddf3f5a60cde5
+gate-90 7a99311a40672929
+bend-wheel-notes fd92557182b5f54d
+bend-wheel-tb-3po 3b3d0e2b5ed8138d

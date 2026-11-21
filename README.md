@@ -49,15 +49,20 @@ in a few ms when the gate shuts.
 | Seed Mode | Random / Locked | The die / the lock. **Random**: every reset picks a new seed (a new pattern); the Seed shows it. **Locked**: the seed stays. |
 | Seed | 0000 – ffff | The 16-bit seed, shown in hex as on the module. A new seed plays from the next clock. |
 | Regen | button | Turning the encoder past the die or the lock: a reset now. |
+| Mutate | 0 – 100 % | — (new): at a reset that brings a new seed (Seed Mode: Random), only this share of the steps take the new seed's pattern; the rest keep the one playing, so the line changes a little each time. Which steps change comes from the new seed. 0 % is the applet. Seed and Seed Back give a seed's own pattern, not the mutated mix. |
 | Seed Back | button | — (new): back to the seed before, and Seed Mode to Locked so the next Play keeps it. It remembers the last 16 seeds whose patterns played (a knob turned through seeds remembers only the ones that played); press again to go further back. |
 | Density | -7 – +7 | Density. Its distance from 0 sets how many steps play (0: 10 %, ±7: all); left of +1, fewer different pitches and more repeated notes (-7: the root alone). |
 | Scale | 128 scales | The firmware's quantizer scales, from Semitone on (its four user scales and Off are left out). Starts on Gunakri, as the applet does. |
 | Root | C – B | The root, a step of the scale (a scale with fewer than 12 notes has that many roots). |
 | Octave | -3 – +3 | The octave offset (one span of the scale). |
 | Steps | 1 – 32 | The pattern's length. |
+| Gate | 10 – 95 % | — (new): how long a step's gate stays open, as a share of the step (50 %: the applet's half clock). |
 | Transpose | ±36 semitones | CV 1: added to the last MIDI note played (C4 plays the pattern as it is) and quantized to the scale from C, as the applet does with its transpose CV. |
 
 CV 2 (density) has no control of its own: a host's automation of Density does what it did.
+
+Pitch bend (±2 semitones) and the mod wheel (up to 3 octaves more cutoff) work in either mode: from a keyboard, or from
+the MPC's faders (Melodee's fader can send both to a plug-in track).
 
 ### The clock
 
@@ -175,11 +180,13 @@ statically and needs only the MPC's libc and libm.
   where the pattern puts it at several tempos and rates, gates half a step long, stop, restart and jumps, the same
   output for any block size, Random and Locked seeds and Regen, Seed Back (locked and random, twice, with nothing to go
   back to), Swing (notes and gate lengths), Mode: Notes (a note's pitch, a glide without a new note, back to a held
-  note, the accent at velocity 100, TB-3PO silent, a switch back), transposing by MIDI note and by knob, the accent,
+  note, the accent at velocity 100, TB-3PO silent, a switch back), Gate (20 and 90 %), Mutate (each step from the new
+  seed's pattern or the old one's, as the new seed picks; 0 and 100 % whole; Locked unchanged), pitch bend and the mod
+  wheel (the same sound as Tuning and Cutoff turned as far; all notes off), transposing by MIDI note and by knob, the accent,
   Cutoff, both slides, bounded output at random settings, and the demo renders of the presets.
-- `tests/fingerprint.cpp` renders 45 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
+- `tests/fingerprint.cpp` renders 49 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
-  MIDI line in Mode: Notes and a switch between the modes), every seed locked,
+  MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel), every seed locked,
   and hashes every output sample's bits against `tests/fingerprint.txt`: work meant to keep the sound, such as a
   speed-up, must leave every hash as it is. A change meant to change the sound updates them with
   `make fingerprint-update` (inside the build image). The hashes hold for Melodee's build image and these flags.

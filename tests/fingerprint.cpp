@@ -29,9 +29,9 @@ const clap_host host { CLAP_VERSION, nullptr, "fingerprint", "", "", "1", [] (co
 struct Event
 {
     uint64_t frame;
-    enum { param, noteOn, noteOff } kind;
+    enum { param, noteOn, noteOff, midi } kind;
     std::string name; // the parameter's
-    double value;     // its value, or the note's key
+    double value;     // its value, or the note's key, or a MIDI message's three bytes (status << 16 | data1 << 8 | data2)
 };
 
 struct Scenario
@@ -80,6 +80,7 @@ uint64_t render (const Scenario& s)
     {
         std::vector<clap_event_param_value> params;
         std::vector<clap_event_note> notes;
+        std::vector<clap_event_midi> midis;
         std::vector<const clap_event_header*> order;
         clap_input_events events { this, [] (const clap_input_events* e) { return (uint32_t) static_cast<const In*> (e->ctx)->order.size(); },
                                    [] (const clap_input_events* e, uint32_t i) { return static_cast<const In*> (e->ctx)->order[i]; } };
@@ -105,6 +106,7 @@ uint64_t render (const Scenario& s)
         In in;
         in.params.reserve (s.values.size() + s.events.size());
         in.notes.reserve (s.events.size());
+        in.midis.reserve (s.events.size());
         if (at == 0)
             for (auto& [name, v] : s.values)
                 in.params.push_back (value (0, name, v));
@@ -114,6 +116,15 @@ uint64_t render (const Scenario& s)
                 const uint32_t t = (uint32_t) (e.frame - at);
                 if (e.kind == Event::param)
                     in.params.push_back (value (t, e.name, e.value));
+                else if (e.kind == Event::midi)
+                {
+                    clap_event_midi m {};
+                    m.header = { sizeof (m), t, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_MIDI, 0 };
+                    const auto bytes = (uint32_t) e.value;
+                    m.port_index = 0;
+                    m.data[0] = (uint8_t) (bytes >> 16), m.data[1] = (uint8_t) (bytes >> 8), m.data[2] = (uint8_t) bytes;
+                    in.midis.push_back (m);
+                }
                 else
                 {
                     clap_event_note note {};
@@ -125,6 +136,8 @@ uint64_t render (const Scenario& s)
         for (auto& p : in.params)
             in.order.push_back (&p.header);
         for (auto& p : in.notes)
+            in.order.push_back (&p.header);
+        for (auto& p : in.midis)
             in.order.push_back (&p.header);
         std::stable_sort (in.order.begin(), in.order.end(), [] (const clap_event_header* a, const clap_event_header* b) { return a->time < b->time; });
 

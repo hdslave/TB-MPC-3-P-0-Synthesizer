@@ -10,6 +10,8 @@
 
 #include "scales.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 
@@ -209,12 +211,43 @@ public:
     // --- Inputs ---
     // The Regen input (or the encoder turned past the die or the lock): a new seed unless it is locked, the pattern
     // made again from the seed, and back to step 0 (the next clock plays step 1).
-    void reset (uint32_t entropy)
+    //
+    // Mutate (not the applet's; 0 is the applet): with a new seed, only this share of the steps take the new seed's
+    // pattern and the rest keep the one playing, so a line changes a little at each reset. Which steps change comes
+    // from the new seed, so the same seeds give the same result.
+    void reset (uint32_t entropy, float mutate = 0.0f)
     {
-        if (! locked)
-            reseed (entropy);
+        if (locked || mutate <= 0.0f)
+        {
+            if (! locked)
+                reseed (entropy);
+            regenerate();
+            step = 0;
+            return;
+        }
+        const Pattern before = pattern();
+        reseed (entropy);
         regenerate();
+        TeensyRandom pick;
+        pick.randomSeed ((uint32_t) seed + 5u); // the applet seeds passes 1 to 4: this one is its own
+        const int threshold = (int) std::lround (mutate * 1000.0f);
+        for (int s = 0; s < maxSteps; ++s)
+            if (pick.between (0, 1000) >= threshold)
+                restoreStep (before, s);
         step = 0;
+    }
+
+    // One pattern's steps, to keep while another is made.
+    struct Pattern
+    {
+        uint32_t gates, slides, accents, octUps, octDowns;
+        uint8_t notes[maxSteps];
+    };
+    Pattern pattern() const
+    {
+        Pattern p { gates, slides, accents, octUps, octDowns, {} };
+        std::copy (notes, notes + maxSteps, p.notes);
+        return p;
     }
 
     // A clock: the pattern made again if what it is made from changed, then the next step.
@@ -296,6 +329,15 @@ private:
     }
 
     int nextStep (int s) const { return ++s >= numSteps ? 0 : s; }
+
+    void restoreStep (const Pattern& p, int s)
+    {
+        const uint32_t bit = 1u << s;
+        auto keep = [bit] (uint32_t now, uint32_t was) { return (now & ~bit) | (was & bit); };
+        gates = keep (gates, p.gates), slides = keep (slides, p.slides), accents = keep (accents, p.accents);
+        octUps = keep (octUps, p.octUps), octDowns = keep (octDowns, p.octDowns);
+        notes[s] = p.notes[s];
+    }
 
     void advance()
     {

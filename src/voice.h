@@ -116,6 +116,18 @@ public:
         tuneMoved = true;
     }
 
+    // Pitch bend (semitones) and the mod wheel (0..1), from the host's MIDI: eased in as the knobs are.
+    void bendTo (float semitones)
+    {
+        if (semitones != bend)
+            bend = semitones, dirty = true;
+    }
+    void modWheelTo (float amount)
+    {
+        if (amount != modWheel)
+            modWheel = amount, dirty = true;
+    }
+
     // A knob, from the next sample.
     void set (uint32_t id, float v)
     {
@@ -260,8 +272,10 @@ private:
     {
         // Env Mod: more sweep, and a lower floor under it.
         const float envMod = knob[ParamId::envMod];
-        target[tune] = knob[ParamId::tuning] * (1.0f / 12.0f);
-        target[cutBase] = std::log2 (cutoffLowHz) + knob[ParamId::cutoff] * cutoffOctaves - envMod * envModFloorOctaves + logPiOverRate;
+        // Tuning plus pitch bend; the cutoff's floor plus the mod wheel (both 0 until the host sends them).
+        target[tune] = knob[ParamId::tuning] * (1.0f / 12.0f) + bend * (1.0f / 12.0f);
+        target[cutBase] = std::log2 (cutoffLowHz) + knob[ParamId::cutoff] * cutoffOctaves - envMod * envModFloorOctaves + logPiOverRate
+                        + modWheel * modWheelOctaves;
         target[envDepth] = envMod * envModOctaves;
         // Resonance's taper: the diode ladder's peak rises over its passband only near the top of its feedback (by
         // (1 + k) / (18.4 - k)); a square root spreads that over the knob: +9 dB at 60 %, +14 dB at 80 %, +22 dB full.
@@ -411,7 +425,7 @@ private:
     float meg = 0.0f, veg = 0.0f, sweep = 0.0f;
     float megAttack = 0.0f, megDecay = 0.0f, decayKnob = 0.0f, accentDecay = 0.0f;
     float vegAttack = 0.0f, vegDecay = 0.0f, vegRelease = 0.0f, sweepCoeff = 0.0f, glideCoeff = 0.0f;
-    float pitchOct = 0.0f, targetOct = 0.0f;
+    float pitchOct = 0.0f, targetOct = 0.0f, bend = 0.0f, modWheel = 0.0f;
     double ticksPerFrame = 0.0;
     int32_t slideStartCv = 0, slideEndCv = 0;
     int64_t slideFrames = 0;
