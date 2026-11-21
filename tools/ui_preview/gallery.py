@@ -15,6 +15,7 @@ labels = {
     'shift': 'Shift', 'pickup': 'K2 pickup', 'track-coral': 'Coral  /  FF7A5C',
     'track-mint': 'Mint  /  46D9B0', 'track-violet': 'Violet  /  9D8CFF', 'track-yellow': 'Yellow  /  E8D94A',
     'dense-32': 'Microtonal phrase  /  32 steps', 'pending-notes': 'Pending seed  /  MIDI notes',
+    'awaiting-clock': 'Awaiting the first clock',
 }
 
 

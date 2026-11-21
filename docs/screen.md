@@ -1,10 +1,10 @@
 # TB-MPC-3-P-0 screen
 
-The PATTERN page opens directly on the score. The plot uses 314 × 150 native pixels of the 320 × 218 instrument canvas. All 16 or 32 steps share one left-to-right timeline. The ruler numbers every fourth step. A narrow citron playhead, a bright note and the numeric step counter track the clock.
+PATTERN opens with a melting yellow smiley in a silver and violet record groove. The full-width pitch roll below it uses 314 × 103 native pixels. All 16 or 32 steps share one timeline. The ruler numbers every fourth step. A yellow playhead and the numeric position follow the clock.
 
-Read pitch from the names on the left. Up to thirteen distinct semitone pitches get individual labelled rows. For denser or microtonal phrases, the axis switches to octaves, the heads follow the published CV, and a small label under each step spells its nearest semitone. Labels stagger on 32-step phrases. Zero CV is C2. A filled head opens the gate. A hollow head retains the pitch of a rest. ACC squares mark accents. A violet line connects the pitches of an outgoing slide. SLD arrows identify every slide, including the last step sliding back to the first.
+Up to eight distinct semitone pitches have labelled rows. Denser or microtonal phrases use an octave ruler with a compact note name for each step. The heads still follow the published CV. Labels stagger on 32-step phrases. Zero CV is C2. A filled mint head opens the gate. A hollow head marks the pitch of a rest. Pink pips mark accents. Pink connectors and orange SLD arrows follow outgoing slides, including the last step’s arrow back to the first.
 
-The four large digits below the score follow the seed dial. The adjoining readouts show lock state, transport, pattern position, division, scale, root, octave and density. The striped orbit signs this band during regular playback. Dialling ahead shows NEXT above the new seed and replaces the signature with PENDING and the published score’s seed. MIDI NOTES and SEQ MUTED share that space whenever the sequencer counts silently. Both messages fit together. An unpublished pattern displays “Awaiting clock”.
+The four large digits follow the seed dial. Beside them, the page shows transport, step, clock division, scale, root, octave and density. The GATE, ACC and SLD lamps show the current step’s flags during playback. Dialling ahead shows NEXT above the seed. PENDING and the published score’s seed take the place of the lamps. MIDI NOTES and SEQ MUTED share that space when the sequencer counts silently. Both messages fit together. An unpublished pattern displays “Awaiting clock”.
 
 ## Controls
 
@@ -24,9 +24,9 @@ VOICE and TONE plot the selected filter from 20 Hz to 20 kHz on a logarithmic ax
 
 ## Art and previews
 
-The acid studies explored a capsule, a liquid ripple and a prism. The finished layout puts the sequencer across the top of the display and reduces the selected striped-orbit artwork to a 48 × 27 signature. The original and its two-ink 96 × 55 proof are preserved. The plug-in draws the signature in citron on near-black. All type and art are sampled at build time. [Kernel](../assets/explore/acid/kernel-320.png) · [Ripple](../assets/explore/acid/ripple-320.png) · [Shard](../assets/explore/acid/shard-320.png) · [Original orbit](../assets/explore/acid/orbit-original.png) · [Panel proof](../assets/art/orbit.png) · [Credits](../THIRD_PARTY.md)
+PATTERN uses the yellow groove print. VOICE and TONE use its mint and lavender inks. TB-3PO has the clean pink checkerboard, and CLOCK uses the same plate in amber. Each 320 × 50 header is compiled at panel resolution with four bits per pixel. Page captions and hexadecimal digits use Barlow Condensed Bold Italic. The live readouts use Departure Mono. [Source art and prompts](../assets/explore/rave/prompts.md) · [Groove plate](../assets/art/groove-header.png) · [Checkerboard plate](../assets/art/checker-header.png) · [Credits](../THIRD_PARTY.md)
 
-The contact sheet covers 19 fixture states, including a dense 32-step phrase and a pending seed in MIDI Notes mode. Each state has native RGB, nearest-neighbour 3×, RGB565 and a 320 × 240 Edit composite. The strip follows steps 4–7. The 2× GIF follows one complete cycle. [Contact sheet](../assets/previews/contact-sheet-2x.png) · [Step strip](../assets/previews/step-advance-strip.png) · [16-step loop](../assets/previews/step-advance.gif)
+The contact sheet covers 20 fixture states, including a dense 32-step phrase, a pending seed in MIDI Notes mode, and the screen before the first clock. Each state has native RGB, nearest-neighbour 3×, RGB565 and a 320 × 240 Edit composite. The strip follows steps 4–7. The 2× GIF follows one complete cycle. [Contact sheet](../assets/previews/contact-sheet-2x.png) · [Step strip](../assets/previews/step-advance-strip.png) · [16-step loop](../assets/previews/step-advance.gif)
 
 From the checkout root, run the C++17 preview host on macOS. Rendering the gallery also uses Python with Pillow or the launcher's uv fallback.
 
@@ -66,36 +66,37 @@ Measured 2026-11-21. Each entry is the mean elapsed time for 2,000 calls to `upd
 
 | Operation | M4 Max, ms | Linux VM, ms |
 |---|---:|---:|
-| Full PATTERN, 16 steps | 0.023954 | 0.028999 |
-| Partial step, 16 steps | 0.015169 | 0.019926 |
-| Full PATTERN, 32 steps | 0.024979 | 0.031154 |
-| Partial step, 32 steps | 0.015606 | 0.020316 |
-| Full VOICE, Twin Peak | 0.032114 | 0.034311 |
-| Partial VOICE cursor move | 0.011007 | 0.013712 |
-| Full VOICE while Resonance changes | 0.034683 | 0.040773 |
-| Partial VOICE while Resonance changes | 0.028161 | 0.031330 |
-| Idle | 0.000024 | 0.000042 |
+| Full PATTERN, 16 steps | 0.025568 | 0.031122 |
+| Partial step, 16 steps | 0.012750 | 0.017174 |
+| Full PATTERN, 32 steps | 0.028370 | 0.034263 |
+| Partial step, 32 steps | 0.015660 | 0.018904 |
+| Full VOICE, Twin Peak | 0.033723 | 0.034502 |
+| Partial VOICE cursor move | 0.011232 | 0.012892 |
+| Full VOICE while Resonance changes | 0.036552 | 0.039810 |
+| Partial VOICE while Resonance changes | 0.027814 | 0.029297 |
+| Idle | 0.000020 | 0.000042 |
 
 Peak changed pixels between successive frames, counted on the plug-in canvas across a full cycle or a traversal of every list row. Both targets produced the same counts.
 
 | Change | Maximum pixels |
 |---|---:|
 | Idle | 0 |
-| 16-step advance, sequencer or Notes | 1,977 |
-| 32-step advance | 1,403 |
-| Dense microtonal 32-step advance | 1,461 |
+| 16-step advance | 2,009 |
+| 16-step advance in Notes mode | 1,319 |
+| 32-step advance | 1,704 |
+| Dense microtonal 32-step advance | 1,701 |
 | TB-3PO miniature advance | 855 |
 | CLOCK miniature advance | 832 |
-| VOICE cursor | 6,180 |
-| TONE cursor | 6,286 |
-| TB-3PO cursor | 6,272 |
-| CLOCK cursor | 6,106 |
+| VOICE cursor | 6,122 |
+| TONE cursor | 6,228 |
+| TB-3PO cursor | 6,214 |
+| CLOCK cursor | 6,048 |
 
 The paint code retains the last plug-in pixels separately from host overlays. For a clock advance, it compares the span covering the previous and current columns, including the overhang of the small pitch labels. A whole paint covers all 320 × 218 pixels and respects the host stride. Time alone leaves the canvas untouched.
 
-The Linux build passed 732,233 host checks including `testScreen`, 512 sequencer reference checks and all 74 sound fingerprints from main. The new arm64 CLAP and a build of the previous page from the same base (`3c8dc49`) both measure 264,728 bytes. Both targets passed the 19 image hashes, all sixteen hex glyphs in all four positions, input, bindings, allocations, lengths 0–32 and idle, stride and whole-paint checks. The tests also compare partial playhead jumps to whole redraws on both normal and microtonal phrases.
+The Linux build passed 732,233 host checks including `testScreen`, 512 sequencer reference checks and all 74 sound fingerprints from main. The arm64 CLAP measures 264,752 bytes, up 24 bytes from the 0.4.2 build. Both targets passed the 20 image hashes, all sixteen hex glyphs in all four positions, input, bindings, allocations, lengths 0–32 and idle, stride and whole-paint checks. The tests also compare partial playhead jumps to whole redraws on both normal and microtonal phrases.
 
-After RGB565 conversion the lowest contrast of the measured text inks against the page, cards, selected row and playhead backgrounds is 4.71:1. The body and compact note capitals are eight native pixels tall. Essential information clears the host’s top two and bottom three overlay rows.
+After RGB565 conversion, the muted note text on the playhead measures 4.84:1, selected row text 8.02:1 and pot tags 9.87:1. The body and compact note capitals are eight native pixels tall. Essential information clears the host’s top two and bottom three overlay rows.
 
 ## Engine handoff and hardware status
 

@@ -75,7 +75,7 @@ struct PitchAxis
 
 inline void notehead (const Raster& r, int mid, int y, bool gate, bool live, bool narrow)
 {
-    const auto c = live ? ink::live : (gate ? ink::paper : ink::muted);
+    const auto c = live ? ink::live : (gate ? ink::mint : ink::soft);
     if (narrow)
     {
         if (gate) r.box (mid - 1, y - 1, 4, 3, c);
@@ -91,7 +91,7 @@ inline void notehead (const Raster& r, int mid, int y, bool gate, bool live, boo
     {
         r.box (mid - 3, y - 1, 8, 1, c);
         r.box (mid - 5, y, 11, 2, c);
-        r.box (mid - 4, y + 2, 8, 1, live ? c : ink::soft);
+        r.box (mid - 4, y + 2, 8, 1, live ? c : ink::pink);
     }
     else
     {
@@ -110,16 +110,20 @@ inline void score (const Raster& r, const PatternView& v, const PitchAxis& axis,
                    bool playing)
 {
     const int count = stepCount (v), columns = count <= 16 ? 16 : 32;
-    const bool namedRows = axis.semitones && axis.count <= 13;
-    const int left = x + pitchGutter, width = w - pitchGutter, top = y + 14;
+    // Each named pitch needs its own eight-pixel cap and one row of leading.
+    const bool namedRows = axis.semitones && (axis.count - 1) * 9 <= h - 35;
+    const int left = x + pitchGutter, width = w - pitchGutter, top = y + 12;
     const int labelRows = columns / 16;
     const int labelSpace = namedRows ? 0 : 10 * labelRows + 2;
-    const int bottom = y + h - 27 - labelSpace;
+    const int bottom = y + h - 23 - labelSpace;
     const int acc = y + h - 18, slide = y + h - 8;
     r.box (x, y, w, h, ink::field);
     auto column = [&](int i) { return left + i * width / columns; };
     for (int i = 4; i < count; i += 8)
         r.box (column (i), y, column (std::min (i + 4, count)) - column (i), h, ink::alternate);
+    r.box (x, y, left - x - 1, h, ink::card);
+    r.box (left - 1, y, 1, h, ink::rule);
+    r.text (x + 3, y + 1, "CV", ink::orange);
     const int active = playing && v.running ? v.current : -1;
     if (active >= 0 && active < count)
     {
@@ -169,11 +173,11 @@ inline void score (const Raster& r, const PatternView& v, const PitchAxis& axis,
         const int dy = lines[i] - lines[i - 1], dx = to - from;
         const int span = std::max (dx, std::abs (dy));
         for (int j = 3; j <= span - 3; ++j)
-            r.dot (from + (j * dx + span / 2) / span, lines[i - 1] + j * dy / span, ink::slide);
+            r.dot (from + (j * dx + span / 2) / span, lines[i - 1] + j * dy / span, ink::pink);
     }
     r.box (left, acc - 3, column (count) - left, 1, ink::grid);
-    r.text (x + 2, acc, "ACC", ink::muted);
-    r.text (x + 2, slide, "SLD", ink::muted);
+    r.text (x + 2, acc, "ACC", ink::pink);
+    r.text (x + 2, slide, "SLD", ink::orange);
     for (int i = 0; i < count; ++i)
     {
         const int a = column (i), b = column (i + 1), mid = (a + b) / 2;
@@ -182,7 +186,8 @@ inline void score (const Raster& r, const PatternView& v, const PitchAxis& axis,
         if (i % 4 == 0)
         {
             char index[] = { char ('0' + (i + 1) / 10), char ('0' + (i + 1) % 10), 0 };
-            r.text (a + 1, y + 1, index, ink::muted);
+            r.text (a + 2, y + 1, index, ink::orange);
+            r.box (a + 1, y + 10, 12, 1, ink::grid);
             for (int j = top; j <= bottom; j += 5) r.dot (a, j, ink::rule);
         }
         if (!namedRows)
@@ -191,8 +196,13 @@ inline void score (const Raster& r, const PatternView& v, const PitchAxis& axis,
             pitchLabel (r, std::clamp (mid, left + 8, x + w - 8), acc - 10 - stagger, v.pitch[i], current ? ink::live : ink::muted);
         }
         notehead (r, mid, lines[i], (v.gates >> i) & 1, current, columns == 32);
-        const auto c = current ? ink::live : ink::soft;
-        if ((v.accents >> i) & 1) r.box (mid - 2, acc + 2, 4, 4, c);
+        const auto c = current ? ink::live : ink::orange;
+        if ((v.accents >> i) & 1)
+        {
+            const auto accent = current ? ink::live : ink::pink;
+            r.box (mid - 2, acc + 3, 5, 2, accent);
+            r.box (mid - 1, acc + 2, 3, 4, accent);
+        }
         else r.dot (mid, acc + 4, ink::rule);
         if ((v.slides >> i) & 1)
         {
@@ -213,7 +223,10 @@ inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w
     if (!n)
     {
         r.box (x, y, w, h, ink::field);
-        r.text (x + 6, y + h / 2 - 4, "Awaiting clock", ink::muted);
+        r.box (x + 4, y + h / 2 - 13, w - 8, 1, ink::grid);
+        r.box (x + 4, y + h / 2 + 13, w - 8, 1, ink::grid);
+        r.caution (x + 6, y + h / 2 - 4, 11, 8, ink::orange);
+        r.text (x + 21, y + h / 2 - 4, "Awaiting clock", ink::paper);
         return;
     }
     const PitchAxis axis (v);
@@ -227,16 +240,26 @@ inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w
     {
         const int a = x + i * w / columns, b = x + (i + 1) * w / columns;
         const bool current = playing && v.running && v.current == i;
-        const auto c = current ? ink::live : ink::soft;
+        const auto c = current ? ink::live : ink::mint;
         if (current) r.box (a, y, b - a, h, ink::cursor);
         if (i % 4 == 0) r.box (a, y, 1, h - 5, ink::grid);
         const int line = axis.linear (v.pitch[i], y + 3, y + h - 8);
         if ((v.gates >> i) & 1) r.box (a + 1, line - 1, std::max (1,b - a - 2), 3, c);
         else r.dot ((a + b) / 2, line, c);
-        if ((v.accents >> i) & 1) r.dot ((a + b) / 2, y + h - 4, c);
-        if ((v.slides >> i) & 1) r.box ((a + b) / 2, y + h - 2, std::max (1,(b - a) / 2), 1, c);
+        if ((v.accents >> i) & 1) r.dot ((a + b) / 2, y + h - 4, current ? c : ink::pink);
+        if ((v.slides >> i) & 1) r.box ((a + b) / 2, y + h - 2, std::max (1,(b - a) / 2), 1, current ? c : ink::orange);
         if (current) r.box (a, y, b - a, 2, ink::live);
     }
+}
+
+inline void scopePanel (const Raster& r, const char* name)
+{
+    r.box (0, 4, r.w - 4, r.h - 9, ink::field);
+    r.box (0, 4, r.w - 4, 2, ink::orange);
+    r.caution (r.w - 30, 4, 26, 2, ink::bg);
+    r.box (5, 10, 63, 12, ink::grid);
+    r.text (8, 12, name, ink::paper);
+    r.box (0, r.h - 6, r.w - 4, 1, ink::rule);
 }
 
 inline void response (const Raster& r, const TextContext& ctx, float cutoff, const char* reading)
@@ -253,8 +276,7 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
     auto px = [&] (double hz) {
         return left + int (std::lround (std::clamp (std::log10 (hz / 20.0) / 3.0, 0.0, 1.0) * (width - 1)));
     };
-    r.box (0, 4, r.w - 4, r.h - 9, ink::field);
-    r.text (left, 12, "RESPONSE", ink::muted);
+    scopePanel (r, "RESPONSE");
     r.text (left, 28, filterChoices[kind], ink::paper);
     r.right (right, 28, reading, ink::paper);
     for (double db : { 0.0, -24.0 })
@@ -264,7 +286,7 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
 
     const int edge = px (cutoffHz (cutoff, ctx));
     for (int j = top; j <= bottom; j += 3) r.dot (edge, j, ink::muted);
-    r.box (edge - 2, bottom + 1, 5, 2, ink::paper);
+    r.box (edge - 2, bottom + 1, 5, 2, ink::orange);
     // Two samples per pixel retain the narrow resonant peaks at high feedback.
     int previous = 0;
     for (int i = 0; i <= 2 * (width - 1); ++i)
@@ -273,7 +295,10 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
         const double gain = filterGain2 (kind, k, ctx.spread, hz / nominal);
         const int y = py (10.0 * std::log10 (gain / ref + 1e-12));
         if (i == 0) previous = y;
-        r.box (left + i / 2, std::min (previous, y), 1, std::abs (previous - y) + 1, ink::live);
+        const int x = left + i / 2, lo = std::min (previous, y), hi = std::max (previous, y);
+        // A displaced pink edge under the mint line, clipped to the scope.
+        if (x < right - 1 && hi < bottom - 1) r.dot (x + 1, hi + 2, ink::pink);
+        r.box (x, lo, 1, hi - lo + 1, ink::mint);
         previous = y;
     }
     r.text (left, bottom + 8, "20 Hz", ink::muted);

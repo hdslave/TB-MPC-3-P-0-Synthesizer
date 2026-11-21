@@ -157,6 +157,8 @@ public:
             pots |= lastHost.pot[k] != h.pot[k] || lastHost.engaged[k] != h.engaged[k];
 
         bool drew = false;
+        if (page)
+            drew |= picture.region<320,50> (pixels, stride, whole, 0, 0, [&](Raster& r) { masthead (r); });
         if (group == 0)
         {
             if (page || patternChanged || transport)
@@ -166,27 +168,25 @@ public:
                 drew |= picture.region<103,36> (pixels, stride, whole, 0, 155, [&](Raster& r) { seedReadout (r); });
             if (page || patternChanged || transport || parameters)
                 drew |= picture.region<141,36> (pixels, stride, whole, 103, 155, [&](Raster& r) { readings (r, h); });
-            if (page || publication || (parameters & (bit (ParamId::seed) | bit (ParamId::mode))))
-                drew |= picture.region<76,36> (pixels, stride, whole, 244, 155, [&](Raster& r) { signature (r); });
+            if (page || patternChanged || transport || (parameters & (bit (ParamId::seed) | bit (ParamId::mode))))
+                drew |= picture.region<76,36> (pixels, stride, whole, 244, 155, [&](Raster& r) { stepStatus (r, h); });
         }
         else
         {
-            if (page)
-                drew |= picture.region<320,43> (pixels, stride, whole, 0, 0, [&](Raster& r) { masthead (r); });
             if (selection)
-                drew |= picture.region<180,148> (pixels, stride, whole, 0, 43, [&](Raster& r) { list (r); });
+                drew |= picture.region<180,141> (pixels, stride, whole, 0, 50, [&](Raster& r) { list (r); });
             else if (parameters)
             {
                 const int top = firstRow();
                 for (int i = top; i < std::min (fields().count, top + visible); ++i)
                     if (parameters & bit (fields().fields[i].id))
-                        drew |= picture.region<170,16> (pixels, stride, false, 4, 48 + (i - top) * rowH,
+                        drew |= picture.region<170,16> (pixels, stride, false, 4, 55 + (i - top) * rowH,
                                                         [&](Raster& r) { listRow (r, i, 0, 0); });
             }
             const bool panelChanged = group < 3 ? (parameters & bit (ParamId::cutoff)) != 0
                                                 : (parameters || patternChanged || transport);
             if (page || panelChanged)
-                drew |= picture.region<140,148> (pixels, stride, whole, 180, 43, [&](Raster& r) {
+                drew |= picture.region<140,141> (pixels, stride, whole, 180, 50, [&](Raster& r) {
                     if (group < 3)
                     {
                         char s[32];
@@ -253,20 +253,20 @@ private:
             first = std::max (0, edge (std::min (lastView.current,view.current)) - 12);
             end = std::min (hdui::width, edge (std::max (lastView.current,view.current) + 1) + 12);
         }
-        return picture.region<320,155> (pixels, stride, whole, 0, 0, [&](Raster& r) {
-            plots::sequence (r, view, x, 3, w, 150, true, h.playing);
+        return picture.region<320,105> (pixels, stride, whole, 0, 50, [&](Raster& r) {
+            plots::sequence (r, view, x, 0, w, 103, true, h.playing);
         }, first, end);
     }
 
     void masthead (const Raster& r) const
     {
         using namespace hdui;
-        r.mask (6, 6, art::titles + group * 13, 13, ink::paper);
-        r.right (257, 10, "TB-MPC-3-P-0", ink::muted);
-        r.mask (267, 3, art::stamp, 27, ink::label);
+        const auto& palette = group == 4 ? art::amber : (group == 1 || group == 2 ? art::mint : art::flyer);
+        const bool checker = group >= 3;
+        r.print (0, 0, checker ? art::checkers : art::groove, palette);
+        r.mask (checker ? 10 : 159, 32, art::subtitles + 15 * group, 15, ink::bg);
         for (int i = 0; i < 5; ++i)
-            r.box (6 + i * 9, 25, 6, 1, i == group ? ink::label : ink::grid);
-        r.box (4, 37, 312, 1, ink::grid);
+            r.box ((checker ? 120 : 285) + i * 6, 39, 4, 2, i == group ? palette[11] : ink::rule);
     }
 
     bool pending() const
@@ -280,8 +280,11 @@ private:
         char s[32];
         std::snprintf (s, sizeof (s), "%s / %s", pending() ? "NEXT" : "SEED",
                        val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM");
-        r.text (5, 1, s, ink::muted);
-        r.hex (4, 10, unsigned (val (ParamId::seed)), ink::paper);
+        r.box (3, 1, 97, 9, pending() ? ink::pink : ink::orange);
+        r.text (6, 1, s, ink::bg);
+        r.box (4, 10, 96, 24, pending() ? ink::soft : ink::live);
+        r.box (3, 34, 97, 1, ink::pink);
+        r.hex (4, 10, unsigned (val (ParamId::seed)), ink::bg);
     }
 
     void readings (const Raster& r, const Host& h) const
@@ -294,21 +297,32 @@ private:
         if (view.current >= 0 && view.current < n)
             std::snprintf (s, sizeof (s), "%s %02d/%02d  %s", state, view.current + 1, n, div);
         else std::snprintf (s, sizeof (s), "%s --/%02d  %s", state, int (val (ParamId::steps)), div);
-        r.text (1, 1, s, ink::paper);
+        r.text (1, 1, s, ink::mint);
         std::snprintf (s, sizeof (s), "%s / %s", scaleNames[int (val (ParamId::scale))], rootChoices[int (val (ParamId::root))]);
         r.text (1, 13, s, ink::soft);
         std::snprintf (s, sizeof (s), "OCT %+d  DEN %+d", int (val (ParamId::octave)), int (val (ParamId::density)));
         r.text (1, 25, s, ink::muted);
     }
 
-    void signature (const Raster& r) const
+    void stepStatus (const Raster& r, const Host& h) const
     {
         using namespace hdui;
         const bool waiting = pending(), midi = val (ParamId::mode) >= .5f;
         if (!waiting && !midi)
         {
-            r.mask (13, 0, art::stamp, 27, ink::label);
-            r.mask (2, 27, art::titles, 8, ink::soft);
+            const bool active = h.playing && view.running && view.current >= 0 && view.current < plots::stepCount (view);
+            const uint32_t bit = active ? uint32_t (1) << view.current : 0;
+            const char* labels[] = { "GATE", "ACC", "SLD" };
+            const uint32_t flags[] = { view.gates, view.accents, view.slides };
+            const Ink lamps[] = { ink::mint, ink::pink, ink::orange };
+            for (int i = 0; i < 3; ++i)
+            {
+                const int y = 1 + 12 * i;
+                const bool on = (flags[i] & bit) != 0;
+                r.text (3, y, labels[i], on ? lamps[i] : ink::muted);
+                r.box (40, y + 1, 31, 6, on ? lamps[i] : ink::card);
+                r.caution (40, y + 1, 31, 6, on ? ink::field : ink::grid);
+            }
             return;
         }
         int y = waiting && midi ? 0 : 5;
@@ -316,13 +330,13 @@ private:
         {
             char s[16];
             std::snprintf (s, sizeof (s), "SCORE %04X", unsigned (view.seed) & 65535);
-            r.text (2, y, "PENDING", ink::paper);
+            r.text (2, y, "PENDING", ink::orange);
             r.text (2, y+9, s, ink::soft);
             y += 18;
         }
         if (midi)
         {
-            r.text (2, y, "MIDI NOTES", ink::paper);
+            r.text (2, y, "MIDI NOTES", ink::pink);
             r.text (2, y+9, "SEQ MUTED", ink::soft);
         }
     }
@@ -338,18 +352,19 @@ private:
         if (focus)
         {
             r.box (x, y, 170, rowH - 1, ink::selected);
-            r.box (x, y, 2, rowH - 1, ink::violet);
+            r.caution (x, y, 4, rowH - 1, ink::bg);
         }
+        else r.box (x + 1, y + rowH - 2, 168, 1, ink::grid);
         char s[32];
         formatted (f.id, s);
-        r.text (x + 5, y + 4, f.label, focus ? ink::paper : ink::muted);
+        r.text (x + 6, y + 4, f.label, focus ? ink::bg : ink::muted);
         const int end = x + 164;
         if (focus && editing)
         {
             const int w = int (std::strlen (s)) * 7;
-            r.frame (end - w - 3, y + 1, w + 6, 14, ink::paper);
+            r.box (end - w - 3, y + 1, w + 6, 14, ink::bg);
         }
-        r.right (end, y + 4, s, focus ? ink::paper : ink::soft);
+        r.right (end, y + 4, s, focus ? (editing ? ink::live : ink::bg) : ink::soft);
     }
 
     void list (const Raster& r) const
@@ -369,9 +384,8 @@ private:
     void mini (const Raster& r, const Host& h) const
     {
         using namespace hdui;
-        r.box (0, 4, r.w - 4, r.h - 9, ink::field);
+        plots::scopePanel (r, "SCORE");
         char s[32];
-        r.text (8, 12, "SCORE", ink::muted);
         if (plots::stepCount (view))
             std::snprintf (s, sizeof (s), "%04X", unsigned (view.seed) & 65535);
         else std::snprintf (s, sizeof (s), "----");
@@ -383,8 +397,8 @@ private:
             formatted (ParamId::swing, s);
             r.right (128, 95, s, ink::paper);
             const int split = int (std::lround (119 * val (ParamId::swing)));
-            r.box (8, 117, split - 1, 4, ink::soft);
-            r.box (8 + split + 1, 117, 118 - split, 4, ink::rule);
+            r.box (8, 117, split - 1, 4, ink::mint);
+            r.box (8 + split + 1, 117, 118 - split, 4, ink::pink);
             r.dot (68, 124, ink::muted);
         }
         else
@@ -407,7 +421,8 @@ private:
         {
             const int x = 4 + 105 * k;
             r.box (x, 0, 102, 23, ink::field);
-            r.text (x + 5, 2, top[k], ink::muted);
+            r.box (x, 0, 102, 1, ink::pink);
+            r.text (x + 5, 2, top[k], ink::pink);
             r.text (x + 5, 13, bottom[k], ink::paper);
         }
     }
@@ -436,8 +451,9 @@ private:
             const uint32_t id = cardField (k);
             r.box (x, 0, 102, 24, ink::card);
             r.box (x, 0, 102, 1, ink::grid);
+            r.box (x, 1, 20, 10, ink::orange);
             char tag[] = { 'K', char ('1' + k), 0 };
-            r.text (x + 3, 2, tag, ink::muted);
+            r.text (x + 3, 2, tag, ink::bg);
             if (id == noParam) continue;
             const auto& p = paramTable[paramIndex (id)];
             r.text (x + 23, 2, p.name, ink::paper);

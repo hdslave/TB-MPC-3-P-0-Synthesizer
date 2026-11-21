@@ -17,10 +17,10 @@ constexpr uint32_t noParam = 0xffffffffu;
 using Ink = uint32_t;
 namespace ink
 {
-constexpr Ink bg = 0xff0c0e10, field = 0xff111416, card = 0xff171b1c, selected = 0xff312e40;
-constexpr Ink rule = 0xff555d58, grid = 0xff303733, muted = 0xffa6aea5, soft = 0xffcad0c2;
-constexpr Ink violet = 0xffc5b0fb, slide = 0xff786e89, alternate = 0xff14181a;
-constexpr Ink paper = 0xfff1f1dd, live = 0xffddff3c, cursor = 0xff394123, label = 0xffd7f143;
+constexpr Ink bg = 0xff130c1a, field = 0xff1a1022, card = 0xff28192f, selected = 0xffff78ba;
+constexpr Ink rule = 0xff795477, grid = 0xff4a2b46, muted = 0xffc7adc8, soft = 0xffe5d5e6;
+constexpr Ink pink = 0xffff479e, orange = 0xffffa52b, mint = 0xff85f6d1, alternate = 0xff241329;
+constexpr Ink paper = 0xfffff3da, live = 0xffffee32, cursor = 0xff534022;
 }
 
 struct Field { uint32_t id; const char* label; };
@@ -72,6 +72,30 @@ struct Raster
         box (x, y + high - 1, wide, 1, c);
         box (x, y, 1, high, c);
         box (x + wide - 1, y, 1, high, c);
+    }
+
+    // Short diagonal bands for the printed metal edge and control tabs.
+    void caution (int x, int y, int wide, int high, Ink c) const
+    {
+        for (int j = 0; j < high; ++j)
+            for (int i = 0; i < wide; ++i)
+                if (((i + j) & 7) < 4) dot (x + i, y + j, c);
+    }
+
+    template<size_t Rows, size_t Bytes>
+    void print (int x, int y, const uint8_t (&plate)[Rows][Bytes], const Ink (&palette)[16]) const
+    {
+        // These opaque plates are compiled at their final panel size.
+        if (x < 0 || y < 0 || x + int (Bytes * 2) > w || y + int (Rows) > h) return;
+        for (size_t j = 0; j < Rows; ++j)
+        {
+            Ink* dest = px + (y + int (j)) * w + x;
+            for (uint8_t pair : plate[j])
+            {
+                *dest++ = palette[pair >> 4];
+                *dest++ = palette[pair & 15];
+            }
+        }
     }
 
     int text (int x, int y, const char* s, Ink color) const
@@ -140,7 +164,7 @@ public:
     }
 
 private:
-    static constexpr int capacity = 320 * 155;
+    static constexpr int capacity = 320 * 105;
     Ink prior[width * height], scratch[capacity];
 };
 } // namespace hdui

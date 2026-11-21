@@ -98,7 +98,7 @@ struct Rig
 constexpr const char* names[] = {
     "pattern-16", "pattern-32", "pending", "random", "notes", "voice-303", "voice-twin", "voice-18db",
     "tone-drive", "tb3po-scale", "clock-swing", "shift", "pickup", "track-coral", "track-mint", "track-violet", "track-yellow",
-    "dense-32", "pending-notes"
+    "dense-32", "pending-notes", "awaiting-clock"
 };
 
 void configure (Rig& r, int i)
@@ -147,6 +147,12 @@ void configure (Rig& r, int i)
     {
         r.set (P::seed, 0x0DE1);
         r.set (P::mode, 1);
+    }
+    if (i == 19)
+    {
+        r.v = {};
+        r.v.current = -1;
+        r.h.playing = false;
     }
     r.mailbox.write (r.v);
 }

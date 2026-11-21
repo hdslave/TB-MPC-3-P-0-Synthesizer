@@ -2,10 +2,11 @@
 
 | Material | Origin and use |
 |---|---|
-| Departure Mono | Copyright 2022–2024 Helena Zhang. SIL Open Font License 1.1. The instrument uses 7 × 12 body cells, compact note names and a closely spaced instrument signature. [Source font](assets/fonts/DepartureMono-Regular.otf) · [Licence](licenses/OFL-departure-mono.txt) |
-| Michroma | Copyright 2011 The Michroma Project Authors. SIL Open Font License 1.1. The group titles and fixed-width, sixteen-glyph hexadecimal alphabet are rasterized from this face. [Source font](assets/fonts/Michroma-Regular.ttf) · [Licence](licenses/OFL-michroma.txt) |
-| Striped orbit | Original illustration generated for hdslave’s TB-MPC-3-P-0 with OpenAI’s built-in image generator. The native signature uses a one-bit mask drawn at 48 × 27 pixels. [Full-resolution original](assets/explore/acid/orbit-original.png) · [96 × 55 proof](assets/art/orbit.png) · [Signature mask](assets/art/stamp.png) |
-| Acid screen studies | Kernel, Ripple and Shard are original generated full-screen concepts. The final sequencer-first layout uses the separate orbit artwork. [Concepts and prompts](assets/explore/acid/prompts.md) |
+| Departure Mono | Copyright 2022–2024 Helena Zhang. SIL Open Font License 1.1. The instrument uses 7 × 12 body cells and compact note names. [Source font](assets/fonts/DepartureMono-Regular.otf) · [Licence](licenses/OFL-departure-mono.txt) |
+| Barlow Condensed Bold Italic | Copyright 2017 The Barlow Project Authors. SIL Open Font License 1.1. Used for the instrument name, page labels and hex digits. [Font](assets/fonts/BarlowCondensed-BoldItalic.ttf) · [Licence](licenses/OFL-barlow-condensed.txt) |
+| Groove and checkerboard illustrations | Original illustrations made for this instrument with OpenAI’s built-in image generator. Both become 320 × 50, four-bit indexed header plates. [Source artwork and prompts](assets/explore/rave/prompts.md) · [Groove plate](assets/art/groove-header.png) · [Checkerboard plate](assets/art/checker-header.png) |
+| Michroma | Copyright 2011 The Michroma Project Authors. SIL Open Font License 1.1. Used in the contact sheet and earlier screen artwork. [Font](assets/fonts/Michroma-Regular.ttf) · [Licence](licenses/OFL-michroma.txt) |
+| Earlier acid screen studies | The Kernel, Ripple and Shard concepts and the striped orbit from the previous screen design are preserved in the source archive. [Concepts and prompts](assets/explore/acid/prompts.md) |
 | Earlier page studies | The previous folded-ribbon mark and the Folio, Ledger and Matrix studies are retained in the source archive. [Earlier prompts](assets/explore/prompts.md) |
 | Host chrome | The preview compositor uses the top 22 rows of the supplied Melodee Edit reference. The integration captures show Melodee's own Edit and Stage chrome. These files are preview fixtures. [Soft-key strip](tools/ui_preview/edit-keys.png) |
 
