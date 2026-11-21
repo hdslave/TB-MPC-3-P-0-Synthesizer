@@ -14,6 +14,8 @@
 #include <clap/clap.h>
 
 #include <algorithm>
+#include <chrono>
+#include <thread>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -34,7 +36,7 @@ const clap_plugin_entry* entry = nullptr;
 const clap_plugin_factory* factory = nullptr;
 
 // The host side: log, and the two a preset load tells (counted); the plug-in must cope without the rest.
-int rescans = 0, textRescans = 0, callbacks = 0, flushes = 0, paints = 0, presetsLoaded = 0, presetErrors = 0;
+int rescans = 0, textRescans = 0, callbacks = 0, flushes = 0, paints = 0, processRequests = 0, presetsLoaded = 0, presetErrors = 0;
 const void* hostExtension (const clap_host*, const char* id)
 {
     static const clap_host_log log { [] (const clap_host*, clap_log_severity s, const char* m) { std::printf ("  [plug-in log %d] %s\n", (int) s, m); } };
@@ -57,7 +59,7 @@ const void* hostExtension (const clap_host*, const char* id)
 
 clap_host host {
     CLAP_VERSION, nullptr, "TB-MPC-3-P-0 test host", "tests", "", "1",
-    hostExtension, [] (const clap_host*) {}, [] (const clap_host*) {}, [] (const clap_host*) { ++callbacks; },
+    hostExtension, [] (const clap_host*) {}, [] (const clap_host*) { ++processRequests; }, [] (const clap_host*) { ++callbacks; },
 };
 
 // Input events for one process call, in time order.
@@ -1494,17 +1496,26 @@ void testScreen (const std::string& folder)
     CHECK (a.loadPreset ("default"));
     // PATTERN: K1-K3 are Cutoff, Resonance, Env Mod. In Seed Mode Random, Push (Regen) brings a new seed.
     CHECK ((knobs() == std::vector<clap_id> { a.id ("Cutoff"), a.id ("Resonance"), a.id ("Env Mod") }));
+    // It asks the host to run the plug-in; a press the host kept waiting over half a second (an instrument it put to
+    // sleep) is dropped, not acted on late.
     a.setup ({ { "Seed Mode", 0.0 } });
     play (128, false);
     const double seedBefore = a.value ("Seed");
+    const int processBefore = processRequests;
+    CHECK (in (MELODEE_SCREEN_PUSH, 0));
+    CHECK (processRequests > processBefore);
+    std::this_thread::sleep_for (std::chrono::milliseconds (600));
+    play (128, false);
+    CHECK (a.value ("Seed") == seedBefore);
     CHECK (in (MELODEE_SCREEN_PUSH, 0));
     play (128, false);
     CHECK (a.value ("Seed") != seedBefore);
     // The wheel dials the seed and locks it; the host hears both after the next block.
     const double seed = a.value ("Seed");
-    const int flushesBefore = flushes;
+    const int flushesBefore = flushes, rescansBefore = rescans;
     CHECK (in (MELODEE_SCREEN_WHEEL, 3));
     CHECK (flushes > flushesBefore);
+    CHECK (rescans > rescansBefore); // the host reads the values again at once, run or not
     CHECK (a.value ("Seed") == std::fmod (seed + 3.0, 65536.0) && a.value ("Seed Mode") == 1.0);
     OutEvents told;
     play (128, false, &told);
@@ -1516,6 +1527,9 @@ void testScreen (const std::string& folder)
     play (48000 * 2 + 3000, true);
     CHECK (paints > paintsBefore + 8);
     canvas.playing = true;
+    const int paintsAsked = paints;
+    CHECK (paint (true));
+    CHECK (paints > paintsAsked); // a step lighting: the paint asks for the next one itself
     shot ("pattern");
     canvas.shift = true;
     shot ("pattern-shift");
