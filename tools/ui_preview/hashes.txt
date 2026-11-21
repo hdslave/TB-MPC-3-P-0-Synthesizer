@@ -1,0 +1,17 @@
+dc110dbc6717fdeb pattern-16
+3df276f51c333d04 pattern-32
+0d13f308d39573ac pending
+62291835bfec4238 random
+8801defa089d3d97 notes
+cd23ff5ca6e21627 voice-303
+ac886156c5d63764 voice-twin
+7ed2b2aa40af7233 voice-18db
+306610bae5cb990b tone-drive
+280a371a28565838 tb3po-scale
+eec4d760e2778cd2 clock-swing
+b9c13b47df38deaa shift
+8cdc8e55e24121ab pickup
+dc110dbc6717fdeb track-coral
+ac29fc88c880753b track-mint
+45bae04acdf0212d track-violet
+e74ffa9213e58397 track-yellow
