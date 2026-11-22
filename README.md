@@ -1,14 +1,12 @@
-# TB-MPC-3-P-0 Synthesizer
+# hdslave TB-MPC-3-P-0 Synthesizer
 
-A TB-303-style bass synthesizer as a CLAP plug-in, played by a port of **TB-3PO**, the random acid-pattern
-sequencer of the Ornament & Crime module's Hemisphere firmware (as in the Benisphere Suite). Built for the Akai
-MPC Sample running Melodee (64-bit ARM Linux, Cortex-A55); it runs in any CLAP host on Linux arm64. Hosts list it as
-**hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`).
+**A 303-style acid bass synthesizer driven by a tick-accurate port of Ornament & Crime's TB-3PO generative sequencer, as a CLAP plug-in for the Akai MPC Sample.**
 
-TB-3PO's pattern generator, random numbers, quantizer and step, gate and slide logic are the applet's, line for
-line: the same seed, density and scale give the same pattern as on the module. The tests hold the port against the
-applet's own code run tick by tick (see [Tests](#tests)). The host's transport stands in for the module's clock and
-reset inputs, the host's MIDI notes for its transpose CV.
+![TB-MPC-3-P-0 Press Plate screen running in hdslaveOS](docs/tb-mpc-3-p-0-screen.gif)
+
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`).
+
+TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset, while MIDI notes transpose the pattern. Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
 ## Signal flow
 
