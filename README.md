@@ -217,7 +217,7 @@ envelopes run, then nothing. The voice's sample is compiled into the run's loop 
 
 ## Install
 
-Copy `build/TB-MPC-3-P-0.clap` to the MPC's card as `Melodee/Plugins/hdslave TB-MPC-3-P-0/hdslave TB-MPC-3-P-0.clap`.
+Copy `build/TB-MPC-3-P-0.clap` to the MPC's card as `Melodee/Plugins/hdslave/hdslave TB-MPC-3-P-0.clap`.
 
 ## Build
 
