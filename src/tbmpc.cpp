@@ -163,8 +163,8 @@ bool paramsFromText (const clap_plugin* plugin, clap_id id, const char* text, do
     return true;
 }
 
-// One event: parameter values go to the engine at once; notes transpose the pattern. A button's release is sent back
-// stamped no later than `lastFrame` (an event stamped past the block is applied at its end).
+// One event: parameter values go to the engine at once; notes play steps or transpose the pattern. A button's
+// release is sent back stamped no later than `lastFrame` (an event stamped past the block is applied at its end).
 void handle (Plugin& p, const clap_event_header* e, const clap_output_events* out, uint32_t lastFrame)
 {
     if (e->space_id != CLAP_CORE_EVENT_SPACE_ID)
@@ -209,7 +209,8 @@ void handle (Plugin& p, const clap_event_header* e, const clap_output_events* ou
         }
         case CLAP_EVENT_NOTE_ON:
         {
-            // TB-3PO: a note transposes the pattern (its CV 1), C4 (60) as it is. Notes: it plays.
+            // TB-3PO: a step pad (notes 36 on) plays its step; another note transposes the pattern (its CV 1), C4 (60)
+            // as it is. Notes: it plays.
             const auto* n = reinterpret_cast<const clap_event_note*> (e);
             if (n->key >= 0 && n->key < 128)
             {
@@ -221,14 +222,21 @@ void handle (Plugin& p, const clap_event_header* e, const clap_output_events* ou
             break;
         }
         case CLAP_EVENT_NOTE_OFF:
-        case CLAP_EVENT_NOTE_CHOKE:
         {
             const auto* n = reinterpret_cast<const clap_event_note*> (e);
             if (n->key >= 0 && n->key < 128)
                 p.engine.noteOff (n->key);
-            else if (n->key == -1) // a choke of every key
+            else if (n->key == -1) // every key
                 for (int k = 0; k < 128; ++k)
                     p.engine.noteOff (k);
+            break;
+        }
+        case CLAP_EVENT_NOTE_CHOKE:
+        {
+            // Notes: as a note off. TB-3PO: a pad's step still sounding stops.
+            const auto* n = reinterpret_cast<const clap_event_note*> (e);
+            if (n->key >= -1 && n->key < 128)
+                p.engine.choke (n->key);
             break;
         }
         case CLAP_EVENT_MIDI:
@@ -408,7 +416,8 @@ bool presetFromLocation (const clap_plugin* plugin, uint32_t kind, const char*, 
 const clap_plugin_preset_load presetExtension { presetFromLocation };
 
 // Ports: no audio in, one stereo out (the same signal both sides: Melodee plays a mono port on the left only), one
-// note input: it transposes the pattern, or in Mode: Notes plays the voice.
+// note input: its step pads play the pattern's steps and its other notes transpose it, or in Mode: Notes it plays the
+// voice.
 uint32_t audioCount (const clap_plugin*, bool input) { return input ? 0 : 1; }
 bool audioGet (const clap_plugin*, uint32_t index, bool input, clap_audio_port_info* info)
 {

@@ -4,6 +4,7 @@
 #   make test       the tests against the built plug-in (tests/host.cpp), the port against the applet (tests/reference.cpp)
 #                   and the sound's fingerprint (tests/fingerprint.cpp: the output to the bit, against tests/fingerprint.txt)
 #   make bench      build/bench: renders a busy pattern; tools/bench.sh counts its instructions
+#   make sanitize   the tests and the fingerprint's scenarios under AddressSanitizer and UBSan (build/asan)
 CXX ?= g++
 OUT := build
 WARN := -Wall -Wextra -Werror
@@ -18,7 +19,7 @@ LDFLAGS := -shared -s -static-libgcc -static-libstdc++ -Wl,--gc-sections -Wl,-z,
 SOURCES := src/tbmpc.cpp
 HEADERS := $(wildcard src/*.h src/ui/*.h)
 
-.PHONY: all test bench clean scales fingerprint-update
+.PHONY: all test bench clean scales fingerprint-update sanitize
 all: $(OUT)/TB-MPC-3-P-0.clap
 
 $(OUT)/TB-MPC-3-P-0.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
@@ -51,6 +52,22 @@ $(OUT)/bench: tests/bench.cpp $(SOURCES) $(HEADERS) Makefile
 	$(CXX) -std=c++17 $(OPT) $(WARN) -g -Ithird_party/clap/include -Isrc tests/bench.cpp -o $@
 
 bench: $(OUT)/bench
+
+# The tests under AddressSanitizer and UBSan (build/asan): a read past a buffer, a leak or undefined behaviour stops
+# them (abort_on_error, so a report is never taken for a plain exit 1). The fingerprint's hashes hold only for the
+# release flags, so their mismatch (exit 1) is expected here; every scenario must still run clean.
+SAN := -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g1
+SAN_ENV := ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1:abort_on_error=1
+sanitize:
+	@mkdir -p $(OUT)/asan
+	$(CXX) $(subst -O3,-O1,$(CXXFLAGS)) $(SAN) $(SOURCES) -shared -Wl,--version-script=src/exports.map -o $(OUT)/asan/TB-MPC-3-P-0.clap
+	$(CXX) -std=c++17 -O1 $(WARN) $(SAN) -Ithird_party/clap/include -Isrc tests/host.cpp -ldl -o $(OUT)/asan/host
+	$(CXX) -std=c++17 -O1 $(WARN) $(SAN) -Isrc tests/reference.cpp -o $(OUT)/asan/reference
+	$(CXX) -std=c++17 -O1 $(WARN) $(SAN) -Ithird_party/clap/include tests/fingerprint.cpp -ldl -o $(OUT)/asan/fingerprint
+	$(SAN_ENV) $(OUT)/asan/reference
+	$(SAN_ENV) $(OUT)/asan/host $(OUT)/asan/TB-MPC-3-P-0.clap $(OUT)/asan
+	@$(SAN_ENV) $(OUT)/asan/fingerprint $(OUT)/asan/TB-MPC-3-P-0.clap tests/fingerprint.txt > $(OUT)/asan/fingerprint.log 2>&1; \
+	    rc=$$?; if [ $$rc -gt 1 ]; then cat $(OUT)/asan/fingerprint.log; exit $$rc; fi; echo "sanitize: every fingerprint scenario ran clean"
 
 # src/scales.h from the firmware's files in tools/oc-source (run on any machine with Python 3).
 scales:

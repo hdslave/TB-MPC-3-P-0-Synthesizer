@@ -16,6 +16,7 @@ Read `../AGENTS.md`, then `../Workflow/plugins.md` and `../Workflow/host-facts.m
 ## Build and test
 
 - `./build.sh` builds the plug-in in a Linux arm64 container (image `melodee-builder`, Colima VM `melodee`). It runs `make all test`: the host tests in `tests/host.cpp` and the sound's fingerprint. Pass make targets to run others (`./build.sh scales` regenerates `src/scales.h` with `tools/gen_scales.py`).
+- `./build.sh sanitize` runs the tests and the fingerprint's scenarios under AddressSanitizer and UBSan.
 - `tools/bench.sh` counts the instructions of a 128-frame block with callgrind. A block is about 4.8 M cycles on one of the MPC's Cortex-A55 cores.
 - Check the build's own exit code: `./build.sh | grep …` hides a failure.
 
@@ -41,5 +42,6 @@ Read `../AGENTS.md`, then `../Workflow/plugins.md` and `../Workflow/host-facts.m
 
 - **The applet reference.** `tests/reference.cpp` ticks the original applet's `Controller()` (`tests/applet.h`, copied from `tools/oc-source/`) against the plug-in's engine. Rerun it after any change to `src/tb3po.h` or `src/engine.h`: it must report 0 failed.
 - **Firmware quirks kept on purpose.** Upward slides don't move, the quantizer's extra octave drop, octave bits drift, and the first step after a reset is index 1. Don't "fix" them without asking. The README lists them, and the deliberate deviations too.
+- **The pads.** In Mode: TB-3PO, notes 36 .. 36 + max (16, Steps) - 1 (pads A01 - A16 at hdslaveOS's defaults) each play their step once (`Engine::note`, `playPad`) without moving the play head, seed or transposition; other notes transpose; Mode: Notes is the chromatic keyboard. `testStepPads` in `tests/host.cpp` holds it.
 - **The page.** It is designed on branch `screen`, which owns `src/screen.h`, `src/ui/`, `assets/`, `tools/ui_preview/` and `docs/screen.md`. The glue in `src/tbmpc.cpp`, the DSP, `tests/` and `Makefile` belong to `main`'s engine work.
 - `src/ui/page.h` is an identical copy of Anvil's: keep the two in sync.

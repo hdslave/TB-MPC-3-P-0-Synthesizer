@@ -269,6 +269,45 @@ std::vector<Scenario> scenarios()
         };
         list.push_back (s);
     }
+    // 0.5: the step pads (Mode: TB-3PO, notes 36 on, Steps 24 so up to 59), stopped and playing: a pad every 50 blocks
+    // (loud ones as CLAP notes, soft ones as MIDI), two on one frame, a pad on, on, off, All Sound Off over one, a
+    // transposing note and a pad after it; the same played in blocks of 37.
+    for (bool playing : { false, true })
+    {
+        Scenario s;
+        s.name = std::string ("step-pads-") + (playing ? "playing" : "stopped");
+        s.preset = "acid-line";
+        s.values = { { "Seed Mode", 1.0 }, { "Steps", 24.0 } };
+        s.seconds = 4.0;
+        for (int i = 0; i < 24; ++i)
+        {
+            const uint64_t at = 128 * (uint64_t) (10 + i * 50);
+            const int key = 36 + (i * 7) % 24;
+            if (i % 3 == 2)
+                s.events.push_back ({ at, Event::midi, "", (double) ((0x90u << 16) | ((uint32_t) key << 8) | 64u) });
+            else
+                s.events.push_back ({ at, Event::noteOn, "", (double) key });
+            s.events.push_back ({ at + 300, Event::noteOff, "", (double) key });
+        }
+        s.events.push_back ({ 128 * 1200, Event::noteOn, "", 40.0 });
+        s.events.push_back ({ 128 * 1200, Event::noteOn, "", 47.0 });
+        s.events.push_back ({ 128 * 1250, Event::noteOn, "", 45.0 });
+        s.events.push_back ({ 128 * 1270, Event::noteOn, "", 45.0 });
+        s.events.push_back ({ 128 * 1290, Event::noteOff, "", 45.0 });
+        s.events.push_back ({ 128 * 1320, Event::noteOn, "", 50.0 });
+        s.events.push_back ({ 128 * 1330, Event::midi, "", (double) ((0xb0u << 16) | (120u << 8)) });
+        s.events.push_back ({ 128 * 1380, Event::noteOn, "", 64.0 });
+        s.events.push_back ({ 128 * 1390, Event::noteOn, "", 36.0 });
+        if (! playing)
+            s.transport = [] (uint64_t, double, double) -> std::pair<bool, double> { return { false, 0.0 }; };
+        list.push_back (s);
+        if (playing)
+        {
+            s.name += "-block-37";
+            s.block = 37;
+            list.push_back (s);
+        }
+    }
     return list;
 }
 } // namespace

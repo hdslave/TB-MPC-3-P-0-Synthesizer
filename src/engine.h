@@ -19,6 +19,15 @@
 //     in time): a note over a held one glides to it with the 303's glide and keeps the gate open, a velocity of 100
 //     or more accents, and letting go of the newest note goes back to the one still held. A key played again while
 //     held is a new note, as if let go first (it strikes again, or glides over another key still held).
+//   Mode: TB-3PO's step pads: notes 36 .. 36 + max (16, Steps) - 1 play steps 1 .. (hdslaveOS's pads A01 - A16 at
+//     its default octave and key), host playing or not. A pad plays its step once, as the sequencer would play it
+//     (its pitch with the scale, root, octave and transposition, from the pattern its next clock plays; its accent,
+//     or the pad's if hit at accentVelocity or louder), at once (no slide), gated or a rest, for Gate's share of a
+//     clock (120 BPM until the host tells a tempo); its note off does nothing, a choke or All Sound Off stops it.
+//     The play head, the seed, Seed Back's memory and the transposition stay as they are: the pad's step has the
+//     voice until the sequencer's next clock, which takes it back as it would have been (a pad on a clock's own
+//     frame gives way to the clock's step). Two pads on one frame: the louder plays, on a tie the later. Other notes
+//     transpose, as before.
 #pragma once
 
 #include "params.h"
@@ -65,6 +74,7 @@ public:
         clockedAt = -(int64_t (1) << 40); // no clock played yet
         clockedReset = false;
         held = 0;
+        padWanted = padHasVoice = padOffPending = false;
     }
 
     // First values, before anything plays: the applet's Start(), then every parameter.
@@ -101,6 +111,7 @@ public:
                     held = 0;
                     seq.stop();
                     gateOffPending = false;
+                    padWanted = padHasVoice = padOffPending = false;
                     voice.gate (false, false);
                 }
                 break;
@@ -126,12 +137,21 @@ public:
     const Tb3po& sequencer() const { return seq; }
     bool running() const { return playing && ! notesMode; }
 
-    // A MIDI note. TB-3PO: it transposes the pattern from the next step, and holds (as a CV keyboard's last note
-    // does). Notes: it plays.
+    // A MIDI note. TB-3PO: a step pad plays its step (at the next sound, after this frame's other events, so a note
+    // transposing or a knob turned on the same frame applies to it); any other note transposes the pattern from the
+    // next step, and holds (as a CV keyboard's last note does). Notes: it plays.
     void note (int key, float velocity)
     {
         if (! notesMode)
         {
+            const int s = key - firstStepPad;
+            if (s >= 0 && s < std::max (stepPads, seq.stepCount()))
+            {
+                // Two pads on one frame: the louder plays, once; on a tie the later.
+                if (! padWanted || velocity >= wantedVelocity)
+                    padWanted = true, wantedStep = s, wantedKey = key, wantedVelocity = velocity;
+                return;
+            }
             midiTranspose = key - 60;
             updateTranspose();
             return;
@@ -166,6 +186,30 @@ public:
         else if (status == 0xb0 && (data1 == 120 || data1 == 123) && notesMode && held > 0)
         {
             held = 0;
+            voice.gate (false, false);
+        }
+        else if (status == 0xb0 && data1 == 120 && ! notesMode)
+            choke (-1); // All Sound Off: a pad's step still sounding stops
+    }
+
+    // A choke (key -1: every key). Notes: as the key's note off. TB-3PO: the pad's step that key played, if it still
+    // sounds, stops (its note off does nothing: a pad plays its whole step).
+    void choke (int key)
+    {
+        if (notesMode)
+        {
+            if (key >= 0)
+                noteOff (key);
+            else
+                for (int k = 0; k < 128; ++k)
+                    noteOff (k);
+            return;
+        }
+        if (padWanted && (key < 0 || key == wantedKey))
+            padWanted = false;
+        if (padOffPending && (key < 0 || key == padKey))
+        {
+            padOffPending = false;
             voice.gate (false, false);
         }
     }
@@ -218,9 +262,10 @@ public:
         {
             if (playing)
             {
-                // Stopped: the sequencer's gate shuts (the note releases); notes played by hand go on.
+                // Stopped: the sequencer's gate shuts (the note releases); notes played by hand go on, and so does a
+                // pad's step.
                 seq.stop();
-                if (! notesMode)
+                if (! notesMode && ! padHasVoice)
                     voice.gate (false, false);
                 gateOffPending = false;
             }
@@ -264,22 +309,40 @@ public:
                 if (untilClock < (double) run)
                     run = (uint32_t) untilClock;
             }
+            if (padWanted)
+            {
+                padWanted = false;
+                playPad();
+            }
             if (gateOffPending)
             {
                 if (gateOffIn == 0)
                 {
                     gateOffPending = false;
                     seq.halfStepPassed();
-                    voice.gate (seq.gateCv > 0, seq.gateCv == Tb3po::gateAccent);
+                    if (! padHasVoice) // a pad's step has the voice until the next clock
+                        voice.gate (seq.gateCv > 0, seq.gateCv == Tb3po::gateAccent);
                     TBMPC_TRACE (1);
                     continue;
                 }
                 run = std::min (run, gateOffIn);
             }
+            if (padOffPending)
+            {
+                if (padOffIn == 0)
+                {
+                    padOffPending = false;
+                    voice.gate (false, false);
+                    continue;
+                }
+                run = std::min (run, padOffIn);
+            }
             voice.render (left, right, run);
             frameCount += run;
             if (gateOffPending)
                 gateOffIn -= run;
+            if (padOffPending)
+                padOffIn -= run;
             if (playing)
                 position += run * perFrame;
             left += run;
@@ -384,10 +447,19 @@ private:
         clockedReset = resetClock (k);
         if (clockedReset)
             resetPulse();
+        const int32_t gateBefore = seq.gateCv;
         seq.clock();
         remember();
+        padWanted = false; // a pad hit on a clock's frame: the step the clock brings is the one heard
         if (notesMode)
             return; // the count goes on; the notes play the voice
+        if (padHasVoice)
+        {
+            // A pad's step had the voice: it goes back to the sequencer's gate as it was before this clock (open only
+            // when the step before slides into this one), so the step plays as it would have.
+            padHasVoice = padOffPending = false;
+            voice.gate (gateBefore > 0, gateBefore == Tb3po::gateAccent);
+        }
         voice.pitch (seq.slideStart, seq.slideEnd);
         voice.gate (seq.gateCv > 0, seq.gateCv == Tb3po::gateAccent);
         if (seq.opened)
@@ -398,6 +470,33 @@ private:
             gateOffIn = (uint32_t) std::max (1.0, std::floor ((double) knob[ParamId::gate] * length / perFrame));
         }
         TBMPC_TRACE (0);
+    }
+
+    // A step pad's step, once: its pitch at once, the gate open with its accent (or the pad's) for Gate's share of a
+    // clock at the host's tempo (120 BPM until one is told), shut first if it was open so both envelopes start over.
+    // The step is the one the sequencer will play: when the pattern waits to be made again (a seed, density or scale
+    // set since it was, say while stopped or by a project loaded), from a copy made again as the next clock will make
+    // it. Nothing of the sequencer's changes: its pattern, play head, seed, Seed Back's memory, transposition and gate
+    // timer.
+    void playPad()
+    {
+        const Tb3po* from = &seq;
+        Tb3po next;
+        if (seq.patternWaiting())
+        {
+            next = seq;
+            next.regenerate();
+            from = &next;
+        }
+        const int32_t cv = from->pitchOfStep (wantedStep);
+        const bool accent = from->accented (wantedStep) || wantedVelocity >= accentVelocity - 1.0e-6f;
+        voice.pitch (cv, cv);
+        voice.gate (false, false);
+        voice.gate (true, accent);
+        const double beatsPerFrame = perFrame > 0.0 ? perFrame : 120.0 / 60.0 / rate;
+        padOffIn = (uint32_t) std::clamp (std::floor ((double) knob[ParamId::gate] * stepBeats() / beatsPerFrame), 1.0, 4.0e9);
+        padOffPending = padHasVoice = true;
+        padKey = wantedKey;
     }
 
     // Seed Back's memory: when a clock plays a pattern from a new seed, the seed before goes in, if its pattern played.
@@ -473,6 +572,12 @@ private:
     int8_t heldKeys[maxHeld] {};
     bool heldAccent[maxHeld] {};
     int held = 0;
+    // Step pads (TB-3PO): the one asked for on this frame (the loudest; it plays at the next sound), and the one that
+    // has the voice until the next clock (its gate open until padOffIn runs out).
+    bool padWanted = false, padHasVoice = false, padOffPending = false;
+    int wantedStep = 0, wantedKey = -1, padKey = -1;
+    float wantedVelocity = 0.0f;
+    uint32_t padOffIn = 0;
     // Seed Back: the seeds whose patterns played, oldest first.
     static constexpr int historySize = 16;
     uint16_t history[historySize] {};

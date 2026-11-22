@@ -255,10 +255,13 @@ public:
     {
         // The applet regenerates when density or the scale's size changed. Differs: a new seed does too (on the
         // module a seed typed in waits for the next Regen pulse); the module's later firmware does the same.
-        if (density != patternDensity || scaleSize != patternScaleSize || seed != patternSeed)
+        if (patternWaiting())
             regenerate();
         advance();
     }
+
+    // The seed, density or scale's size changed since the pattern was made: the next clock makes it again first.
+    bool patternWaiting() const { return density != patternDensity || scaleSize != patternScaleSize || seed != patternSeed; }
 
     // Where the pattern would be `clocks` clocks after a reset (a Play or a jump between bar resets).
     void place (int64_t clocks) { step = (uint8_t) (clocks < 0 ? 0 : clocks % numSteps); }

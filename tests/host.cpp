@@ -1,9 +1,9 @@
 // Loads TB-MPC-3-P-0.clap as a host does and checks it: description and ports, parameters, state, presets, the
 // sequencer against the host's transport (each note where the pattern puts it, gates half a step long, stop, restart,
 // a jump), the same output whatever the block size, the seed (Random and Locked, Regen, a new seed while playing),
-// transposing by MIDI note or knob, the accent, both slides and bounded output at extreme settings. Writes demo
-// renders as WAV files into the output folder. tests/reference.cpp checks the sequencer against the applet itself;
-// this test uses the same port (src/tb3po.h) to know where the notes must be.
+// transposing by MIDI note or knob, the step pads, the accent, both slides and bounded output at extreme settings.
+// Writes demo renders as WAV files into the output folder. tests/reference.cpp checks the sequencer against the
+// applet itself; this test uses the same port (src/tb3po.h) to know where the notes must be.
 //   host TB-MPC-3-P-0.clap OUT_FOLDER
 #include "wav.h"
 #include "png.h"
@@ -1915,6 +1915,457 @@ void testAccentDecayAcrossSlides()
     }
 }
 
+// 0.5.0: the step pads. In Mode: TB-3PO, notes 36 .. 36 + max (16, Steps) - 1 (hdslaveOS's pads A01 - A16 at its
+// default octave and key) each play their step once, as the sequencer plays it, the host playing or not, without
+// moving the play head; their note offs do nothing. Other notes transpose as before; Mode: Notes plays every note
+// chromatically, as before.
+using Patch = std::vector<std::pair<std::string, double>>;
+// A note, a choke, or a MIDI message (type CLAP_EVENT_MIDI, key = status << 16 | data1 << 8 | data2), at a frame.
+struct Hit { uint64_t frame; uint16_t type; int key; double velocity; };
+Hit noteOnAt (uint64_t frame, int key, double velocity = 0.6) { return { frame, CLAP_EVENT_NOTE_ON, key, velocity }; }
+Hit noteOffAt (uint64_t frame, int key) { return { frame, CLAP_EVENT_NOTE_OFF, key, 0.0 }; }
+Hit chokeAt (uint64_t frame, int key) { return { frame, CLAP_EVENT_NOTE_CHOKE, key, 0.0 }; }
+Hit midiAt (uint64_t frame, int status, int data1, int data2) { return { frame, CLAP_EVENT_MIDI, (status << 16) | (data1 << 8) | data2, 0.0 }; }
+Transport stoppedTransport (uint64_t) { return { false, 120.0, 0.0 }; }
+
+// The output of a patch (set up in one stopped frame) with these hits, in blocks of `block`.
+std::vector<float> playHits (const Patch& patch, const std::vector<Hit>& hits, uint32_t frames,
+                             const std::function<Transport (uint64_t)>& transport = stoppedTransport, uint32_t block = 128,
+                             OutEvents* out = nullptr)
+{
+    Instance a;
+    a.setup (patch);
+    std::vector<float> l, r;
+    a.render (frames, block, l, r, transport, [&] (uint64_t at, uint32_t n, Events& e) {
+        for (const auto& h : hits)
+            if (h.frame >= at && h.frame < at + n)
+            {
+                const auto t = (uint32_t) (h.frame - at);
+                if (h.type == CLAP_EVENT_MIDI)
+                    e.midiMessage (t, (uint8_t) (h.key >> 16), (uint8_t) (h.key >> 8), (uint8_t) h.key);
+                else
+                    e.note (t, h.type, (int16_t) h.key, h.velocity);
+            }
+    }, out);
+    CHECK (l == r);
+    return l;
+}
+
+// The sequencer as the plug-in holds it after these settings and a Regen (its pattern made from the seed).
+tbmpc::Tb3po sequencerOf (uint16_t seed, int density, int scale, int root, int octave, int steps, int transpose = 0)
+{
+    tbmpc::Tb3po t;
+    t.start (1);
+    t.setScale (scale);
+    t.setRoot (root);
+    t.setOctave (octave);
+    t.setDensity (density + 7);
+    t.setSteps (steps);
+    t.setSeed (seed);
+    t.setLocked (true);
+    t.setTransposeInput (transpose * 128);
+    t.reset (0);
+    return t;
+}
+
+// A pad's step lasts Gate's share of a clock at the tempo, in whole frames, counted as the plug-in counts it.
+uint32_t padLength (double gate, double bpm, double stepBeats = 0.25)
+{
+    return (uint32_t) std::max (1.0, std::floor ((double) (float) gate * stepBeats / (bpm / 60.0 / rate48)));
+}
+
+// A periodic signal's frequency in [from, to): from its first rising zero crossing to its last (each placed between
+// samples, and armed by a dip below -h), so it is exact to a fraction of a percent over a few cycles.
+double frequency (const std::vector<float>& x, size_t from, size_t to, float h = 0.002f)
+{
+    double first = 0.0, last = 0.0;
+    int n = 0;
+    bool armed = false;
+    for (size_t i = from + 1; i < to && i < x.size(); ++i)
+    {
+        if (x[i] < -h)
+            armed = true;
+        if (armed && x[i - 1] <= 0.0f && x[i] > 0.0f)
+        {
+            const double t = (double) (i - 1) + (double) -x[i - 1] / (double) (x[i] - x[i - 1]);
+            if (n == 0)
+                first = t;
+            last = t, ++n, armed = false;
+        }
+    }
+    return n > 1 ? (n - 1) * rate48 / (last - first) : 0.0;
+}
+
+double hzOf (int32_t cv) { return (double) tbmpc::voiceBaseHz * std::exp2 ((double) cv / 1536.0); }
+
+void testStepPads()
+{
+    const bool debug = std::getenv ("TBMPC_DEBUG") != nullptr;
+    auto peak = [] (const std::vector<float>& x, size_t from, size_t to) {
+        float m = 0;
+        for (size_t i = from; i < to && i < x.size(); ++i) m = std::max (m, std::fabs (x[i]));
+        return m;
+    };
+    auto rms = [] (const std::vector<float>& x, size_t from, size_t to) {
+        double s = 0;
+        for (size_t i = from; i < to; ++i) s += (double) x[i] * x[i];
+        return std::sqrt (s / (double) (to - from));
+    };
+    auto plus = [] (Patch p, const Patch& more) { p.insert (p.end(), more.begin(), more.end()); return p; };
+    // The sequencer's settings, then Regen: the pattern is made from them now (a seed set while stopped otherwise
+    // waits for the next clock; the pads then play the pattern that clock will make: see below).
+    auto tb = [&] (const Patch& p) { return plus (p, { { "Regen", 1.0 } }); };
+    auto notes = [&] (const Patch& p) { return plus (p, { { "Mode", 1.0 }, { "Regen", 1.0 } }); };
+    auto playing = [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); };
+
+    // A pattern with rests, accents and octave jumps among its first 24 steps (found with the port), in Aeolian: whole
+    // semitones, so Mode: Notes can play each step's pitch as a key.
+    const int density = -2, scale = 6, root = 3, octave = 0;
+    uint16_t seed = 0;
+    for (uint32_t s = 0x100; s < 0x4000 && seed == 0; ++s)
+    {
+        const auto t = sequencerOf ((uint16_t) s, density, scale, root, octave, 24);
+        int rests = 0, accents = 0, jumps = 0;
+        for (int i = 0; i < 24; ++i)
+            rests += ! t.gated (i), accents += t.accented (i), jumps += t.octaveUp (i) || t.octaveDown (i);
+        if (rests >= 4 && accents >= 3 && jumps >= 2)
+            seed = (uint16_t) s;
+    }
+    CHECK (seed != 0);
+    const Patch acid { { "Seed Mode", 1.0 }, { "Seed", seed }, { "Density", density }, { "Scale", scale }, { "Root", root },
+                       { "Octave", octave }, { "Cutoff", 0.45 }, { "Resonance", 0.7 }, { "Env Mod", 0.6 }, { "Decay", 0.3 },
+                       { "Accent", 0.9 }, { "Gate", 0.5 } };
+    const auto port = sequencerOf (seed, density, scale, root, octave, 24);
+    auto keyOf = [&] (int step) { return 36 + port.pitchOfStep (step) / 128; };
+    const uint32_t len = padLength (0.5, 120.0); // 3,000 frames: half a 1/16 at 120 BPM
+    const uint64_t at = 1280;
+    if (debug)
+        std::printf ("debug step pads: seed %04x, a pad %u frames\n", seed, len);
+
+    // Each pad plays its step, host stopped, as Mode: Notes plays the step's pitch (to the bit): accented as the step
+    // is, for Gate's share of a clock. Its note off does nothing. Rests play too. Steps 24: notes 36 - 59 are steps 1 - 24.
+    {
+        const Patch steps24 = plus (acid, { { "Steps", 24.0 } });
+        int rests = 0;
+        for (int s = 0; s < 24; ++s)
+        {
+            CHECK (port.pitchOfStep (s) % 128 == 0);
+            const int key = keyOf (s);
+            const auto pad = playHits (tb (steps24), { noteOnAt (at, 36 + s), noteOffAt (at + 200, 36 + s) }, 9600);
+            const auto ref = playHits (notes (steps24), { noteOnAt (at, key, port.accented (s) ? 1.0 : 0.6), noteOffAt (at + len, key) }, 9600);
+            CHECK (pad == ref);
+            CHECK (peak (pad, at, at + 2400) > 0.01f && peak (pad, 0, at) == 0.0f);
+            rests += ! port.gated (s);
+        }
+        CHECK (rests >= 4);
+        // Steps 8: notes 36 - 51 are still the pads (steps 9 - 16 of the 32 the pattern holds); Steps 16: note 52 is
+        // not one (it transposes: silence, stopped).
+        const auto port8 = sequencerOf (seed, density, scale, root, octave, 8);
+        for (int s : { 3, 9, 15 })
+        {
+            const Patch steps8 = plus (acid, { { "Steps", 8.0 } });
+            const int key = 36 + port8.pitchOfStep (s) / 128;
+            CHECK (playHits (tb (steps8), { noteOnAt (at, 36 + s) }, 9600)
+                   == playHits (notes (steps8), { noteOnAt (at, key, port8.accented (s) ? 1.0 : 0.6), noteOffAt (at + len, key) }, 9600));
+        }
+        const auto above = playHits (tb (acid), { noteOnAt (at, 52) }, 9600);
+        CHECK (std::all_of (above.begin(), above.end(), [] (float v) { return v == 0.0f; }));
+        CHECK (peak (playHits (tb (acid), { noteOnAt (at, 51) }, 9600), at, at + 2400) > 0.01f);
+    }
+
+    // A seed, Density and Scale set while stopped wait for the next clock to make the pattern again (the screen shows
+    // the one before, PENDING): the pads play the steps that clock will play, the new pattern's.
+    {
+        const auto made = sequencerOf (seed, density, scale, root, octave, 16);
+        int differ = 0;
+        for (int s = 0; s < 16; ++s)
+        {
+            const int key = 36 + made.pitchOfStep (s) / 128;
+            const auto pad = playHits (acid, { noteOnAt (at, 36 + s) }, 6400);
+            CHECK (pad == playHits (notes (acid), { noteOnAt (at, key, made.accented (s) ? 1.0 : 0.6), noteOffAt (at + len, key) }, 6400));
+            differ += pad != playHits (plus (acid, { { "Seed", seed ^ 0x5555 } }), { noteOnAt (at, 36 + s) }, 6400);
+        }
+        CHECK (differ >= 8);
+    }
+
+    // A transposing note on the pad's frame applies to the pad's step, whichever comes first (the pad plays after the
+    // frame's events); the pad leaves the transposition as it is, so the next pad is transposed too.
+    {
+        const auto up = sequencerOf (seed, density, scale, root, octave, 16, 12);
+        auto ref = [&] (int s, uint64_t when) {
+            const int key = 36 + up.pitchOfStep (s) / 128;
+            return std::vector<Hit> { noteOnAt (when, key, up.accented (s) ? 1.0 : 0.6), noteOffAt (when + len, key) };
+        };
+        auto both = ref (3, at);
+        for (const auto& h : ref (7, at + 6400))
+            both.push_back (h);
+        const auto first = playHits (tb (acid), { noteOnAt (at, 72), noteOnAt (at, 36 + 3), noteOnAt (at + 6400, 36 + 7) }, 12800);
+        const auto second = playHits (tb (acid), { noteOnAt (at, 36 + 3), noteOnAt (at, 72), noteOnAt (at + 6400, 36 + 7) }, 12800);
+        CHECK (first == second && first == playHits (notes (acid), both, 12800));
+    }
+
+    // The pad's velocity: 100/127 or more accents a plain step (as Mode: Notes' accent); 99/127 does not. MIDI note
+    // ons (0x90) and offs play the same as CLAP notes.
+    {
+        int plain = 0;
+        while (plain < 16 && port.accented (plain))
+            ++plain;
+        CHECK (plain < 16);
+        const int key = keyOf (plain);
+        const auto loud = playHits (tb (acid), { noteOnAt (at, 36 + plain, 100.0 / 127.0) }, 9600);
+        const auto soft = playHits (tb (acid), { noteOnAt (at, 36 + plain, 99.0 / 127.0) }, 9600);
+        CHECK (loud == playHits (notes (acid), { noteOnAt (at, key, 1.0), noteOffAt (at + len, key) }, 9600));
+        CHECK (soft == playHits (notes (acid), { noteOnAt (at, key, 0.6), noteOffAt (at + len, key) }, 9600));
+        CHECK (loud != soft);
+        CHECK (playHits (tb (acid), { midiAt (at, 0x90, 36 + plain, 76), midiAt (at + 128, 0x80, 36 + plain, 0) }, 9600) == soft);
+    }
+
+    // Two pads on one frame: the louder plays, once; on a tie, the later.
+    {
+        int other = 1;
+        while (other < 16 && keyOf (other) == keyOf (0))
+            ++other;
+        CHECK (other < 16);
+        const int a = 36, b = 36 + other;
+        const auto onlyA = playHits (tb (acid), { noteOnAt (at, a, 0.9) }, 9600), onlyB = playHits (tb (acid), { noteOnAt (at, b, 0.9) }, 9600);
+        CHECK (onlyA != onlyB && peak (onlyA, at, at + 2400) > 0.01f && peak (onlyB, at, at + 2400) > 0.01f);
+        CHECK (playHits (tb (acid), { noteOnAt (at, a, 0.5), noteOnAt (at, b, 0.9) }, 9600) == onlyB);
+        CHECK (playHits (tb (acid), { noteOnAt (at, a, 0.9), noteOnAt (at, b, 0.5) }, 9600) == onlyA);
+        CHECK (playHits (tb (acid), { noteOnAt (at, a, 0.9), noteOnAt (at, b, 0.9) }, 9600) == onlyB);
+        // The same pad twice on one frame (Melodee's on, on): once.
+        CHECK (playHits (tb (acid), { noteOnAt (at, a, 0.9), noteOnAt (at, a, 0.9) }, 9600) == onlyA);
+    }
+
+    // On, on, off of one pad (Melodee retriggering it): the second on strikes again, both envelopes over (as Mode:
+    // Notes' key let go and played again on that frame, to the bit); the one off does nothing. The MEG heard: a low
+    // cutoff that Env Mod opens far; a quarter-note clock and Gate 95 % for a long step (475 ms).
+    {
+        const Patch meg = plus (acid, { { "Cutoff", 0.2 }, { "Resonance", 0.3 }, { "Env Mod", 0.9 }, { "Decay", 0.5 }, { "Gate", 0.95 },
+                                        { "Clock Div", 1.0 } });
+        const uint32_t long95 = padLength (0.95, 120.0, 1.0); // 22,799 frames (0.95 as a float is a hair under)
+        const uint64_t again = 128 * 150; // 400 ms on
+        int s = 0;
+        while (s < 16 && port.accented (s))
+            ++s;
+        const int key = keyOf (s);
+        const auto repeated = playHits (tb (meg), { noteOnAt (0, 36 + s), noteOnAt (again, 36 + s), noteOffAt (2 * again, 36 + s) }, 48000);
+        const auto struck = playHits (notes (meg), { noteOnAt (0, key), noteOffAt (again, key), noteOnAt (again, key), noteOffAt (again + long95, key) }, 48000);
+        const double before = rms (repeated, again - 2400, again), after = rms (repeated, again + 240, again + 2640);
+        if (debug)
+            std::printf ("debug pad on, on, off: rms %.4f before, %.4f after\n", before, after);
+        CHECK (repeated == struck);
+        CHECK (after > 1.5 * before);
+        CHECK (repeated == playHits (tb (meg), { noteOnAt (0, 36 + s), noteOnAt (again, 36 + s) }, 48000)); // the off did nothing
+        CHECK (peak (repeated, again + long95 - 2400, again + long95) > 1e-4f);
+        CHECK (peak (repeated, again + long95 + 2400, 48000) < 1e-4f);         // the step's own end did
+    }
+
+    // Chokes, note offs and Melodee's silence (CC 120 and 123 on every channel, a choke of each key it played): a
+    // note off or all notes off leaves the pad's step to its end; a choke of its key (or of every key) or All Sound
+    // Off stops it there, as a note off stops a key in Mode: Notes.
+    {
+        const int s = 4, key = keyOf (s);
+        const uint64_t cut = 1280;
+        const auto whole = playHits (tb (acid), { noteOnAt (0, 36 + s) }, 9600);
+        const auto stopped = playHits (notes (acid), { noteOnAt (0, key, port.accented (s) ? 1.0 : 0.6), noteOffAt (cut, key) }, 9600);
+        CHECK (whole != stopped && peak (whole, 0, 2400) > 0.01f);
+        std::vector<Hit> allOff { noteOnAt (0, 36 + s) }, storm { noteOnAt (0, 36 + s) };
+        for (int ch = 0; ch < 16; ++ch)
+        {
+            allOff.push_back (midiAt (cut, 0xb0 | ch, 123, 0));
+            storm.push_back (midiAt (cut, 0xb0 | ch, 120, 0));
+            storm.push_back (midiAt (cut, 0xb0 | ch, 123, 0));
+        }
+        storm.push_back (chokeAt (cut, 36 + s));
+        storm.push_back (noteOffAt (cut, 36 + s));
+        CHECK (playHits (tb (acid), { noteOnAt (0, 36 + s), noteOffAt (cut, 36 + s) }, 9600) == whole);
+        CHECK (playHits (tb (acid), allOff, 9600) == whole);
+        CHECK (playHits (tb (acid), { noteOnAt (0, 36 + s), chokeAt (cut, 36 + s + 1) }, 9600) == whole);
+        CHECK (playHits (tb (acid), { noteOnAt (0, 36 + s), chokeAt (cut, 36 + s) }, 9600) == stopped);
+        CHECK (playHits (tb (acid), { noteOnAt (0, 36 + s), chokeAt (cut, -1) }, 9600) == stopped);
+        CHECK (playHits (tb (acid), { noteOnAt (0, 36 + s), midiAt (cut, 0xb0, 120, 0) }, 9600) == stopped);
+        CHECK (playHits (tb (acid), storm, 9600) == stopped);
+        // A pad and a choke of it on one frame: nothing. A storm while the sequencer plays and no pad sounds: the
+        // sequence plays on as it was, to the bit.
+        CHECK (peak (playHits (tb (acid), { noteOnAt (cut, 36 + s), chokeAt (cut, 36 + s) }, 9600), 0, 9600) == 0.0f);
+        std::vector<Hit> playingStorm;
+        for (const auto& h : storm)
+            if (h.type != CLAP_EVENT_NOTE_ON)
+                playingStorm.push_back ({ h.frame + 96000, h.type, h.key, h.velocity });
+        CHECK (playHits (tb (acid), playingStorm, 48000 * 3, playing) == playHits (tb (acid), {}, 48000 * 3, playing));
+    }
+
+    // While the host plays: a pattern (Semitone, a clean saw two octaves up) whose first three clocks open no gate.
+    // Pads hit there sound as Mode: Notes' keys do with the sequencer unheard, to the bit, and so do they when the
+    // host stops while one sounds (it plays to its end, as a key held by hand does) and once it has stopped.
+    const Patch clean { { "Seed Mode", 1.0 }, { "Scale", 0.0 }, { "Density", -2.0 }, { "Octave", 2.0 }, { "Cutoff", 1.0 }, { "Resonance", 0.0 },
+                        { "Env Mod", 0.0 }, { "Accent", 0.5 }, { "Volume", 1.0 }, { "Gate", 0.4 } };
+    uint16_t quiet = 0;
+    for (uint32_t s = 0x100; s < 0x4000 && quiet == 0; ++s)
+    {
+        auto t = sequencerOf ((uint16_t) s, -2, 0, 0, 2, 16);
+        bool silent = true;
+        for (int k = 0; k < 3; ++k)
+            t.clock(), silent &= ! t.opened;
+        if (silent)
+            quiet = (uint16_t) s;
+    }
+    CHECK (quiet != 0);
+    {
+        const Patch p = plus (clean, { { "Seed", quiet } });
+        const auto q = sequencerOf (quiet, -2, 0, 0, 2, 16);
+        const uint32_t len40 = padLength (0.4, 120.0);
+        auto keyAt = [&] (int step) { return 36 + q.pitchOfStep (step) / 128; };
+        const auto pads = playHits (tb (p), { noteOnAt (1280, 36 + 3), noteOnAt (7680, 36 + 9, 1.0) }, 18000, playing);
+        const auto ref = playHits (notes (p), { noteOnAt (1280, keyAt (3), q.accented (3) ? 1.0 : 0.6), noteOffAt (1280 + len40, keyAt (3)),
+                                                noteOnAt (7680, keyAt (9), 1.0), noteOffAt (7680 + len40, keyAt (9)) }, 18000, playing);
+        CHECK (pads == ref);
+        CHECK (peak (pads, 1280, 1280 + 2000) > 0.05f && peak (pads, 7680, 7680 + 2000) > 0.05f);
+        auto stopsAt = [] (uint64_t at) { return at < 8960 ? playingFrom (0.0, 120.0, rate48, at) : Transport { false, 120.0, 0.0 }; };
+        const auto stopping = playHits (tb (p), { noteOnAt (7680, 36 + 9), noteOnAt (14080, 36 + 1) }, 24000, stopsAt);
+        const auto stoppingRef = playHits (notes (p), { noteOnAt (7680, keyAt (9), q.accented (9) ? 1.0 : 0.6), noteOffAt (7680 + len40, keyAt (9)),
+                                                        noteOnAt (14080, keyAt (1), q.accented (1) ? 1.0 : 0.6), noteOffAt (14080 + len40, keyAt (1)) },
+                                           24000, stopsAt);
+        CHECK (stopping == stoppingRef);
+        CHECK (peak (stopping, 8960, 7680 + len40 - 100) > 0.05f && peak (stopping, 14080, 14080 + 2000) > 0.05f);
+    }
+
+    // The play head: the same pattern played for 6 s with a transposing note (D4: +2) at the top, and pads hit where
+    // the pattern rests (two clocks without a gate). Each pad sounds its step's pitch, transposed (to 0.5 %), and is
+    // gone before the next clock; every sequenced note starts where it does without the pads, at the same pitch: the
+    // pads moved neither the play head nor the transposition. The pads report nothing to the host (no seed changed).
+    {
+        const Patch p = plus (clean, { { "Seed", quiet }, { "Gate", 0.5 }, { "Accent", 0.0 } }); // no accent sweep to bend the pitch read
+        auto q = sequencerOf (quiet, -2, 0, 0, 2, 16, 2);
+        const auto pitches = q; // the pattern's pitches with the transposition (the pads play these)
+        std::vector<Hit> hits { noteOnAt (0, 62, 0.8) };
+        std::vector<std::pair<uint64_t, int>> padAt; // frame, step
+        bool restBefore = true;
+        for (int k = 0; k < 48; ++k)
+        {
+            q.clock();
+            const bool rest = ! q.opened;
+            if (k >= 3 && rest && restBefore && padAt.size() < 8)
+            {
+                const uint64_t f = ((uint64_t) k * 6000 + 128) / 128 * 128 + 128; // a block's start, early in the step
+                const int step = (k * 5 + 3) % 16;
+                padAt.push_back ({ f, step });
+                hits.push_back (noteOnAt (f, 36 + step, 0.6));
+            }
+            restBefore = rest;
+            if (q.opened)
+                q.halfStepPassed();
+        }
+        CHECK (padAt.size() >= 3);
+        OutEvents out;
+        const auto plain = playHits (tb (p), { noteOnAt (0, 62, 0.8) }, 48000 * 6, playing);
+        const auto padded = playHits (tb (p), hits, 48000 * 6, playing, 128, &out);
+        CHECK (out.values.empty());
+        // Onsets of the signal's envelope (its peak over the last 32 samples): the oscillator's phase differs after a pad,
+        // and a note starting near a zero crossing would dip under the onset finder's quiet level in its first samples.
+        auto envelope = [] (const std::vector<float>& x) {
+            std::vector<float> e (x.size());
+            for (size_t i = 0; i < x.size(); ++i)
+                for (size_t j = i >= 31 ? i - 31 : 0; j <= i; ++j)
+                    e[i] = std::max (e[i], std::fabs (x[j]));
+            return e;
+        };
+        const auto a = onsets (envelope (plain)), b = onsets (envelope (padded));
+        if (debug)
+            std::printf ("debug pads while playing: %zu pads, %zu notes plain, %zu with the pads\n", padAt.size(), a.size(), b.size());
+        CHECK (a.size() > 10 && b.size() == a.size() + padAt.size());
+        for (const auto& [f, step] : padAt)
+        {
+            const double want = hzOf (pitches.pitchOfStep (step)), got = frequency (padded, f + 240, f + 2760);
+            if (debug)
+                std::printf ("debug pad at %llu, step %d: %.2f Hz, want %.2f\n", (unsigned long long) f, step + 1, got, want);
+            CHECK (std::fabs (got / want - 1.0) < 0.005);
+            CHECK (std::any_of (b.begin(), b.end(), [f = f] (long o) { return o >= (long) f && o < (long) f + 48; }));
+            CHECK (peak (padded, f + 3000 + 2400, (f / 6000 + 1) * 6000) < 1e-4f && peak (plain, f, (f / 6000 + 1) * 6000) == 0.0f);
+        }
+        int compared = 0;
+        for (long o : a)
+        {
+            const bool found = std::any_of (b.begin(), b.end(), [o] (long x) { return std::labs (x - o) <= 48; });
+            CHECK (found);
+            if (o + 2640 >= (long) plain.size())
+                continue;
+            const double x = frequency (plain, (size_t) o + 240, (size_t) o + 2640), y = frequency (padded, (size_t) o + 240, (size_t) o + 2640);
+            CHECK (x > 0.0 && std::fabs (y / x - 1.0) < 0.005);
+            ++compared;
+        }
+        CHECK (compared > 10);
+    }
+
+    // Play's frame and a clock's frame: a pad hit there gives way to the step the clock brings (the sequence plays as
+    // without it, to the bit). Notes outside the pads transpose as they did, to the bit as the Transpose knob: with
+    // Steps 16, 52 and 35; with Steps 24, 62 (60 is no transposition, and 59 a pad).
+    {
+        auto fromStop = [] (uint64_t at) { return at < 2560 ? Transport { false, 120.0, 0.0 } : playingFrom (0.0, 120.0, rate48, at - 2560); };
+        const auto none = playHits (tb (acid), {}, 2560 + 120000, fromStop);
+        CHECK (playHits (tb (acid), { noteOnAt (2560, 40), noteOnAt (2560 + 96000, 45, 1.0) }, 2560 + 120000, fromStop) == none);
+        CHECK (peak (none, 2560, 2560 + 96000) > 0.05f);
+        auto transposed = [&] (Patch p, int key, int knob) {
+            const auto byNote = playHits (tb (p), { noteOnAt (0, key, 0.8) }, 48000 * 2, playing);
+            const auto byKnob = playHits (tb (plus (p, { { "Transpose", (double) knob } })), {}, 48000 * 2, playing);
+            return byNote == byKnob;
+        };
+        CHECK (transposed (acid, 52, -8));
+        CHECK (transposed (acid, 35, -25));
+        CHECK (transposed (acid, 72, 12));
+        const Patch steps24 = plus (acid, { { "Steps", 24.0 } });
+        CHECK (transposed (steps24, 62, 2));
+        CHECK (transposed (steps24, 60, 0));
+        CHECK (transposed (steps24, 59, 0)); // a pad on Play's frame: not heard, no transposition
+    }
+
+    // Mode: Notes: the same notes are a keyboard, chromatic from C2 (36) at 0 V, held until let go: E2 and D#3, not the
+    // steps' pitches. Switching to TB-3PO stops the key sounding; there the pads play steps again (to the bit as if it
+    // had been TB-3PO all along); switching back stops the pad's step.
+    {
+        const auto keys = playHits (notes (clean), { noteOnAt (0, 40), noteOffAt (24000, 40), noteOnAt (30000, 51), noteOffAt (60000, 51) }, 64000);
+        const double e2 = frequency (keys, 2400, 22000), ds3 = frequency (keys, 32400, 58000);
+        if (debug)
+            std::printf ("debug Mode: Notes keys: %.2f Hz (E2 82.41), %.2f Hz (D#3 155.56)\n", e2, ds3);
+        CHECK (std::fabs (e2 / 82.407 - 1.0) < 0.003 && std::fabs (ds3 / 155.563 - 1.0) < 0.003);
+        CHECK (peak (keys, 24000 + 2400, 30000) < 1e-4f && peak (keys, 60000 + 2400, 64000) < 1e-4f);
+        CHECK (peak (keys, 20000, 23900) > 0.05f); // held past where a pad's step would end
+        Instance a;
+        a.setup (notes (acid));
+        std::vector<float> l, r, l2, r2;
+        a.render (12800, 128, l, r, stoppedTransport, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 1280) a.set (e, "Mode", 0.0);
+            if (at == 2560) e.note (0, CLAP_EVENT_NOTE_ON, 36 + 4, 0.6);
+        });
+        CHECK (l == playHits (tb (acid), { noteOnAt (2560, 36 + 4) }, 12800));
+        Instance b;
+        b.setup (tb (acid));
+        b.render (12800, 128, l2, r2, stoppedTransport, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 36 + 4, 0.6);
+            if (at == 1280) b.set (e, "Mode", 1.0);
+            if (at == 2560) e.note (0, CLAP_EVENT_NOTE_ON, 40, 0.6);
+        });
+        const int key = keyOf (4);
+        CHECK (l2 == playHits (notes (acid), { noteOnAt (0, key, port.accented (4) ? 1.0 : 0.6), noteOffAt (1280, key), noteOnAt (2560, 40) }, 12800));
+    }
+
+    // The same output for any block size (128, 37, 1, 4096 frames), with pads inside blocks (two on one frame, on,
+    // on, off, a choke, MIDI ones and All Sound Off, a pad past 16 with Steps 24), a transposing note, playing and stopped.
+    for (bool host : { true, false })
+    {
+        const std::vector<Hit> hits { noteOnAt (20011, 40, 0.7), noteOnAt (30001, 62, 0.8), noteOnAt (40003, 45, 1.0), noteOnAt (50021, 36, 0.5),
+                                      noteOnAt (50021, 38, 0.9), noteOnAt (61007, 59), noteOffAt (61500, 59), noteOnAt (70001, 41), noteOnAt (71001, 41),
+                                      noteOffAt (72001, 41), noteOnAt (80001, 44), chokeAt (81013, 44), midiAt (90001, 0x90, 47, 90), midiAt (91001, 0xb0, 120, 0),
+                                      midiAt (100003, 0x90, 50, 127), midiAt (100003, 0x80, 50, 0), noteOnAt (110007, 53) };
+        const Patch p = tb (plus (acid, { { "Steps", 24.0 } }));
+        auto t = [host] (uint64_t at) { return host ? playingFrom (0.0, 133.0, rate48, at) : Transport { false, 133.0, 0.0 }; };
+        const auto at128 = playHits (p, hits, 48000 * 3, t, 128);
+        CHECK (peak (at128, 20011, 20011 + 1000) > 0.01f);
+        for (uint32_t block : { 37u, 1u, 4096u })
+            CHECK (playHits (p, hits, 48000 * 3, t, block) == at128);
+    }
+}
+
 int main (int argc, char** argv)
 {
     if (argc < 3)
@@ -1956,6 +2407,7 @@ int main (int argc, char** argv)
     testReviewFixes();
     testRepeatedNotes();
     testAccentDecayAcrossSlides();
+    testStepPads();
     testBendAndWheel();
     testExtremes();
     demos (argv[2]);

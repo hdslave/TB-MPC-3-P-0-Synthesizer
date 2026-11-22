@@ -4,9 +4,9 @@
 
 ![TB-MPC-3-P-0 Press Plate screen running in hdslaveOS](docs/tb-mpc-3-p-0-screen.gif)
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.0).
 
-TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset, while MIDI notes transpose the pattern. Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
+TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, and other MIDI notes transpose it (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
 ## Signal flow
 
@@ -14,12 +14,15 @@ TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are
 host transport ──clock (Clock Div)──► TB-3PO ──pitch CV (with its slide)──► VCO (saw or square)
                ──reset (Reset)─────►        ──gate (3 V; 5 V = accent)──► MEG, VEG, accent
 MIDI note ──transpose (as CV 1)───►
+pad (note 36 on) ──its step, once: the step's pitch and gate──► the voice (the play head stays)
 
 VCO ──► Filter: 303 diode ladder / Twin Peak / 18 dB (cutoff: Cutoff, Env Mod x MEG, accent sweep)
     ──► VCA (VEG + accent) ──► Drive ──► Volume ──► out
 ```
 
 On the MPC it draws its own page on the screen (see [The screen](#the-screen)).
+
+Not yet run on the MPC itself: tested in hdslaveOS's own CLAP host code (`clap_check`) and this repository's tests.
 
 ## Controls
 
@@ -75,7 +78,7 @@ for 303 and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0 a
 
 | Control | Range | The applet's |
 |---|---|---|
-| Mode | TB-3PO / Notes | — (new). **TB-3PO** plays the voice. **Notes**: your MIDI notes play it instead (see [Mode: Notes](#mode-notes)); TB-3PO goes on counting unheard, so switching back lands in time. |
+| Mode | TB-3PO / Notes | — (new). The sequencer on or off. **TB-3PO** plays the voice, and pads 1-16 play its steps (see [MIDI notes and pads](#midi-notes-and-pads)). **Notes**: your MIDI notes play it instead, the pads too, chromatic (see [Mode: Notes](#mode-notes)); TB-3PO goes on counting unheard, so switching back lands in time. |
 | Seed Mode | Random / Locked | The die / the lock. **Random**: every reset picks a new seed (a new pattern); the Seed shows it. **Locked**: the seed stays. |
 | Seed | 0000 – ffff | The 16-bit seed, shown in hex as on the module. A new seed plays from the next clock. |
 | Regen | button | Turning the encoder past the die or the lock: a reset now. |
@@ -85,9 +88,9 @@ for 303 and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0 a
 | Scale | 128 scales | The firmware's quantizer scales, from Semitone on (its four user scales and Off are left out). Starts on Gunakri, as the applet does. |
 | Root | C – B | The root, a step of the scale (a scale with fewer than 12 notes has that many roots). |
 | Octave | -3 – +3 | The octave offset (one span of the scale). |
-| Steps | 1 – 32 | The pattern's length. |
-| Gate | 10 – 95 % | — (new): how long a step's gate stays open, as a share of the step (50 %: the applet's half clock). |
-| Transpose | ±36 semitones | CV 1: added to the last MIDI note played (C4 plays the pattern as it is) and quantized to the scale from C, as the applet does with its transpose CV. |
+| Steps | 1 – 32 | The pattern's length. Over 16, the notes after pad 16 (52 on) play steps 17 to the last. |
+| Gate | 10 – 95 % | — (new): how long a step's gate stays open, as a share of the step (50 %: the applet's half clock). A pad's step lasts as long. |
+| Transpose | ±36 semitones | CV 1: added to the last MIDI note played (C4 plays the pattern as it is) and quantized to the scale from C, as the applet does with its transpose CV. The step pads (notes 36 – 51, or up to the last step when Steps is over 16) play steps instead and leave the transposition as it is. |
 
 CV 2 (density) has no control of its own: a host's automation of Density does what it did.
 
@@ -107,6 +110,32 @@ even when it plays a plug-in in smaller parts), so the clocks run on to the loop
 played there stands for the downbeat, and the pattern does not step twice (a bar reset the downbeat would have made
 comes when the host tells, at most a block late). A tempo change inside a block moves the host's place a few frames
 from where the clocks counted: followed as it is, no clock played twice.
+
+## MIDI notes and pads
+
+On a plug-in track at hdslaveOS's defaults (octave 2, key C, Chromatic), pads A01 – A16 send notes 36 – 51, pad 1 at
+the bottom left.
+
+**Sequencer on (Mode: TB-3PO): pads 1-16 play steps 1-16; off (Mode: Notes): the pads play notes.**
+
+- **A pad plays its step once**, as the sequencer plays that step: its pitch (with the scale, root, octave, its own
+  octave jump and the transposition), its accent (or the pad's, hit at velocity 100 or more), for Gate's share of a
+  step at the tempo, at once (no slide). A rest plays too. Use it with the host stopped to hear a pattern step by step,
+  or while it plays.
+- **Nothing moves.** The play head, the seed, Seed Back's memory and the transposition stay as they were. While the
+  host plays, the sequencer's next step takes the voice back, as it would have played. A pad hit on the very frame a
+  step comes (Play, say) gives way to that step.
+- **The pattern that will play.** A seed, Density or a scale with another number of notes set while stopped waits
+  for the next clock (the screen reads PENDING over the pattern before): the pads already play the steps that clock
+  will play.
+- **Letting go does nothing**: the step plays to its end. A pad hit again while its step sounds strikes again (both
+  envelopes from the start). Two pads at once (in one block): the louder plays, once; on a tie, the later. A host's
+  choke of the pad, or All Sound Off (CC 120), stops it; all notes off (CC 123) does not.
+- **Steps over 16**: the notes after pad 16 play steps 17 to the last (with Steps 32, notes 52 – 67), so C4 (60)
+  transposes nothing in the usual case.
+- **Every other note transposes**, as before: from the next step, held until another note (C4: as it is).
+
+Mode: Notes is the keyboard below: every note, pads included, plays the voice at its own pitch.
 
 ## Mode: Notes
 
@@ -201,17 +230,18 @@ Instructions a 128-frame block (48 kHz), counted by callgrind (`tools/bench.sh`)
 
 | Case | Instructions | Share of a block on one A55 core |
 |---|---|---|
-| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 27,780 | 0.58 % |
-| The same through Twin Peak (two ladders), Drive full | 37,150 | 0.77 % |
-| The same through 18 dB, Drive full | 27,590 | 0.57 % |
-| Typical: the default patch | 17,938 | 0.37 % |
-| Stopped | 612 | 0.01 % |
+| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 27,801 | 0.58 % |
+| The same through Twin Peak (two ladders), Drive full | 37,171 | 0.77 % |
+| The same through 18 dB, Drive full | 27,611 | 0.58 % |
+| Typical: the default patch | 17,957 | 0.37 % |
+| Stopped | 630 | 0.01 % |
 
 The voice runs at the host's rate. A sounding sample costs one exp2 for the cutoff and one division: the diode
 ladder's zero-delay solve has five denominators that are polynomials in the cutoff, so their reciprocals come from
 one division of their product (about 107 cycles a sample on llvm-mca's Cortex-A55 model, against 140 with a
 division each). The pitch's exp2 runs only while the pitch slides or Tuning moves; with the VCA shut only the
-envelopes run, then nothing. The voice's sample is compiled into the run's loop rather than called.
+envelopes run, then nothing. The voice's sample is compiled into the run's loop rather than called. A pad costs
+nothing until it is hit (then a step's pitch, or a pattern made again once when one waits for its clock).
 
 ## Install
 
@@ -222,6 +252,7 @@ Copy `build/TB-MPC-3-P-0.clap` to the MPC's card as `Melodee/Plugins/hdslave/hds
 ```sh
 colima start melodee            # the Docker VM with Melodee's build images
 ./build.sh                      # builds build/TB-MPC-3-P-0.clap and runs the tests
+./build.sh sanitize             # the tests under AddressSanitizer and UBSan (build/asan)
 tools/bench.sh                  # instruction counts (needs Melodee's melodee-profiler image)
 make scales                     # remakes src/scales.h from tools/oc-source/ (any machine with Python 3)
 ```
@@ -254,17 +285,26 @@ statically and needs only the MPC's libc and libm.
   -3 .. +6 dB of the dry voice), Slide Time (15 ms there, 600 ms under half way, 100 ms on), Accent Decay (and Decay's
   after a slide out of an accent), the filters (the 500 Hz calibration in each, Twin Peak's band, their levels,
   Cutoff's text by Resonance and Filter and the host asked to read it again), the screen's page (it draws, its
-  controls set the values the host then hears, its buttons press; pictures in `build/screen-*.png`), bounded output at
-  random settings, and the demo renders of the presets.
-- `tests/fingerprint.cpp` renders 74 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
+  controls set the values the host then hears, its buttons press; pictures in `build/screen-*.png`), the step pads
+  (each of 24 steps, rests too, the same to the bit as Mode: Notes playing the step's pitch for Gate's share of a step,
+  accented as the step or the pad's velocity says, its note off doing nothing; the steps a pattern waiting for its
+  clock will play; two pads on one frame; on, on, off; chokes, notes off and Melodee's silence; while the host plays
+  and as it stops; the play head and the transposition left as they were, every sequenced note where and at the pitch
+  it was; Play's frame and a clock's frame; the notes outside the pads transposing as the knob does; Mode: Notes
+  chromatic and the switches between the modes; any block size), bounded output at random settings, and the demo
+  renders of the presets.
+- `tests/fingerprint.cpp` renders 77 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
   MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and
   switches between them, Twin Peak's spread moving, 18 dB ringing, Slide Time, Accent Decay, random 0.4 patches, a
-  loop wrapping inside a block in whole blocks and in parts), every
+  loop wrapping inside a block in whole blocks and in parts, the step pads stopped and playing), every
   seed locked,
   and hashes every output sample's bits against `tests/fingerprint.txt`: work meant to keep the sound, such as a
   speed-up, must leave every hash as it is. A change meant to change the sound updates them with
   `make fingerprint-update` (inside the build image). The hashes hold for Melodee's build image and these flags.
+
+`make sanitize` (`./build.sh sanitize`) builds all three and the plug-in with AddressSanitizer and UBSan and runs them,
+every fingerprint scenario too: a report stops it.
 
 ## Credits
 
