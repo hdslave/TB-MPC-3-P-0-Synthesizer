@@ -2491,7 +2491,10 @@ void testMasterFixes()
                      { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 }, { "Accent", 0.0 }, { "Volume", 1.0 },
                      { "Octave", 2.0 }, { "Gate", 0.95 } };
         Patch semitone = base; semitone.push_back ({ "Scale", 0.0 });
-        Patch penta = base; penta.push_back ({ "Scale", 10.0 });
+        // The fresh reference must land its Scale before its Transpose: setup applies a patch in order, so
+        // appending Scale after Transpose (as semitone does) would transpose in the old scale on both sides
+        // and the check below could not tell a stale transposition from a requantized one.
+        Patch penta = base; penta.insert (penta.begin(), { "Scale", 10.0 });
         Patch plain = base; plain[3].second = 0.0; plain.push_back ({ "Scale", 0.0 }); // Transpose 0
         const double changed = padHz (semitone, true), fresh = padHz (penta, false);
         if (std::getenv ("TBMPC_DEBUG"))
