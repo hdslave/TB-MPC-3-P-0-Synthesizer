@@ -4,7 +4,7 @@
 
 ![TB-MPC-3-P-0 Press Plate screen running in hdslaveOS](docs/tb-mpc-3-p-0-screen.gif)
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.1).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.2).
 
 TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, and other MIDI notes transpose it (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
@@ -16,7 +16,7 @@ host transport ──clock (Clock Div)──► TB-3PO ──pitch CV (with its 
 MIDI note ──transpose (as CV 1)───►
 pad (note 36 on) ──its step, once: the step's pitch and gate──► the voice (the play head stays)
 
-VCO ──► Filter: 303 diode ladder / Twin Peak / 18 dB (cutoff: Cutoff, Env Mod x MEG, accent sweep)
+VCO ──► Filter: Diode ladder / Twin Peak / 18 dB (cutoff: Cutoff, Env Mod x MEG, accent sweep)
     ──► VCA (VEG + accent) ──► Drive ──► Volume ──► out
 ```
 
@@ -40,11 +40,11 @@ In the order Melodee's Edit page lists them, three to a page.
 | Accent | 0 – 100 % | How much an accented step (TB-3PO's 5 V gate) lifts the VCA (up to +7 dB) and opens the filter through the accent sweep. Accents in a row at high resonance build up. |
 | Waveform | Saw / Square | |
 | Volume | 0 – 100 % | |
-| Slide | TB-3PO / 303 | **TB-3PO**: the applet's slide as the module plays it (see below). **303**: a glide both ways, as long as Slide Time. |
-| Slide Time | 15 – 600 ms | — (new): the 303 glide's time to arrive (95 %), for Slide: 303 and the glides of Mode: Notes. 60 ms (a time constant of 20 ms) is the 303's and the default. The applet's slide keeps its own speed. |
+| Slide | Tick / Glide | **Tick**: the applet's slide as the module plays it (see below). **Glide**: a glide both ways, as long as Slide Time. |
+| Slide Time | 15 – 600 ms | — (new): the 303 glide's time to arrive (95 %), for Slide: Glide and the glides of Mode: Notes. 60 ms (a time constant of 20 ms) is the 303's and the default. The applet's slide keeps its own speed. |
 | Accent Decay | 200 ms – 2 s | — (new): the MEG's decay on an accented step. Its default, the shortest, is the 303's, whose accented steps always take it; longer lets an accent's sweep hang. |
 | Drive | 0 – 100 % | — (new): after the VCA, a soft clipper driven up to +30 dB, anti-aliased (first-order antiderivative). Its level is made up so a playing pattern stays within about -2 to +3 dB of the dry voice; a held, dark note (few harmonics of its own) still grows louder as it gains them, up to about +12 dB. 0 is no drive at all. |
-| Filter | 303 / Twin Peak / 18 dB | — (new): see [Filter](#filter). |
+| Filter | Diode / Twin Peak / 18 dB | — (new): see [Filter](#filter). |
 | Peak Spread | 0.5 – 4 octaves | — (new): Twin Peak's upper peak, this far over the lower (Cutoff's). |
 
 The VCA's own envelope is fixed, as on the 303: it opens in 1 ms, decays slowly while the gate is held and closes
@@ -52,7 +52,7 @@ in a few ms when the gate shuts.
 
 ### Filter
 
-- **303**: the 303's 4-pole diode ladder (as before). Its stages are coupled, so with Resonance at 0 its passband
+- **Diode**: the 303's 4-pole diode ladder (as before). Its stages are coupled, so with Resonance at 0 its passband
   ends at about a ninth of its nominal frequency (an octave or so of 6 dB/octave slope first); from about 10 %
   Resonance on, the feedback flattens it out close to the resonant peak. Its range is 38 Hz – 4.9 kHz nominal: the
   top where it was before the calibration, more room at the bottom. (The presets kept their sound: their Cutoff
@@ -71,14 +71,14 @@ Calibration: the 303's service notes ask for the resonance to sit at about 500 H
 Resonance full. Each filter is placed so (Env Mod at 0; the tests play C1 and find the strongest harmonic at 490 Hz,
 the nearest to 500 of C1's, in all three). Cutoff's text is the frequency you hear as the edge, worked out from the
 filter's response with Resonance as it is and Env Mod at 0: the top of the passband (3 dB under its highest point)
-for 303 and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0 a 303 Cutoff at its middle reads
+for Diode and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0 a Diode Cutoff at its middle reads
 51 Hz, at 60 % 490 Hz. (Env Mod lowers the floor further, as on the 303; the mod wheel raises it.)
 
 ### TB-3PO
 
 | Control | Range | The applet's |
 |---|---|---|
-| Mode | TB-3PO / Notes | — (new). The sequencer on or off. **TB-3PO** plays the voice, and pads 1-16 play its steps (see [MIDI notes and pads](#midi-notes-and-pads)). **Notes**: your MIDI notes play it instead, the pads too, chromatic (see [Mode: Notes](#mode-notes)); TB-3PO goes on counting unheard, so switching back lands in time. |
+| Mode | Sequence / Notes | — (new). The sequencer on or off. **Sequence** plays the voice, and pads 1-16 play its steps (see [MIDI notes and pads](#midi-notes-and-pads)). **Notes**: your MIDI notes play it instead, the pads too, chromatic (see [Mode: Notes](#mode-notes)); TB-3PO goes on counting unheard, so switching back lands in time. |
 | Seed Mode | Random / Locked | The die / the lock. **Random**: every reset picks a new seed (a new pattern); the Seed shows it. **Locked**: the seed stays. |
 | Seed | 0000 – ffff | The 16-bit seed, shown in hex as on the module. A new seed plays from the next clock. |
 | Regen | button | Turning the encoder past the die or the lock: a reset now. |
@@ -95,7 +95,7 @@ for 303 and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0 a
 CV 2 (density) has no control of its own: a host's automation of Density does what it did.
 
 Pitch bend (±2 semitones) and the mod wheel (up to 3 octaves more cutoff) work in either mode: from a keyboard, or from
-the MPC's faders (Melodee's fader can send both to a plug-in track).
+the MPC's faders (Melodee's fader can send both to a plug-in track). Reset all controllers (CC 121) centres both.
 
 ### The clock
 
@@ -116,7 +116,7 @@ from where the clocks counted: followed as it is, no clock played twice.
 On a plug-in track at hdslaveOS's defaults (octave 2, key C, Chromatic), pads A01 – A16 send notes 36 – 51, pad 1 at
 the bottom left.
 
-**Sequencer on (Mode: TB-3PO): pads 1-16 play steps 1-16; off (Mode: Notes): the pads play notes.**
+**Sequencer on (Mode: Sequence): pads 1-16 play steps 1-16; off (Mode: Notes): the pads play notes.**
 
 - **A pad plays its step once**, as the sequencer plays that step: its pitch (with the scale, root, octave, its own
   octave jump and the transposition), its accent (or the pad's, hit at velocity 100 or more), for Gate's share of a
@@ -130,7 +130,8 @@ the bottom left.
   will play.
 - **Letting go does nothing**: the step plays to its end. A pad hit again while its step sounds strikes again (both
   envelopes from the start). Two pads at once (in one block): the louder plays, once; on a tie, the later. A host's
-  choke of the pad, or All Sound Off (CC 120), stops it; all notes off (CC 123) does not.
+  choke of the pad, or All Sound Off (CC 120), stops it; all notes off (CC 123) does not. All Sound Off (and a choke
+  of every key) also stops a sequencer gate still sounding, slid steps included, until the next step.
 - **Steps over 16**: the notes after pad 16 play steps 17 to the last (with Steps 32, notes 52 – 67), so C4 (60)
   transposes nothing in the usual case.
 - **Every other note transposes**, as before: from the next step, held until another note (C4: as it is).
@@ -142,7 +143,7 @@ Mode: Notes is the keyboard below: every note, pads included, plays the voice at
 Melodee's notes (its roll, its pads, a keyboard) play the voice, the way MIDI-played 303-style synths do:
 
 - A note on its own opens the gate (both envelopes start) at its pitch: C2 (MIDI 36) is the sequencer's 0 V.
-- A note played while another is held glides to its pitch with the 303 glide (whatever Slide is set to) and keeps the
+- A note played while another is held glides to its pitch with the Glide (whatever Slide is set to) and keeps the
   gate open: no new envelope, as a 303's slide.
 - Velocity 100 or more accents the note.
 - A key played again while it is still held (a host retriggering it before its note off: Melodee then sends a single
@@ -171,7 +172,7 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 
 - **Slides only go down.** The applet's slide was meant as an exponential glide; its integer arithmetic moves down by
   3/128 semitone each 1/16666 s (an octave in about 31 ms) and never moves up: a step slid into from below holds the
-  step before's pitch. Slide: 303 glides both ways.
+  step before's pitch. Slide: Glide glides both ways.
 - **Some low notes drop an extra octave.** The quantizer gives a note exactly a whole number of octaves below the
   root (an octave-down root note, or the root with Octave below 0) one octave too low, plus whatever note a longer
   scale chosen earlier left in its table.
@@ -186,6 +187,9 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 - **A new seed plays from the next clock.** On the module a typed-in seed waits for a Regen pulse (its later
   firmware changed this too).
 - **The host stopping shuts the gate.** The module would hold a sliding step's gate until the next clock.
+- **A scale change requantizes the transposition.** The module's quantizer keeps the cell it chose in the old
+  scale until CV 1 moves out of it; here CV 1 is a knob and a held note, so the held transposition is quantized
+  into the new scale at once, as if it had just been played there.
 - **Root keeps its knob.** The applet moves its root setting into a shorter scale's range; here the knob stays and
   the root used is limited.
 - **The tempo is held to 1 – 1000 BPM.** A host that told 0.0001 BPM (or none, or an endless one) would overflow the
@@ -233,11 +237,11 @@ Instructions a 128-frame block (48 kHz), counted by callgrind (`tools/bench.sh`)
 
 | Case | Instructions | Share of a block on one A55 core |
 |---|---|---|
-| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 27,801 | 0.58 % |
-| The same through Twin Peak (two ladders), Drive full | 37,171 | 0.77 % |
-| The same through 18 dB, Drive full | 27,611 | 0.58 % |
-| Typical: the default patch | 17,957 | 0.37 % |
-| Stopped | 630 | 0.01 % |
+| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 27,804 | 0.58 % |
+| The same through Twin Peak (two ladders), Drive full | 37,174 | 0.77 % |
+| The same through 18 dB, Drive full | 27,614 | 0.58 % |
+| Typical: the default patch | 17,909 | 0.37 % |
+| Stopped | 637 | 0.01 % |
 
 The voice runs at the host's rate. A sounding sample costs one exp2 for the cutoff and one division: the diode
 ladder's zero-delay solve has five denominators that are polynomials in the cutoff, so their reciprocals come from
@@ -296,7 +300,10 @@ statically and needs only the MPC's libc and libm.
   it was; Play's frame and a clock's frame; the notes outside the pads transposing as the knob does; Mode: Notes
   chromatic and the switches between the modes; any block size), the tempo's bounds (0.0001, 120, 1000, 5000 BPM and
   none, the sequencer and the pads: the same to the bit as at the nearest bound, and the output a number within full
-  scale), bounded output at random settings, and the demo renders of the presets.
+  scale), the 0.5.2 fixes (All Sound Off closing a sequencer gate, a scale change requantizing the transposition,
+  the seed told DONT_RECORD, nan and inf refused as text, a null flush, CC 121 centring bend and the wheel, a
+  state settling as it lands over a sounding note, Play's window the same at every block size, a state from a
+  newer version refused, and no rate at all), bounded output at random settings, and the demo renders of the presets.
 - `tests/fingerprint.cpp` renders 77 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
   MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and
