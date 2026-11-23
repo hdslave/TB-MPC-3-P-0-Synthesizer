@@ -4,7 +4,7 @@
 
 ![TB-MPC-3-P-0 Press Plate screen running in hdslaveOS](docs/tb-mpc-3-p-0-screen.gif)
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.0).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.1).
 
 TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, and other MIDI notes transpose it (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
@@ -188,6 +188,9 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 - **The host stopping shuts the gate.** The module would hold a sliding step's gate until the next clock.
 - **Root keeps its knob.** The applet moves its root setting into a shorter scale's range; here the knob stays and
   the root used is limited.
+- **The tempo is held to 1 – 1000 BPM.** A host that told 0.0001 BPM (or none, or an endless one) would overflow the
+  gate's frame count, or make every clock due at once: the sequencer and the pads take their tempo clamped, so an
+  absurd setting plays as at the nearest bound. No real tempo moves.
 
 ## The screen
 
@@ -291,8 +294,9 @@ statically and needs only the MPC's libc and libm.
   clock will play; two pads on one frame; on, on, off; chokes, notes off and Melodee's silence; while the host plays
   and as it stops; the play head and the transposition left as they were, every sequenced note where and at the pitch
   it was; Play's frame and a clock's frame; the notes outside the pads transposing as the knob does; Mode: Notes
-  chromatic and the switches between the modes; any block size), bounded output at random settings, and the demo
-  renders of the presets.
+  chromatic and the switches between the modes; any block size), the tempo's bounds (0.0001, 120, 1000, 5000 BPM and
+  none, the sequencer and the pads: the same to the bit as at the nearest bound, and the output a number within full
+  scale), bounded output at random settings, and the demo renders of the presets.
 - `tests/fingerprint.cpp` renders 77 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
   MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and

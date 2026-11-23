@@ -22,6 +22,7 @@
 #include <dlfcn.h>
 #include <cstdlib>
 #include <functional>
+#include <limits>
 #include <map>
 #include <random>
 #include <string>
@@ -2366,6 +2367,74 @@ void testStepPads()
     }
 }
 
+// 0.5.1: the host's tempo is held to 1 - 1000 BPM, and the sequencer's gate timer to 4e9 frames, as a pad's already
+// was. In 0.5.0 a tempo of 0.0001 BPM overflowed the gate timer (an eighth at Gate 50 %: 7.2e9 frames, cast to 32
+// bits), a pad's step lasted 4e9 frames, and an infinite tempo made every clock due at once, forever.
+void testTempoLimits()
+{
+    const double inf = std::numeric_limits<double>::infinity();
+    auto peak = [] (const std::vector<float>& x, size_t from, size_t to) {
+        float m = 0;
+        for (size_t i = from; i < to && i < x.size(); ++i) m = std::max (m, std::fabs (x[i]));
+        return m;
+    };
+    auto lastSound = [] (const std::vector<float>& x) { // the last frame not exactly 0 (-1: none)
+        long i = (long) x.size() - 1;
+        while (i >= 0 && x[(size_t) i] == 0.0f) --i;
+        return i;
+    };
+    auto bounded = [] (const std::vector<float>& x) {
+        bool ok = true;
+        for (float s : x) ok &= std::isfinite (s) && std::fabs (s) <= 1.0f;
+        return ok;
+    };
+    // The host playing at `bpm`, its place moving at `placeBpm` from the top.
+    auto told = [] (double bpm, double placeBpm) {
+        return [bpm, placeBpm] (uint64_t at) { return Transport { true, bpm, (double) at * placeBpm / 60.0 / rate48 }; };
+    };
+    auto stoppedAt = [] (double bpm) { return [bpm] (uint64_t) { return Transport { false, bpm, 0.0 }; }; };
+    Patch p = timingPatch (0x303);
+    p.push_back ({ "Density", -7.0 });
+    p.push_back ({ "Gate", 0.5 });
+
+    // The sequencer at 0.0001 BPM plays as at 1 BPM, to the bit: Play's step (gated, not sliding) sounds for Gate's
+    // share of a 1-BPM eighth (720,000 frames), then its gate shuts (the next clock is 1,440,000 frames on at 1 BPM).
+    {
+        const auto t = sequencerOf (0x303, -7, tbmpc::appletDefaultScale, 0, 0, 16);
+        CHECK (t.gated (1) && ! t.slid (1));
+        Patch eighths = p;
+        CHECK (std::string (tbmpc::clockDivChoices[3]) == "1/8" && tbmpc::clockDivBeats[3] == 0.5);
+        eighths.push_back ({ "Clock Div", 3.0 }); // 1/8
+        const uint32_t frames = 720000 + 9600;
+        const auto slow = playHits (eighths, {}, frames, told (0.0001, 0.0001)), one = playHits (eighths, {}, frames, told (1.0, 1.0));
+        const long shut = (long) padLength (0.5, 1.0, 0.5);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug 0.0001 BPM: last sound at %ld (1 BPM: %ld), the gate due to shut at %ld\n", lastSound (slow), lastSound (one), shut);
+        CHECK (slow == one);
+        CHECK (peak (slow, 0, 4800) > 0.01f && std::labs (lastSound (slow) - shut) <= 2);
+    }
+    // A pad's step, the host stopped: at 0.0001 BPM as at 1 BPM (Gate's share of a 1-BPM sixteenth: 360,000 frames);
+    // at 5000 BPM and an infinite tempo as at 1000 BPM (360 frames, then the VCA's release).
+    {
+        const std::vector<Hit> pad { noteOnAt (0, 36) };
+        const auto slow = playHits (p, pad, 370000, stoppedAt (0.0001)), one = playHits (p, pad, 370000, stoppedAt (1.0));
+        CHECK (slow == one && std::labs (lastSound (slow) - (long) padLength (0.5, 1.0)) <= 2);
+        const auto fast = playHits (p, pad, 4800, stoppedAt (5000.0)), endless = playHits (p, pad, 4800, stoppedAt (inf));
+        const auto top = playHits (p, pad, 4800, stoppedAt (1000.0));
+        CHECK (fast == top && endless == top);
+        CHECK (peak (top, 0, 300) > 0.01f && lastSound (top) > (long) padLength (0.5, 1000.0) && lastSound (top) < 2400 + (long) padLength (0.5, 1000.0));
+    }
+    // Playing at 5000 BPM (sixteenths 144 frames apart), or at an infinite tempo with the host's place moving at
+    // 120 BPM: the steps come where the host's place puts them and their gates are timed at 1000 BPM, the same to the
+    // bit as a host telling 1000 BPM at that place; the output stays a number within full scale.
+    {
+        const auto fast = playHits (p, {}, 48000, told (5000.0, 5000.0)), fastAt1000 = playHits (p, {}, 48000, told (1000.0, 5000.0));
+        const auto endless = playHits (p, {}, 48000, told (inf, 120.0)), endlessAt1000 = playHits (p, {}, 48000, told (1000.0, 120.0));
+        CHECK (fast == fastAt1000 && endless == endlessAt1000);
+        CHECK (bounded (fast) && bounded (endless) && peak (fast, 0, 48000) > 0.01f && peak (endless, 0, 48000) > 0.01f);
+    }
+}
+
 int main (int argc, char** argv)
 {
     if (argc < 3)
@@ -2408,6 +2477,7 @@ int main (int argc, char** argv)
     testRepeatedNotes();
     testAccentDecayAcrossSlides();
     testStepPads();
+    testTempoLimits();
     testBendAndWheel();
     testExtremes();
     demos (argv[2]);

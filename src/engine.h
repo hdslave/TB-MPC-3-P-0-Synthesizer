@@ -8,8 +8,9 @@
 //   CV 1 (transpose): the Transpose knob plus the last MIDI note played (C4 is no transposition), held as a CV
 //     keyboard holds its last note.
 //   CV 2 (density): the Density knob (a host's automation of it does what CV 2 did).
-//   The gate's half-step timer: half a clock at the host's tempo. (The applet measures it from the last two clocks:
-//     the same while the tempo holds; on the module the first note after the clock starts is long.)
+//   The gate's half-step timer: half a clock at the host's tempo, held to 1 - 1000 BPM. (The applet measures it from
+//     the last two clocks: the same while the tempo holds; on the module the first note after the clock starts is
+//     long.)
 //   Swing: the second clock of each pair comes later, at Swing's share of the pair, as an MPC's swing does; a
 //     swung step's gate is half of its own length.
 //   Seed Back: the seeds whose patterns played, the last 16, to go back to; going back locks the seed.
@@ -50,6 +51,8 @@ namespace tbmpc
 // at 48 kHz is about 1e-5 frames: a clock that falls on a block's first frame could otherwise come a frame late, by
 // how the host's rounding fell for that block, so the sound would depend on the block size.
 constexpr double clockSlack = 1.0e-3;
+// The host's tempo is held to this range (see Engine::transport).
+constexpr double minBpm = 1.0, maxBpm = 1000.0;
 
 class Engine
 {
@@ -251,10 +254,12 @@ public:
     // Where the sequence's own count is: for a host that gives no song position (0 when it last stopped).
     double ownPosition() const { return playing ? position : 0.0; }
 
-    // The host's transport at the start of a process call of `frames`. barBeats: quarter notes in a bar.
+    // The host's transport at the start of a process call of `frames`. barBeats: quarter notes in a bar. The tempo is
+    // held to 1 - 1000 BPM: a host's absurd tempo (0.0001, or infinite) would otherwise make the gate timers
+    // overflow, or every clock due at once, forever.
     void transport (bool isPlaying, double beats, double bpm, double barBeats, uint32_t frames)
     {
-        perFrame = bpm / 60.0 / rate;
+        perFrame = std::clamp (bpm, minBpm, maxBpm) / 60.0 / rate;
         bar = barBeats > 0.0 ? barBeats : 4.0;
         const double window = (double) std::max (frames, lastBlock);
         lastBlock = frames;
@@ -467,7 +472,7 @@ private:
             gateOffPending = true;
             // Half the step: at Swing 50 % half a grid, as before Swing; swung, half of this step's own length.
             const double length = swung() ? clockBeat (k + 1) - clockBeat (k) : stepBeats();
-            gateOffIn = (uint32_t) std::max (1.0, std::floor ((double) knob[ParamId::gate] * length / perFrame));
+            gateOffIn = (uint32_t) std::clamp (std::floor ((double) knob[ParamId::gate] * length / perFrame), 1.0, 4.0e9);
         }
         TBMPC_TRACE (0);
     }
