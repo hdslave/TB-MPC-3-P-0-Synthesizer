@@ -179,7 +179,8 @@ public:
     }
 
     // A MIDI message other than a note: pitch bend (+-2 semitones), the mod wheel (CC 1), reset all controllers
-    // (CC 121: bend and the wheel centred), all sound / notes off (CC 120, 123: panic, below).
+    // (CC 121: bend and the wheel centred), All Sound Off (CC 120: panic in sequencer mode, below; in Notes
+    // mode CC 120 and All Notes Off (CC 123) release the held notes).
     void midi (int status, int data1, int data2)
     {
         if (status == 0xe0)
@@ -224,7 +225,7 @@ public:
         }
     }
 
-    // All Sound Off / All Notes Off in sequencer mode: the gate the sequencer holds (a slid step can hold it past
+    // All Sound Off in sequencer mode: the gate the sequencer holds (a slid step can hold it past
     // its timer) shuts now, as does a pad's step. The sequence goes on: the next clock plays its step as it would.
     void panic()
     {
