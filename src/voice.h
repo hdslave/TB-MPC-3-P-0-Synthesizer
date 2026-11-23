@@ -186,6 +186,20 @@ public:
 
     bool silent() const { return ! gateOpen && veg == 0.0f; }
 
+    // A state was loaded: every smoothed knob is at its new value now (and a note's glide arrived), rather than
+    // easing there over the next hundred samples. The sequencer's own slide is timing, not a knob: it goes on.
+    void settle()
+    {
+        if (dirty)
+            retarget();
+        for (int i = 0; i < smoothed; ++i)
+            smooth[i] = target[i];
+        moving = false;
+        if (sliding && (noteGlide || glide303()))
+            pitchOct = targetOct, sliding = false;
+        tuneMoved = true;
+    }
+
     void render (float* __restrict left, float* __restrict right, uint32_t frames)
     {
         for (uint32_t i = 0; i < frames; ++i)
@@ -286,7 +300,7 @@ private:
             s1 = s2 = s3 = s4 = t1 = t2 = t3 = t4 = 0.0f;
         }
         // The cutoff's floor in octaves: the filter's calibrated middle (params.h), the knob, Env Mod's lowering.
-        const float centre = std::log2 (filterCenterHz[kind]) - 0.5f * cutoffOctaves;
+        const float centre = centreLog2[kind] - 0.5f * cutoffOctaves;
         target[cutBase] = centre + knob[ParamId::cutoff] * cutoffOctaves - envMod * envModFloorOctaves + logPiOverRate
                         + modWheel * modWheelOctaves;
         target[envDepth] = envMod * envModOctaves;
@@ -547,6 +561,8 @@ private:
     }
 
     float rate = 48000.0f, logPiOverRate = 0.0f, logBaseOverRate = 0.0f;
+    // Each filter's calibrated middle in octaves, worked out once (retarget() used to take log2 of a constant).
+    float centreLog2[3] = { std::log2 (filterCenterHz[0]), std::log2 (filterCenterHz[1]), std::log2 (filterCenterHz[2]) };
     float knob[ParamId::count] {};
     float target[smoothed] {}, smooth[smoothed] {};
     float phase = 0.0f, dt = 0.0f;

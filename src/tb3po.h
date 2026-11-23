@@ -155,6 +155,9 @@ public:
 
     int noteCount() const { return count; }
 
+    // The next process() chooses its note afresh, not the cell the last one chose (a scale change: see Tb3po).
+    void forceRequantize() { requantize = true; }
+
 private:
     static constexpr int32_t neighbourWeight = 10; // out of 16
     bool enabled = false, requantize = false;
@@ -195,18 +198,29 @@ public:
         scale = index < 0 ? 0 : (index >= scaleCount ? scaleCount - 1 : index);
         quantizer.configure (scaleTable[scale]);
         scaleSize = (uint8_t) scaleTable[scale].count;
+        // Differs: the held transposition is quantized into the new scale at once. The module's quantizer keeps the
+        // cell it chose in the old scale until CV 1 moves out of it (it is resampled every tick, into that cell);
+        // here CV 1 is a knob and a held note, so nothing would ever move it.
+        quantizer.forceRequantize();
+        transposeCv = (transposeInput > 64 || transposeInput < -64) ? quantizer.process (transposeInput, 0, 0) : 0;
+        ++rev;
     }
     // Root: the applet constrains it to the scale (a short scale has fewer roots). Differs: the plug-in keeps the
     // knob where it is and uses the constrained value; the applet moves its setting (so going back to a longer scale
     // keeps the lower root).
-    void setRoot (int r) { rootSetting = r < 0 ? 0 : (r > 11 ? 11 : r); }
-    void setOctave (int o) { octaveOffset = (int8_t) (o < -3 ? -3 : (o > 3 ? 3 : o)); }
+    void setRoot (int r) { rootSetting = r < 0 ? 0 : (r > 11 ? 11 : r); ++rev; }
+    void setOctave (int o) { octaveOffset = (int8_t) (o < -3 ? -3 : (o > 3 ? 3 : o)); ++rev; }
     void setDensity (int d) { density = (uint8_t) (d < 0 ? 0 : (d > 14 ? 14 : d)); } // 0..14, shown as -7..+7
     void setSteps (int n) { numSteps = (uint8_t) (n < 1 ? 1 : (n > 32 ? 32 : n)); }
     void setSeed (uint16_t s) { seed = s; }
     void setLocked (bool on) { locked = on; }
     // CV 1 (transpose), in 1/128 semitone: DetentedIn() then quantized to the scale, always from C.
-    void setTransposeInput (int32_t cv) { transposeCv = (cv > 64 || cv < -64) ? quantizer.process (cv, 0, 0) : 0; }
+    void setTransposeInput (int32_t cv)
+    {
+        transposeInput = cv; // kept, so a scale change can quantize it again (setScale)
+        transposeCv = (cv > 64 || cv < -64) ? quantizer.process (cv, 0, 0) : 0;
+        ++rev;
+    }
 
     // --- Inputs ---
     // The Regen input (or the encoder turned past the die or the lock): a new seed unless it is locked, the pattern
@@ -324,7 +338,12 @@ public:
                 applyDensity (phase);
         }
         patternSeed = seed;
+        ++rev;
     }
+
+    // Counted up whenever anything a step's pitch is made from changes (the pattern, the scale, root, octave or
+    // transposition): the screen rebuilds its pitch view only then.
+    uint32_t revision() const { return rev; }
 
 private:
     void reseed (uint32_t entropy)
@@ -480,7 +499,8 @@ private:
     uint8_t density = 12, patternDensity = 255;
     uint8_t numSteps = 16;
     uint8_t step = 0;
-    int32_t transposeCv = 0;
+    int32_t transposeCv = 0, transposeInput = 0;
+    uint32_t rev = 0;
     uint32_t gates = 0, slides = 0, accents = 0, octUps = 0, octDowns = 0;
     uint8_t notes[maxSteps] {};
     uint8_t scaleSize = 0, patternScaleSize = 0;

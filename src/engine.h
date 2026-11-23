@@ -20,7 +20,7 @@
 //     in time): a note over a held one glides to it with the 303's glide and keeps the gate open, a velocity of 100
 //     or more accents, and letting go of the newest note goes back to the one still held. A key played again while
 //     held is a new note, as if let go first (it strikes again, or glides over another key still held).
-//   Mode: TB-3PO's step pads: notes 36 .. 36 + max (16, Steps) - 1 play steps 1 .. (hdslaveOS's pads A01 - A16 at
+//   Mode: Sequence's step pads: notes 36 .. 36 + max (16, Steps) - 1 play steps 1 .. (hdslaveOS's pads A01 - A16 at
 //     its default octave and key), host playing or not. A pad plays its step once, as the sequencer would play it
 //     (its pitch with the scale, root, octave and transposition, from the pattern its next clock plays; its accent,
 //     or the pad's if hit at accentVelocity or louder), at once (no slide), gated or a rest, for Gate's share of a
@@ -36,7 +36,6 @@
 #include "voice.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 
@@ -59,8 +58,8 @@ class Engine
 public:
     void prepare (double hostRate, uint32_t)
     {
-        rate = hostRate;
-        voice.prepare (hostRate);
+        rate = hostRate > 0.0 && std::isfinite (hostRate) ? hostRate : 48000.0; // a host's no rate at all
+        voice.prepare (rate);
         reset();
     }
 
@@ -179,20 +178,23 @@ public:
         voice.gate (true, heldAccent[held - 1]);
     }
 
-    // A MIDI message other than a note: pitch bend (+-2 semitones), the mod wheel (CC 1), all notes off (CC 120, 123).
+    // A MIDI message other than a note: pitch bend (+-2 semitones), the mod wheel (CC 1), reset all controllers
+    // (CC 121: bend and the wheel centred), all sound / notes off (CC 120, 123: panic, below).
     void midi (int status, int data1, int data2)
     {
         if (status == 0xe0)
             voice.bendTo ((float) (((data2 << 7) | data1) - 8192) * (bendSemitones / 8192.0f));
         else if (status == 0xb0 && data1 == 1)
             voice.modWheelTo ((float) data2 / 127.0f);
+        else if (status == 0xb0 && data1 == 121)
+            voice.bendTo (0.0f), voice.modWheelTo (0.0f);
         else if (status == 0xb0 && (data1 == 120 || data1 == 123) && notesMode && held > 0)
         {
             held = 0;
             voice.gate (false, false);
         }
         else if (status == 0xb0 && data1 == 120 && ! notesMode)
-            choke (-1); // All Sound Off: a pad's step still sounding stops
+            panic(); // All Sound Off only: All Notes Off leaves a pad's one-shot step to its end, as its note off does
     }
 
     // A choke (key -1: every key). Notes: as the key's note off. TB-3PO: the pad's step that key played, if it still
@@ -208,14 +210,32 @@ public:
                     noteOff (k);
             return;
         }
-        if (padWanted && (key < 0 || key == wantedKey))
+        if (key < 0) // every key: the sequencer's own gate shuts too (it was played by no key)
+        {
+            panic();
+            return;
+        }
+        if (padWanted && key == wantedKey)
             padWanted = false;
-        if (padOffPending && (key < 0 || key == padKey))
+        if (padOffPending && key == padKey)
         {
             padOffPending = false;
             voice.gate (false, false);
         }
     }
+
+    // All Sound Off / All Notes Off in sequencer mode: the gate the sequencer holds (a slid step can hold it past
+    // its timer) shuts now, as does a pad's step. The sequence goes on: the next clock plays its step as it would.
+    void panic()
+    {
+        seq.stop();
+        gateOffPending = false;
+        padWanted = padHasVoice = padOffPending = false;
+        voice.gate (false, false);
+    }
+
+    // A state was loaded: the voice's knobs settle at their new values at once, not eased over the next samples.
+    void settle() { voice.settle(); }
 
     void noteOff (int key)
     {
@@ -259,7 +279,7 @@ public:
     // overflow, or every clock due at once, forever.
     void transport (bool isPlaying, double beats, double bpm, double barBeats, uint32_t frames)
     {
-        perFrame = std::clamp (bpm, minBpm, maxBpm) / 60.0 / rate;
+        perFrame = (std::isnan (bpm) ? 120.0 : std::clamp (bpm, minBpm, maxBpm)) / 60.0 / rate;
         bar = barBeats > 0.0 ? barBeats : 4.0;
         const double window = (double) std::max (frames, lastBlock);
         lastBlock = frames;
@@ -398,17 +418,20 @@ private:
         return resetEvery() > 0 && lineOf (clockBeat (k)) != lineOf (clockBeat (k - 1));
     }
 
-    void relocate (double beats, double window, bool started)
+    void relocate (double beats, double, bool started)
     {
         const int64_t b = clockAtOrBefore (beats);
         const double late = (beats - clockBeat (b)) / perFrame; // frames since the host's clock b
         // A jump whose clock b came on the very frame a clock played here: a loop gone round inside a block (the host
         // tells only at the next one, so the clocks ran on past the loop's end; its end is its start). That clock was
         // b: it is not played again (the pattern would step twice); a bar reset that b would have made, it makes now.
-        // Otherwise, just past a clock (less than a block: a Play landing a hair late, a wrap seen early enough):
-        // that clock comes at once; further in, the next is the first.
+        // Otherwise, just past a clock (a Play landing a hair late, a wrap seen early enough): that clock comes at
+        // once; further in, the next is the first. "Just past" is a fixed window, not the host's block: at 4096-frame
+        // blocks a Play well into a step used to replay it, at 1-frame blocks a hair-late Play skipped it, so the
+        // same Play sounded different in different hosts. 128 frames is the window hdslaveOS's blocks gave it.
+        constexpr double playWindow = 128.0;
         const bool played = ! started && std::fabs ((double) ((int64_t) frameCount - clockedAt) - late) <= 2.0;
-        lastClock = played ? b : b - (late < window ? 1 : 0);
+        lastClock = played ? b : b - (late < playWindow ? 1 : 0);
         position = beats;
         regridWanted = false;
         if (played && resetClock (b) && ! clockedReset)
@@ -555,11 +578,11 @@ private:
         seq.setTransposeInput (semitones * 128);
     }
 
-    // The module seeds random() from micros() for a new seed; here, the time and a count of the seeds asked for.
+    // The module seeds random() from micros() for a new seed; here, no clock on the audio thread: the frames
+    // rendered, a count of the seeds asked for, and this engine's own address (so two instances differ).
     uint32_t entropy()
     {
-        const auto now = std::chrono::steady_clock::now().time_since_epoch();
-        const uint64_t us = (uint64_t) std::chrono::duration_cast<std::chrono::microseconds> (now).count();
+        const uint64_t us = frameCount ^ ((uint64_t) (uintptr_t) this >> 4);
         uint32_t x = (uint32_t) (us ^ (us >> 32)) ^ (0x9e3779b9u * ++draws);
         x ^= x >> 16, x *= 0x7feb352du, x ^= x >> 15;
         return x;

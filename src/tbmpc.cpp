@@ -27,7 +27,7 @@ const char* const features[] = { CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEA
 const clap_plugin_descriptor descriptor {
     CLAP_VERSION, "com.hdslave.tb-mpc-3-p-0", "hdslave TB-MPC-3-P-0", "hdslave", "https://github.com/hdslave/TB-MPC-3-P-0-Synthesizer",
     "", "", TBMPC_VERSION,
-    "A 303-style bass voice (saw or square, diode ladder, accent and slide) played by a port of the TB-3PO random acid "
+    "An acid-style bass voice (saw or square, diode ladder, accent and slide) played by a generative random acid "
     "sequencer, in time with the host",
     features,
 };
@@ -40,6 +40,7 @@ struct Plugin
     // a state is loaded. The engine notices those at the next block.
     std::atomic<float> values[paramCount];
     std::atomic<bool> mainChanged { false }; // the main thread wrote values (a state, a preset, a flush): look at them
+    std::atomic<bool> settleWanted { false }; // a state or preset was loaded: settle the glides at the next block
     float applied[paramCount] {};
     Engine engine;
     bool active = false;
@@ -58,6 +59,7 @@ struct Plugin
     std::atomic<bool> screenAnimating { false };
     bool valuesMoved = false; // the host moved a value in this block (audio thread): the page is painted again
     PatternView shownPattern {};
+    uint32_t shownRevision = 0xffffffffu; // the sequencer revision shownPattern's pitches were worked out at
 };
 static_assert (paramCount <= 64, "the screen keeps a bit a row");
 
@@ -258,7 +260,7 @@ void handle (Plugin& p, const clap_event_header* e, const clap_output_events* ou
 void paramsFlush (const clap_plugin* plugin, const clap_input_events* in, const clap_output_events* out)
 {
     auto& p = of (plugin);
-    const uint32_t count = in->size (in);
+    const uint32_t count = in != nullptr ? in->size (in) : 0;
     for (uint32_t i = 0; i < count; ++i)
     {
         const auto* e = in->get (in, i);
@@ -294,7 +296,7 @@ void paramsFlush (const clap_plugin* plugin, const clap_input_events* in, const 
 
 const clap_plugin_params paramsExtension { paramsCount, paramsInfo, paramsValue, paramsToText, paramsFromText, paramsFlush };
 
-// State: "ANVL", a version, the number of values, then (id, value) pairs; unknown ids are skipped, missing ones keep
+// State: "TB3P", a version, the number of values, then (id, value) pairs; unknown ids are skipped, missing ones keep
 // their defaults, so a state saved by another version still loads.
 constexpr char stateTag[4] = { 'T', 'B', '3', 'P' };
 // Version 2 (0.4): Cutoff calibrated over 7 octaves; a version 1 state's Cutoff is moved to the same frequency.
@@ -334,9 +336,14 @@ void setAll (Plugin& p, const float* values)
     for (uint32_t i = 0; i < paramCount; ++i)
         p.values[i].store (values[i], std::memory_order_relaxed);
     p.mainChanged.store (true, std::memory_order_release);
-    if (! p.active) // not processing: the engine takes them now; otherwise at the next block
+    if (! p.active) // not processing: the engine takes them now, settled; otherwise at the next block
+    {
         for (uint32_t i = 0; i < paramCount; ++i)
             p.applied[i] = values[i], p.engine.set (paramTable[i].id, values[i]);
+        p.engine.settle();
+    }
+    else
+        p.settleWanted.store (true, std::memory_order_release);
     // Cutoff's text may read differently now, and the screen shows the new values.
     p.textStale.store (true, std::memory_order_release);
     if (p.host != nullptr && p.host->request_callback != nullptr)
@@ -366,7 +373,7 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
     char tag[4] = {};
     uint32_t header[2] = {};
     if (! readAll (stream, tag, 4) || std::memcmp (tag, stateTag, 4) != 0 || ! readAll (stream, header, sizeof (header))
-        || header[0] == 0 || header[1] > 4096)
+        || header[0] == 0 || header[0] > stateVersion || header[1] > 4096)
         return false;
     float loaded[paramCount];
     for (uint32_t i = 0; i < paramCount; ++i)
@@ -519,6 +526,8 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
             if (v != p.applied[i] && paramTable[i].kind != Kind::button)
                 p.applied[i] = v, p.engine.set (paramTable[i].id, v);
         }
+    if (p.settleWanted.exchange (false, std::memory_order_acquire))
+        p.engine.settle(); // a state or preset landed over whatever was sounding: no easing sweep
     // The values the screen's page set are told to the host first, at the frame the engine takes them (and before any
     // event this block sends back, so they stay in time order).
     tellHost (p, process->out_events, 0);
@@ -589,7 +598,7 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
         if (process->out_events != nullptr)
         {
             clap_event_param_value back {};
-            back.header = { sizeof (back), frames > 0 ? frames - 1 : 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, 0 };
+            back.header = { sizeof (back), frames > 0 ? frames - 1 : 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_PARAM_VALUE, CLAP_EVENT_DONT_RECORD };
             back.param_id = changedId;
             back.note_id = back.port_index = back.channel = back.key = -1;
             back.value = changedValue;
@@ -605,12 +614,26 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
         v.current = seq.currentStep();
         v.seed = seq.playingSeed();
         v.running = p.engine.running() ? 1 : 0;
-        for (int s = 0; s < 32; ++s)
+        // The 32 pitches (a division each, in the quantizer's lookup) are worked out again only when something they
+        // are made from changed; between changes the shown ones stand.
+        if (seq.revision() != p.shownRevision || v.steps != p.shownPattern.steps)
         {
-            v.pitch[s] = (int16_t) std::clamp<int32_t> (seq.pitchOfStep (s), -32768, 32767);
-            v.gates |= (uint32_t) seq.gated (s) << s;
-            v.slides |= (uint32_t) seq.slid (s) << s;
-            v.accents |= (uint32_t) seq.accented (s) << s;
+            p.shownRevision = seq.revision();
+            for (int s = 0; s < 32; ++s)
+            {
+                v.pitch[s] = (int16_t) std::clamp<int32_t> (seq.pitchOfStep (s), -32768, 32767);
+                v.gates |= (uint32_t) seq.gated (s) << s;
+                v.slides |= (uint32_t) seq.slid (s) << s;
+                v.accents |= (uint32_t) seq.accented (s) << s;
+            }
+        }
+        else
+        {
+            for (int s = 0; s < 32; ++s)
+                v.pitch[s] = p.shownPattern.pitch[s];
+            v.gates = p.shownPattern.gates;
+            v.slides = p.shownPattern.slides;
+            v.accents = p.shownPattern.accents;
         }
         if (! (v == p.shownPattern))
         {

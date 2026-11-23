@@ -98,12 +98,14 @@ struct OutEvents
 {
     std::vector<std::pair<clap_id, double>> values;
     std::vector<uint32_t> times; // each value's frame in its block
+    std::vector<uint32_t> flags; // and its event flags
     clap_output_events out { this, [] (const clap_output_events* o, const clap_event_header* h) {
         if (h->space_id == CLAP_CORE_EVENT_SPACE_ID && h->type == CLAP_EVENT_PARAM_VALUE)
         {
             const auto* v = reinterpret_cast<const clap_event_param_value*> (h);
             static_cast<OutEvents*> (o->ctx)->values.push_back ({ v->param_id, v->value });
             static_cast<OutEvents*> (o->ctx)->times.push_back (h->time);
+            static_cast<OutEvents*> (o->ctx)->flags.push_back (h->flags);
         }
         return true;
     } };
@@ -2186,14 +2188,21 @@ void testStepPads()
         CHECK (playHits (tb (acid), { noteOnAt (0, 36 + s), chokeAt (cut, -1) }, 9600) == stopped);
         CHECK (playHits (tb (acid), { noteOnAt (0, 36 + s), midiAt (cut, 0xb0, 120, 0) }, 9600) == stopped);
         CHECK (playHits (tb (acid), storm, 9600) == stopped);
-        // A pad and a choke of it on one frame: nothing. A storm while the sequencer plays and no pad sounds: the
-        // sequence plays on as it was, to the bit.
+        // A pad and a choke of it on one frame: nothing. While the sequencer plays and no pad sounds, an All Notes
+        // Off storm alone changes nothing, to the bit; the full silence (All Sound Off among it) shuts the
+        // sequencer's sounding gate until its next clock (0.5.2: it used to ring on), then the sequence goes on.
         CHECK (peak (playHits (tb (acid), { noteOnAt (cut, 36 + s), chokeAt (cut, 36 + s) }, 9600), 0, 9600) == 0.0f);
-        std::vector<Hit> playingStorm;
+        std::vector<Hit> playingStorm, playingAllOff;
         for (const auto& h : storm)
             if (h.type != CLAP_EVENT_NOTE_ON)
                 playingStorm.push_back ({ h.frame + 96000, h.type, h.key, h.velocity });
-        CHECK (playHits (tb (acid), playingStorm, 48000 * 3, playing) == playHits (tb (acid), {}, 48000 * 3, playing));
+        for (const auto& h : allOff)
+            if (h.type != CLAP_EVENT_NOTE_ON)
+                playingAllOff.push_back ({ h.frame + 96000, h.type, h.key, h.velocity });
+        CHECK (playHits (tb (acid), playingAllOff, 48000 * 3, playing) == playHits (tb (acid), {}, 48000 * 3, playing));
+        const auto silenced = playHits (tb (acid), playingStorm, 48000 * 3, playing);
+        CHECK (peak (silenced, 96000 + cut + 2400, 102000 - 600) < 1e-4f); // shut until the next clock (frame 102000)
+        CHECK (peak (silenced, 102000, 48000 * 3) > 0.01f);                // and playing again after it
     }
 
     // While the host plays: a pattern (Semitone, a clean saw two octaves up) whose first three clocks open no gate.
@@ -2435,6 +2444,188 @@ void testTempoLimits()
     }
 }
 
+// 0.5.2 (master review fixes): panic closes a sequencer gate, a scale change requantizes the held transposition,
+// self-set seed events are DONT_RECORD, nan/inf text is refused, a null flush is safe, CC 121 centres bend and the
+// wheel, a state loaded over a sounding note settles at once, Play's window no longer depends on the block size,
+// and a state from a newer version is refused.
+void testMasterFixes()
+{
+    auto peak = [] (const std::vector<float>& x, size_t from, size_t to) {
+        float m = 0;
+        for (size_t i = from; i < to && i < x.size(); ++i) m = std::max (m, std::fabs (x[i]));
+        return m;
+    };
+    auto playing = [] (uint64_t at) { return playingFrom (0.0, 120.0, rate48, at); };
+
+    // Panic while the sequencer's gate is open (half notes at Gate 95 %: the gate is still open at frame 10000):
+    // CC 120 and a choke of every key each silence it within a block (then the VCA release); the sequence itself
+    // goes on at the next clock (frame 48000).
+    {
+        Patch p = timingPatch (0x303);
+        p.push_back ({ "Density", -7.0 });
+        p.push_back ({ "Gate", 0.95 });
+        p.push_back ({ "Clock Div", 0.0 }); // 1/2
+        for (const auto& hit : std::vector<Hit> { midiAt (10000, 0xb0, 120, 0), chokeAt (10000, -1) })
+        {
+            const auto x = playHits (p, { hit }, 60000, playing);
+            CHECK (peak (x, 1000, 9000) > 0.01f);
+            CHECK (peak (x, 14000, 47000) < 1e-4f);
+            CHECK (peak (x, 49000, 59000) > 0.01f);
+        }
+    }
+    // A scale change requantizes the held transposition: Transpose +1 is a semitone in Semitone and nothing in
+    // Pentatonic maj (its nearest notes are 0 and +2, the tie going to 0). A pad played after the change sounds at
+    // the pitch a patch set in the new scale from the start gives, not the stale semitone.
+    {
+        auto padHz = [&] (const Patch& patch, bool changeScale) {
+            Instance a;
+            a.setup (patch);
+            std::vector<float> l, r;
+            a.render (9600, 128, l, r, stoppedTransport, [&] (uint64_t at, uint32_t, Events& e) {
+                if (changeScale && at == 0) e.param (0, a.id ("Scale"), 10.0); // Pentatonic maj
+                if (at == 128 * 10) e.note (0, CLAP_EVENT_NOTE_ON, 36, 0.6);
+            });
+            return frequency (l, 128 * 10 + 200, 128 * 10 + 5200);
+        };
+        Patch base { { "Seed Mode", 1.0 }, { "Seed", 0x303 }, { "Density", -7.0 }, { "Transpose", 1.0 },
+                     { "Cutoff", 1.0 }, { "Resonance", 0.0 }, { "Env Mod", 0.0 }, { "Accent", 0.0 }, { "Volume", 1.0 },
+                     { "Octave", 2.0 }, { "Gate", 0.95 } };
+        Patch semitone = base; semitone.push_back ({ "Scale", 0.0 });
+        Patch penta = base; penta.push_back ({ "Scale", 10.0 });
+        Patch plain = base; plain[3].second = 0.0; plain.push_back ({ "Scale", 0.0 }); // Transpose 0
+        const double changed = padHz (semitone, true), fresh = padHz (penta, false);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug requantize: changed %.2f fresh %.2f semitone %.2f plain %.2f\n", changed, fresh,
+                         padHz (semitone, false), padHz (plain, false));
+        CHECK (fresh > 10.0 && std::fabs (changed / fresh - 1.0) < 0.01);
+        // The transposition itself is real: in Semitone the same pad is a semitone over the untransposed one.
+        CHECK (std::fabs (padHz (semitone, false) / padHz (plain, false) - std::exp2 (1.0 / 12.0)) < 0.01);
+    }
+    // A reset's new seed is told to the host flagged DONT_RECORD (it is the sequencer's own doing, not a gesture).
+    {
+        Instance a;
+        a.setup ({ { "Seed Mode", 0.0 } }); // Random
+        OutEvents out;
+        std::vector<float> l, r;
+        for (int round = 0; round < 8 && out.values.empty(); ++round)
+            a.render (128, 128, l, r, stoppedTransport, [&] (uint64_t at, uint32_t, Events& e) {
+                if (at == 0) e.param (0, a.id ("Regen"), 1.0);
+            }, &out);
+        bool seedTold = false, flagged = true;
+        for (size_t i = 0; i < out.values.size(); ++i)
+            if (out.values[i].first == a.id ("Seed"))
+                seedTold = true, flagged &= (out.flags[i] & CLAP_EVENT_DONT_RECORD) != 0;
+        CHECK (seedTold && flagged);
+    }
+    // Text that is not a finite number is refused, not clamped to an end of the range.
+    {
+        Instance a;
+        double v = 0.0;
+        for (const char* name : { "Cutoff", "Density", "Scale" })
+            for (const char* text : { "nan", "inf", "-inf" })
+                CHECK (! a.params->text_to_value (a.plugin, a.id (name), text, &v));
+    }
+    // CC 121 centres the pitch bend and the mod wheel: bent and wheeled, then reset before the note, the sound is
+    // the plain patch's, to the bit.
+    {
+        auto render = [&] (bool bendAndWheel, bool reset) {
+            Instance a;
+            a.setup ({ { "Mode", 1.0 }, { "Cutoff", 0.3 }, { "Resonance", 0.2 }, { "Env Mod", 0.0 }, { "Accent", 0.0 } });
+            std::vector<float> l, r;
+            a.render (9600, 128, l, r, stoppedTransport, [&] (uint64_t at, uint32_t, Events& e) {
+                if (at == 0)
+                {
+                    if (bendAndWheel) e.midiMessage (0, 0xe0, 0x7f, 0x7f), e.midiMessage (0, 0xb0, 1, 127);
+                    if (reset) e.midiMessage (0, 0xb0, 121, 0);
+                    e.note (0, CLAP_EVENT_NOTE_ON, 48, 0.6);
+                }
+            });
+            return l;
+        };
+        CHECK (render (true, true) == render (false, false));
+        CHECK (render (true, false) != render (false, false));
+    }
+    // A state loaded over a sounding note settles its smoothers at once: only Volume differs, so from the load's
+    // block on the sound is the louder instance's, to the bit (the gain smoother does not ease over ~100 samples).
+    {
+        auto patch = [] (double volume) {
+            return Patch { { "Mode", 1.0 }, { "Volume", volume }, { "Cutoff", 0.3 }, { "Resonance", 0.0 },
+                           { "Env Mod", 0.0 }, { "Accent", 0.0 } };
+        };
+        Instance a, b;
+        a.setup (patch (0.2));
+        b.setup (patch (0.4));
+        std::vector<uint8_t> saved;
+        clap_ostream os { &saved, [] (const clap_ostream* s, const void* d, uint64_t n) -> int64_t {
+            auto* v = static_cast<std::vector<uint8_t>*> (s->ctx);
+            v->insert (v->end(), (const uint8_t*) d, (const uint8_t*) d + n);
+            return (int64_t) n;
+        } };
+        CHECK (b.state->save (b.plugin, &os));
+        auto note = [] (uint64_t at, uint32_t, Events& e) { if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 48, 0.6); };
+        std::vector<float> la, ra, lb, rb;
+        a.render (9600, 128, la, ra, stoppedTransport, note);
+        b.render (9600, 128, lb, rb, stoppedTransport, note);
+        CHECK (la != lb);
+        struct Reader { const std::vector<uint8_t>* v; size_t at; } reader { &saved, 0 };
+        clap_istream is { &reader, [] (const clap_istream* s, void* to, uint64_t n) -> int64_t {
+            auto* r = static_cast<Reader*> (s->ctx);
+            const size_t k = std::min<size_t> ((size_t) n, r->v->size() - r->at);
+            std::memcpy (to, r->v->data() + r->at, k);
+            r->at += k;
+            return (int64_t) k;
+        } };
+        CHECK (a.state->load (a.plugin, &is));
+        a.render (9600, 128, la, ra, stoppedTransport);
+        b.render (9600, 128, lb, rb, stoppedTransport);
+        CHECK (la == lb);
+        // The same bytes with a version from the future are refused, and nothing changes.
+        std::vector<uint8_t> future = saved;
+        future[4] = 99;
+        Instance c;
+        Reader fr { &future, 0 };
+        clap_istream fis { &fr, is.read };
+        const double before = c.value ("Volume");
+        CHECK (! c.state->load (c.plugin, &fis) && c.value ("Volume") == before);
+    }
+    // Play landing past a grid line: whether that step still plays is a musical window (128 frames), the same at
+    // every block size. 1000 frames past, the step is skipped everywhere; 50 frames past, it plays at once.
+    {
+        Patch p = timingPatch (0x303);
+        p.push_back ({ "Density", -7.0 });
+        for (double lateFrames : { 1000.0, 50.0 })
+        {
+            const double start = (6000.0 + lateFrames) / 24000.0; // beats: a 1/16 at 120 BPM is 6000 frames
+            auto t = [start] (uint64_t at) { return Transport { true, 120.0, start + (double) at / 24000.0 }; };
+            const auto at128 = playHits (p, {}, 24000, t, 128);
+            for (uint32_t block : { 1u, 37u, 4096u })
+                CHECK (playHits (p, {}, 24000, t, block) == at128);
+            if (lateFrames > 500.0)
+                CHECK (peak (at128, 0, 4500) < 1e-4f && peak (at128, 5500, 11000) > 0.01f);
+            else
+                CHECK (peak (at128, 0, 2000) > 0.01f);
+        }
+    }
+    // A host activating at no rate at all still gets finite, bounded output.
+    {
+        Instance a (0.0);
+        a.setup ({ { "Mode", 1.0 } });
+        std::vector<float> l, r;
+        a.render (9600, 128, l, r, stoppedTransport, [] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 48, 0.6);
+        });
+        bool ok = true;
+        for (float s : l) ok &= std::isfinite (s) && std::fabs (s) <= 1.0f;
+        CHECK (ok && peak (l, 0, l.size()) > 0.01f);
+    }
+    // A null event list flushes safely (last: on a build without the guard this is the crash it proves).
+    {
+        Instance a;
+        a.params->flush (a.plugin, nullptr, nullptr);
+        CHECK (true);
+    }
+}
+
 int main (int argc, char** argv)
 {
     if (argc < 3)
@@ -2479,6 +2670,7 @@ int main (int argc, char** argv)
     testStepPads();
     testTempoLimits();
     testBendAndWheel();
+    testMasterFixes();
     testExtremes();
     demos (argv[2]);
     entry->deinit();

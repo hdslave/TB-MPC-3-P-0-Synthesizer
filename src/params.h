@@ -12,7 +12,7 @@
 #include <strings.h>
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.5.1"
+#define TBMPC_VERSION "0.5.2"
 #endif
 
 namespace tbmpc
@@ -54,7 +54,7 @@ constexpr float voiceBaseHz = 65.406391f;
 // between them, a resonant peak at each edge); 18 dB, three equal stages in a loop that rings into oscillation at the
 // top of Resonance.
 enum Filter : int { filter303 = 0, filterTwinPeak = 1, filter18dB = 2 };
-inline const char* const filterChoices[] = { "303", "Twin Peak", "18 dB" };
+inline const char* const filterChoices[] = { "Diode", "Twin Peak", "18 dB" };
 
 // Cutoff: 7 octaves, exponential. Each filter is calibrated as the 303's service notes set the 303's: with Cutoff at
 // its middle and Resonance full (Env Mod at 0), the resonant peak sits at 500 Hz. That fixes each filter's nominal
@@ -175,7 +175,7 @@ constexpr float decayShortest = 0.2f, decayLongest = 2.0f;
 inline float decaySeconds (float k) { return decayShortest * std::pow (decayLongest / decayShortest, k); }
 inline float decayKnob (float s) { return std::log (s / decayShortest) / std::log (decayLongest / decayShortest); }
 
-// Slide Time: the 303 glide's time constant (Slide: 303, and a note's glide in Mode: Notes), 5 ms to 200 ms; it reads
+// Slide Time: the 303 glide's time constant (Slide: Glide, and a note's glide in Mode: Notes), 5 ms to 200 ms; it reads
 // as the time to arrive (95 %, three time constants). The 303's own, 20 ms (there in 60 ms), is the default, and the
 // default gives exactly that constant (the sound is the same to the bit as before the knob was added).
 constexpr float glideSeconds = 0.020f;
@@ -201,14 +201,14 @@ constexpr float driveOctaves = 5.0f;
 constexpr double moduleTickRate = 1.0e6 / 60.0;
 
 inline const char* const waveChoices[] = { "Saw", "Square" };
-inline const char* const glideChoices[] = { "TB-3PO", "303" };
+inline const char* const glideChoices[] = { "Tick", "Glide" };
 inline const char* const seedModeChoices[] = { "Random", "Locked" };
-inline const char* const modeChoices[] = { "TB-3PO", "Notes" };
+inline const char* const modeChoices[] = { "Sequence", "Notes" };
 // Mode: Notes: a note at this velocity or louder is accented (as 303-style synths read MIDI).
 constexpr float accentVelocity = 100.0f / 127.0f;
 // 0 V is C2: in Mode: Notes, MIDI note 36 (C2) plays the pitch the sequencer's 0 V does.
 constexpr int noteAtZeroVolts = 36;
-// Mode: TB-3PO: the step pads. Note 36 (hdslaveOS's pad A01 at its default octave and key) plays step 1, and the
+// Mode: Sequence: the step pads. Note 36 (hdslaveOS's pad A01 at its default octave and key) plays step 1, and the
 // notes after it the steps after: 16 pads, or as many as Steps when it is longer (so C4, 60, still transposes by
 // nothing in the usual case). The other notes transpose.
 constexpr int firstStepPad = 36, stepPads = 16;
@@ -247,19 +247,19 @@ inline constexpr Param paramTable[] = {
     CONT (accentDecay, "Accent Decay", "Voice", 0.0f, 1.0f, 0.0f, decay),
     CHOICE (glide, "Slide", "Voice", glideChoices, 0.0f),
     CONT (slideTime, "Slide Time", "Voice", 0.0f, 1.0f, slideTimeDefault, slideTime),
-    CHOICE (mode, "Mode", "TB-3PO", modeChoices, 0.0f),
-    CHOICE (seedMode, "Seed Mode", "TB-3PO", seedModeChoices, 0.0f),
-    INT (seed, "Seed", "TB-3PO", 0.0f, 65535.0f, 12345.0f, seedHex),
-    BUTTON (regen, "Regen", "TB-3PO"),
-    BUTTON (seedBack, "Seed Back", "TB-3PO"),
-    CONT (mutate, "Mutate", "TB-3PO", 0.0f, 1.0f, 0.0f, percent),
-    INT (density, "Density", "TB-3PO", -7.0f, 7.0f, 5.0f, signedInt),
-    P { ParamId::scale, "Scale", "TB-3PO", 0.0f, (float) (scaleCount - 1), (float) appletDefaultScale, Kind::choice, Unit::choice, scaleNames },
-    CHOICE (root, "Root", "TB-3PO", rootChoices, 0.0f),
-    INT (octave, "Octave", "TB-3PO", -3.0f, 3.0f, 0.0f, signedInt),
-    INT (steps, "Steps", "TB-3PO", 1.0f, 32.0f, 16.0f, plainInt),
-    CONT (gate, "Gate", "TB-3PO", 0.1f, 0.95f, 0.5f, percent),
-    INT (transpose, "Transpose", "TB-3PO", -36.0f, 36.0f, 0.0f, signedInt),
+    CHOICE (mode, "Mode", "Sequencer", modeChoices, 0.0f),
+    CHOICE (seedMode, "Seed Mode", "Sequencer", seedModeChoices, 0.0f),
+    INT (seed, "Seed", "Sequencer", 0.0f, 65535.0f, 12345.0f, seedHex),
+    BUTTON (regen, "Regen", "Sequencer"),
+    BUTTON (seedBack, "Seed Back", "Sequencer"),
+    CONT (mutate, "Mutate", "Sequencer", 0.0f, 1.0f, 0.0f, percent),
+    INT (density, "Density", "Sequencer", -7.0f, 7.0f, 5.0f, signedInt),
+    P { ParamId::scale, "Scale", "Sequencer", 0.0f, (float) (scaleCount - 1), (float) appletDefaultScale, Kind::choice, Unit::choice, scaleNames },
+    CHOICE (root, "Root", "Sequencer", rootChoices, 0.0f),
+    INT (octave, "Octave", "Sequencer", -3.0f, 3.0f, 0.0f, signedInt),
+    INT (steps, "Steps", "Sequencer", 1.0f, 32.0f, 16.0f, plainInt),
+    CONT (gate, "Gate", "Sequencer", 0.1f, 0.95f, 0.5f, percent),
+    INT (transpose, "Transpose", "Sequencer", -36.0f, 36.0f, 0.0f, signedInt),
     CHOICE (clockDiv, "Clock Div", "Clock", clockDivChoices, 5.0f),
     CONT (swing, "Swing", "Clock", 0.5f, 0.75f, 0.5f, percent),
     CHOICE (reset, "Reset", "Clock", resetChoices, 0.0f),
@@ -349,7 +349,7 @@ inline bool parseParam (const Param& p, const char* text, float& v, const TextCo
         return true;
     }
     const double x = std::strtod (text, &end);
-    if (end == text)
+    if (end == text || ! std::isfinite (x))
         return false;
     while (*end == ' ')
         ++end;
