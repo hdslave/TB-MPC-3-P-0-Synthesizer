@@ -213,7 +213,7 @@ instance on every page, in Edit and Stage, until Melodee restarts; projects and 
   plays from the next clock (until then the window reads PENDING over the pattern still playing); Push is Regen;
   Shift + Push is Seed Back. K1-K3: Cutoff, Resonance, Env Mod. [docs/screen.md](docs/screen.md) has the details.
 - **VOICE** and **TONE**: the voice's knobs, beside the filter's live response (Cutoff's reading marked).
-- **TB-3PO** and **CLOCK**: the sequencer's settings beside a small score; CLOCK also holds THEME.
+- **SEQUENCER** and **CLOCK**: the sequencer's settings beside a small score; CLOCK also holds THEME.
 
 On a list the controls are hdslave Machine's: the wheel moves a row; Push edits it (the wheel then changes it: a
 choice a step, a knob 1/128, 1/1024 with Shift; Push again leaves), or presses a button; Minus / Plus change group

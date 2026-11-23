@@ -26,6 +26,6 @@ inline constexpr hdui::Field clock[] = {
     { hdui::noParam, "THEME" },
 };
 inline constexpr hdui::Group groups[] = {
-    { "PATTERN", nullptr, 0 }, { "VOICE", voice, 8 }, { "TONE", tone, 6 }, { "TB-3PO", sequencer, 13 }, { "CLOCK", clock, int (std::size (clock)) },
+    { "PATTERN", nullptr, 0 }, { "VOICE", voice, 8 }, { "TONE", tone, 6 }, { "SEQUENCER", sequencer, 13 }, { "CLOCK", clock, int (std::size (clock)) },
 };
 } // namespace tbmpc::layout
