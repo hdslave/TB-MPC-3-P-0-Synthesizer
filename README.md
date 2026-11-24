@@ -6,7 +6,9 @@
 
 > **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Releases in this repo stay MPC Sample-only for now while the desktop builds are being finalized.
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.2).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.3).
+
+The custom screen uses `melodee.screen/1` on Melodee 0.7 and hdslaveOS based on it. Open Edit on the plug-in track or select PANEL on Stage.
 
 TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, and other MIDI notes transpose it (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
