@@ -46,8 +46,8 @@ const void* hostExtension (const clap_host*, const char* id)
                                                textRescans += (f & CLAP_PARAM_RESCAN_TEXT) != 0;
                                            },
                                            [] (const clap_host*, clap_id, clap_param_clear_flags) {}, [] (const clap_host*) { ++flushes; } };
-    static const clap_host_melodee_screen screen { [] (const clap_host*) { ++paints; } };
-    if (std::strcmp (id, CLAP_EXT_MELODEE_SCREEN_HOST) == 0) return &screen;
+    static const melodee_screen_host_t screen { [] (const void*, uint32_t) { ++paints; } };
+    if (std::strcmp (id, MELODEE_SCREEN_CLAP_HOST) == 0) return &screen;
     static const clap_host_preset_load presetLoad {
         [] (const clap_host*, uint32_t, const char*, const char*, int32_t, const char*) { ++presetErrors; },
         [] (const clap_host*, uint32_t, const char*, const char*) { ++presetsLoaded; },
@@ -1593,22 +1593,23 @@ void testFilters()
 void testScreen (const std::string& folder)
 {
     Instance a;
-    const auto* screen = static_cast<const clap_plugin_melodee_screen*> (a.plugin->get_extension (a.plugin, CLAP_EXT_MELODEE_SCREEN));
+    const auto* screen = static_cast<const melodee_screen_t*> (a.plugin->get_extension (a.plugin, MELODEE_SCREEN_CLAP));
     CHECK (screen != nullptr);
     if (screen == nullptr)
         return;
-    std::vector<uint32_t> pixels (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_HEIGHT, 0);
-    melodee_screen_canvas_t canvas {};
-    canvas.pixels = pixels.data();
-    canvas.width = MELODEE_SCREEN_WIDTH, canvas.height = MELODEE_SCREEN_HEIGHT, canvas.stride = MELODEE_SCREEN_WIDTH;
-    canvas.accent = 0xffc8f031;
-    for (auto& k : canvas.knobs)
-        k = { -1, true };
+    std::vector<uint32_t> pixels (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT, 0);
+    melodee_screen_frame_t frame {};
+    frame.pixels = pixels.data();
+    frame.width = MELODEE_SCREEN_WIDTH, frame.height = MELODEE_SCREEN_PAGE_HEIGHT, frame.stride = MELODEE_SCREEN_WIDTH;
+    frame.area = MELODEE_SCREEN_PAGE;
+    frame.colour = 0x00c8f031u;
+    for (int k = 0; k < 3; ++k)
+        frame.pots[k] = -1, frame.pots_live[k] = 1;
     uint64_t now = 1000;
-    auto paint = [&] (bool whole = false) { canvas.whole = whole, canvas.now_ms = now; return screen->paint (a.plugin, &canvas); };
+    auto paint = [&] (bool whole = false) { frame.redraw_all = whole ? 1u : 0u, frame.time_ms = now; return screen->draw (a.plugin, &frame); };
     auto shot = [&] (const char* name) { paint (true); CHECK (writePng ((folder + "/screen-" + name + ".png").c_str(), pixels.data(), 320, 218, 320, 2)); };
-    auto in = [&] (uint32_t kind, int value, bool shift = false) { melodee_screen_input_t e { kind, value, shift }; return screen->input (a.plugin, &e); };
-    auto knobs = [&] () { std::vector<clap_id> ids (3); screen->knobs (a.plugin, ids.data()); return ids; };
+    auto in = [&] (uint32_t kind, int value, bool shift = false) { melodee_screen_input_t e { kind, value, shift ? 1u : 0u }; return screen->input (a.plugin, &e); };
+    auto knobs = [&] () { std::vector<uint32_t> ids (3); screen->controls (a.plugin, ids.data()); return ids; };
     double beats = 0.0;
     auto play = [&] (uint32_t frames, bool playing, OutEvents* out = nullptr) {
         std::vector<float> l, r;
@@ -1662,21 +1663,21 @@ void testScreen (const std::string& folder)
     const int paintsBefore = paints;
     play (48000 * 2 + 3000, true);
     CHECK (paints > paintsBefore + 8);
-    canvas.playing = true;
+    frame.playing = 1;
     const int paintsAsked = paints;
     CHECK (paint (true));
     CHECK (paints > paintsAsked); // a step lighting: the paint asks for the next one itself
     shot ("pattern");
-    canvas.shift = true;
+    frame.shift = 1;
     shot ("pattern-shift");
-    canvas.shift = false;
+    frame.shift = 0;
     // VOICE: Plus; K1-K3 follow the cursor; the filter's response beside.
-    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
-    CHECK ((knobs() == std::vector<clap_id> { a.id ("Tuning"), a.id ("Cutoff"), a.id ("Resonance") }));
+    CHECK (in (MELODEE_SCREEN_STEP, 1));
+    CHECK ((knobs() == std::vector<uint32_t> { a.id ("Tuning"), a.id ("Cutoff"), a.id ("Resonance") }));
     CHECK (in (MELODEE_SCREEN_WHEEL, 1));
     shot ("voice");
     // TONE: Filter edited to Twin Peak a detent on; its response.
-    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
+    CHECK (in (MELODEE_SCREEN_STEP, 1));
     CHECK (in (MELODEE_SCREEN_PUSH, 0));
     CHECK (in (MELODEE_SCREEN_WHEEL, 1));
     CHECK (a.value ("Filter") == a.valueOf ("Filter", "Twin Peak"));
@@ -1685,12 +1686,12 @@ void testScreen (const std::string& folder)
     CHECK (in (MELODEE_SCREEN_PUSH, 0));
     shot ("tone-18db");
     // TB-3PO: Regen is a button: no pot; Push presses it.
-    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
+    CHECK (in (MELODEE_SCREEN_STEP, 1));
     CHECK (in (MELODEE_SCREEN_WHEEL, 3));
-    CHECK (knobs()[0] == CLAP_INVALID_ID);
+    CHECK (knobs()[0] == MELODEE_SCREEN_NO_CONTROL);
     shot ("tb-3po");
-    CHECK (in (MELODEE_SCREEN_NUDGE, 1));
-    CHECK (! in (MELODEE_SCREEN_NUDGE, 1)); // the last group
+    CHECK (in (MELODEE_SCREEN_STEP, 1));
+    CHECK (! in (MELODEE_SCREEN_STEP, 1)); // the last group
     shot ("clock");
 }
 

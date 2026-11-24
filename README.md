@@ -329,7 +329,7 @@ every fingerprint scenario too: a report stops it.
   The Barlow Project Authors) and Michroma (copyright 2011 The Michroma Project Authors), each SIL Open Font License
   1.1 (`licenses/OFL-*.txt`); `tools/ui_preview/assets.py` rasterizes their glyphs into the headers in `src/ui/`.
   The artwork's origins are listed in
-  [THIRD_PARTY.md](THIRD_PARTY.md). The screen extension's header, `src/melodee_screen.h`, is hdslaveOS's, MIT.
+  [THIRD_PARTY.md](THIRD_PARTY.md). The screen extension's header, `src/melodee_screen.h`, is Melodee's (`melodee.screen/1`), MIT.
 - CLAP headers: MIT license, `third_party/clap/LICENSE`.
 
 TB-303 is a trademark of Roland Corporation and MPC of inMusic Brands; this project is not affiliated with either.
