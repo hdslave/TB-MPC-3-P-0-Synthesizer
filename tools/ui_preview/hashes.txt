@@ -3,11 +3,11 @@ cc09f5849a5cea94 pattern-32
 0acfd118e5b8e73f pending
 10e5c522cf892a46 random
 38a5721a55eafe19 notes
-8f2bae61d233cb54 voice-303
+ebca12c21d859334 voice-303
 4acc3a8c30bc94dd voice-twin
 cd8210e6113bc807 voice-18db
-1cc0ca7c89d01764 tone-drive
-c15ae83d10563da6 tb3po-scale
+5d23e07d35fe4890 tone-drive
+0d5cac9ba2a3bbac tb3po-scale
 23992d005e87f525 clock-swing
 14eef5d4255a8c3b shift
 ae1b039b257a181d pickup
