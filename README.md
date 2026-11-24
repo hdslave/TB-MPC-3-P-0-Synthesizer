@@ -2,7 +2,16 @@
 
 **A 303-style acid bass synthesizer driven by a tick-accurate port of Ornament & Crime's TB-3PO generative sequencer, as a CLAP plug-in for the Akai MPC Sample.**
 
-![TB-MPC-3-P-0 Press Plate screen running in hdslaveOS](docs/tb-mpc-3-p-0-screen.gif)
+<table>
+  <tr>
+    <th width="34%">MPC Sample</th>
+    <th width="66%">macOS and Windows · CLAP</th>
+  </tr>
+  <tr>
+    <td align="center"><a href="docs/tb-mpc-3-p-0-screen.gif"><img src="docs/tb-mpc-3-p-0-screen.gif" alt="TB-MPC-3-P-0 Press Plate screen running in hdslaveOS"></a></td>
+    <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="TB-MPC-3-P-0 acid bass sequencer and voice controls during playback"></a></td>
+  </tr>
+</table>
 
 > **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Releases in this repo stay MPC Sample-only for now while the desktop builds are being finalized.
 
