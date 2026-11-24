@@ -243,8 +243,7 @@ private:
 
     uint32_t cardField (int k) const
     {
-        constexpr uint32_t performance[] = { ParamId::cutoff, ParamId::resonance, ParamId::envMod };
-        if (!group) return performance[k];
+        if (!group) return layout::performance[k].id;
         return row + k < fields().count ? fields().fields[row + k].id : hdui::noParam;
     }
 
@@ -396,30 +395,36 @@ private:
     }
 
     static constexpr int visible = 8, rowH = 15;
+    static constexpr int desktopVoiceRows = int (std::size (layout::voice));
+    static constexpr int desktopVoiceRowH = visible * rowH / desktopVoiceRows;
+    static constexpr int desktopVoiceTicketH = 19;
+    bool compactVoice() const { return pinnedTop >= 0 && group == 1; }
     int firstRow() const { return pinnedTop >= 0 ? pinnedTop : std::clamp (row - 3, 0, std::max (0, fields().count - visible)); }
 
     void list (const Raster& r) const
     {
         using namespace hdui;
         const int top = firstRow();
-        for (int i = top; i < std::min (fields().count, top + visible); ++i)
+        const int rows = compactVoice() ? desktopVoiceRows : visible;
+        const int height = compactVoice() ? desktopVoiceRowH : rowH;
+        for (int i = top; i < std::min (fields().count, top + rows); ++i)
         {
-            const int y = 2 + (i-top)*rowH;
+            const int y = 2 + (i-top)*height;
             const auto& f = fields().fields[i];
             const bool focus = i == row;
-            r.box (2, y, 156, rowH-1, focus ? ink::live : (i-top)%2 ? ink::alternate : ink::metal);
+            r.box (2, y, 156, height-1, focus ? ink::live : (i-top)%2 ? ink::alternate : ink::metal);
             char value[32];
             formatted (f.id, value);
             r.text (7, y+3, f.label, ink::bg);
             if (focus && editing)
             {
                 const int w = int (std::strlen (value))*6 + 5;
-                r.box (155-w,y+1,w,12,ink::bg);
+                r.box (155-w, y+1, w, height-3, ink::bg);
             }
             r.right (153, y+3, value, focus && editing ? ink::live : ink::bg);
         }
-        if (fields().count > visible)
-            r.box (159, 2 + top * 120 / fields().count, 1, visible * 120 / fields().count, ink::steel);
+        if (fields().count > rows)
+            r.box (159, 2 + top * 120 / fields().count, 1, rows * 120 / fields().count, ink::steel);
     }
 
     void mini (const Raster& r, const Host& h) const
@@ -495,7 +500,7 @@ private:
             const uint32_t id = cardField (k);
             if (id == noParam) continue;
             const auto& p = paramTable[paramIndex (id)];
-            const char* name = group ? fields().fields[row+k].label : layout::voice[k+1].label;
+            const char* name = group ? fields().fields[row+k].label : layout::performance[k].label;
             if (id == ParamId::accentDecay) name = "ACC DECAY";
             if (id == ParamId::peakSpread) name = "PEAK SPRD";
             if (id == ParamId::slideTime) name = "SLD TIME";

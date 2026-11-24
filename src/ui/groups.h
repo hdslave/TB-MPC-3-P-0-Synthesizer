@@ -6,14 +6,19 @@
 
 namespace tbmpc::layout
 {
+inline constexpr hdui::Field performance[] = {
+    { ParamId::cutoff, "CUTOFF" }, { ParamId::resonance, "RESONANCE" }, { ParamId::envMod, "ENV MOD" },
+};
 inline constexpr hdui::Field voice[] = {
-    { ParamId::tuning, "TUNING" }, { ParamId::cutoff, "CUTOFF" }, { ParamId::resonance, "RESONANCE" },
-    { ParamId::envMod, "ENV MOD" }, { ParamId::decay, "DECAY" }, { ParamId::accent, "ACCENT" },
-    { ParamId::waveform, "WAVEFORM" }, { ParamId::volume, "VOLUME" },
+    performance[0], performance[1], performance[2],
+    { ParamId::decay, "DECAY" }, { ParamId::accent, "ACCENT" }, { ParamId::waveform, "WAVEFORM" },
+    { ParamId::tuning, "TUNING" }, { ParamId::volume, "VOLUME" },
+    { ParamId::cutoffLfoAmount, "LFO AMOUNT" }, { ParamId::cutoffLfoSpeed, "LFO SPEED" },
 };
 inline constexpr hdui::Field tone[] = {
     { ParamId::filter, "FILTER" }, { ParamId::peakSpread, "PEAK SPREAD" }, { ParamId::drive, "DRIVE" },
     { ParamId::glide, "SLIDE" }, { ParamId::slideTime, "SLIDE TIME" }, { ParamId::accentDecay, "ACCENT DECAY" },
+    { ParamId::pitchLfoAmount, "LFO AMOUNT" }, { ParamId::pitchLfoSpeed, "LFO SPEED" },
 };
 inline constexpr hdui::Field sequencer[] = {
     { ParamId::mode, "MODE" }, { ParamId::seedMode, "SEED MODE" }, { ParamId::seed, "SEED" }, { ParamId::regen, "REGEN" },
@@ -26,6 +31,6 @@ inline constexpr hdui::Field clock[] = {
     { hdui::noParam, "THEME" },
 };
 inline constexpr hdui::Group groups[] = {
-    { "PATTERN", nullptr, 0 }, { "VOICE", voice, 8 }, { "TONE", tone, 6 }, { "SEQUENCER", sequencer, 13 }, { "CLOCK", clock, int (std::size (clock)) },
+    { "PATTERN", nullptr, 0 }, { "VOICE", voice, int (std::size (voice)) }, { "TONE", tone, int (std::size (tone)) }, { "SEQUENCER", sequencer, 13 }, { "CLOCK", clock, int (std::size (clock)) },
 };
 } // namespace tbmpc::layout

@@ -227,8 +227,7 @@ void controls()
     press = r.key (Key::push, 0, true);
     check (press.count == 1 && press.list[0].press && press.list[0].id == P::seedBack, "back");
     r.go (1);
-    bindings (r, P::tuning, P::cutoff, P::resonance);
-    r.key (Key::wheel, 1);
+    bindings (r, P::cutoff, P::resonance, P::envMod);
     r.key (Key::push);
     r.set (P::cutoff, .5f);
     r.key (Key::wheel, 1);
@@ -237,7 +236,9 @@ void controls()
     check (r.get (P::cutoff) == .5f + 1.f/128 - 1.f/1024 + 1.f/16, "plain, fine and coarse");
     r.key (Key::push);
     r.key (Key::wheel, INT32_MAX);
-    bindings (r, P::volume, hdui::noParam, hdui::noParam);
+    bindings (r, P::cutoffLfoSpeed, hdui::noParam, hdui::noParam);
+    r.key (Key::wheel, -3);
+    bindings (r, P::tuning, P::volume, P::cutoffLfoAmount);
     r.go (1);
     r.key (Key::push);
     r.key (Key::nudge, 1);
@@ -255,7 +256,7 @@ void controls()
     r.key (Key::nudge, -1);
     bindings (r, P::filter, P::peakSpread, P::drive);
     r.key (Key::nudge, -1);
-    bindings (r, P::tuning, P::cutoff, P::resonance);
+    bindings (r, P::cutoff, P::resonance, P::envMod);
     r.key (Key::nudge, -1);
     hdui::Edits e;
     check (!r.screen.input (Key::nudge, -1, false, e), "first group boundary");

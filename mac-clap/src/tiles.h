@@ -61,6 +61,35 @@ struct TilesAccess
         return drew;
     }
 
+    // Pixel geometry shared by hit testing and focus. The desktop Voice tile displays both extra LFO rows.
+    struct ListHit { int row, x, y, w, h; };
+    static ListHit listHit (int group, int top, bool blacklight, int x, int y)
+    {
+        const int rows = group == 1 ? Screen::desktopVoiceRows : Screen::visible;
+        if (!blacklight)
+        {
+            const int originY = group == 1 ? 62 : 63;
+            const int height = group == 1 ? Screen::desktopVoiceRowH : Screen::rowH;
+            if (x >= 0 && x < 160 && y >= originY && y < originY + rows * height)
+            {
+                const int slot = (y - originY) / height;
+                return { top + slot, 2, originY + slot * height, 156, height - 1 };
+            }
+        }
+        else
+        {
+            const int originY = group == 1 ? 88 : 82;
+            const int height = group == 1 ? Screen::desktopVoiceTicketH : 24;
+            const int perColumn = rows / 2;
+            if (x >= 88 && x < 316 && y >= originY && y < originY + perColumn * height)
+            {
+                const int col = (x - 88) / 116, slot = (y - originY) / height;
+                return { top + col * perColumn + slot, 88 + col * 116, originY + slot * height, 112, height - 2 };
+            }
+        }
+        return { -1, 0, 0, 0, 0 };
+    }
+
     static bool CLAP_ABI hit_test (const clap_plugin_t* plugin, uint32_t tile, int x, int y, hdslave_tile_hotspot_t* out_spot)
     {
         if (!out_spot || tile >= kTileCount) return false;
@@ -184,32 +213,27 @@ struct TilesAccess
         else
         {
             const auto& grp = layout::groups[g];
+            const auto hit = listHit (g, top, blacklight, x, y);
+            if (hit.row >= 0 && hit.row < grp.count)
+            {
+                const uint32_t id = grp.fields[hit.row].id;
+                out_spot->x = (int16_t) hit.x;
+                out_spot->y = (int16_t) hit.y;
+                out_spot->w = (int16_t) hit.w;
+                out_spot->h = (int16_t) hit.h;
+                if (id == hdui::noParam)
+                {
+                    out_spot->kind = HDSLAVE_HOTSPOT_ACTION;
+                    out_spot->custom_id = 1; // Theme switch
+                    return true;
+                }
+                const auto& param = paramTable[paramIndex (id)];
+                out_spot->kind = param.kind == Kind::button ? HDSLAVE_HOTSPOT_BUTTON : HDSLAVE_HOTSPOT_PARAM;
+                out_spot->param_id = id;
+                return true;
+            }
             if (!blacklight)
             {
-                // PressPlate list (x: 0..160, y: 61..183, rowH = 15)
-                if (x >= 0 && x < 160 && y >= 63 && y < 63 + Screen::visible * Screen::rowH)
-                {
-                    const int visIdx = (y - 63) / Screen::rowH;
-                    const int rowIdx = top + visIdx;
-                    if (rowIdx >= 0 && rowIdx < grp.count)
-                    {
-                        const uint32_t id = grp.fields[rowIdx].id;
-                        out_spot->x = 2;
-                        out_spot->y = (int16_t) (63 + visIdx * Screen::rowH);
-                        out_spot->w = 156;
-                        out_spot->h = (int16_t) (Screen::rowH - 1);
-                        if (id == hdui::noParam)
-                        {
-                            out_spot->kind = HDSLAVE_HOTSPOT_ACTION;
-                            out_spot->custom_id = 1; // Theme switch
-                            return true;
-                        }
-                        const auto& param = paramTable[paramIndex (id)];
-                        out_spot->kind = param.kind == Kind::button ? HDSLAVE_HOTSPOT_BUTTON : HDSLAVE_HOTSPOT_PARAM;
-                        out_spot->param_id = id;
-                        return true;
-                    }
-                }
                 // Right plot panel (x: 160..320, y: 61..183)
                 if (x >= 160 && x < 320 && y >= 61 && y < 183)
                 {
@@ -232,35 +256,6 @@ struct TilesAccess
                     }
                 }
             }
-            else
-            {
-                // Blacklight ticketList at (84, 79), 2 columns x 4 rows (116x24 each)
-                if (x >= 88 && x < 316 && y >= 82 && y < 178)
-                {
-                    const int col = (x - 88) / 116;
-                    const int r = (y - 82) / 24;
-                    const int visIdx = col * 4 + r;
-                    const int rowIdx = top + visIdx;
-                    if (col >= 0 && col < 2 && r >= 0 && r < 4 && rowIdx < grp.count)
-                    {
-                        const uint32_t id = grp.fields[rowIdx].id;
-                        out_spot->x = (int16_t) (88 + col * 116);
-                        out_spot->y = (int16_t) (82 + r * 24);
-                        out_spot->w = 112;
-                        out_spot->h = 22;
-                        if (id == hdui::noParam)
-                        {
-                            out_spot->kind = HDSLAVE_HOTSPOT_ACTION;
-                            out_spot->custom_id = 1;
-                            return true;
-                        }
-                        const auto& param = paramTable[paramIndex (id)];
-                        out_spot->kind = param.kind == Kind::button ? HDSLAVE_HOTSPOT_BUTTON : HDSLAVE_HOTSPOT_PARAM;
-                        out_spot->param_id = id;
-                        return true;
-                    }
-                }
-            }
         }
         return false;
     }
@@ -275,11 +270,7 @@ struct TilesAccess
         if (g > 0)
         {
             const bool blacklight = p.screen.theme == Screen::Theme::blacklight;
-            int rowIdx = -1;
-            if (!blacklight && x >= 0 && x < 160 && y >= 63 && y < 63 + Screen::visible * Screen::rowH)
-                rowIdx = top + (y - 63) / Screen::rowH;
-            else if (blacklight && x >= 88 && x < 316 && y >= 82 && y < 178)
-                rowIdx = top + ((x - 88) / 116) * 4 + ((y - 82) / 24);
+            const int rowIdx = listHit (g, top, blacklight, x, y).row;
             if (rowIdx >= 0 && rowIdx < layout::groups[g].count)
             {
                 p.screen.tileRows[tile] = rowIdx;

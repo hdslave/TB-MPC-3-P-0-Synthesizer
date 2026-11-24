@@ -3,10 +3,10 @@
 029c9dd3a8868c6e pending
 99ef5c39d30958bf random
 638d934599f16032 notes
-7f9f40b2f2124e94 voice-303
-6089df560c23e834 voice-twin
-3193aff60d0c2cc9 voice-18db
-c92869ead46ce80c tone-drive
+35cc2bcf8a9e087d voice-303
+ce848165c69d871e voice-twin
+f66ba3f9ac26a0fa voice-18db
+44abce84edfae3f7 tone-drive
 0d505a080debca9f tb3po-scale
 681b885ffdb1fe1e clock-swing
 242763662af0ab0f shift

@@ -15,7 +15,7 @@
 
 > **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Releases in this repo stay MPC Sample-only for now while the desktop builds are being finalized.
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.4).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.5).
 
 The custom screen uses `melodee.screen/1` on Melodee 0.7 and hdslaveOS based on it. Open Edit on the plug-in track or select PANEL on Stage. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
@@ -62,6 +62,15 @@ In the order Melodee's Edit page lists them, three to a page.
 
 The VCA's own envelope is fixed, as on the 303: it opens in 1 ms, decays slowly while the gate is held and closes
 in a few ms when the gate shuts.
+
+### Sine LFOs
+
+**TONE** has a pitch LFO for vibrato. **Amount** sets the depth from zero to ±2 semitones. At the bottom of
+**VOICE**, a separate LFO sweeps filter cutoff by up to ±3 octaves. In VOICE, Tuning sits directly above Volume.
+
+Each **Speed** knob goes from four beats per cycle to an eighth of a beat per cycle and follows the host BPM.
+Virtual detents lock the cycle to **1/1**, **3/4**, **1/2**, or **1/3** of a beat, with continuous speeds in between.
+Both LFOs run when playing notes with transport stopped. Each Amount starts at zero.
 
 ### Filter
 
@@ -223,7 +232,7 @@ instance on every page, in Edit and Stage, until Melodee restarts; projects and 
   32-step pattern stacks two banks of 16. The wheel dials the seed and locks it, so the pattern you dial is kept; it
   plays from the next clock (until then the window reads PENDING over the pattern still playing); Push is Regen;
   Shift + Push is Seed Back. K1-K3: Cutoff, Resonance, Env Mod. [docs/screen.md](docs/screen.md) has the details.
-- **VOICE** and **TONE**: the voice's knobs, beside the filter's live response (Cutoff's reading marked).
+- **VOICE** and **TONE**: the voice's knobs, beside the filter's response (Cutoff's reading marked). VOICE ends with the cutoff LFO. TONE ends with the pitch LFO.
 - **SEQUENCER** and **CLOCK**: the sequencer's settings beside a small score; CLOCK also holds THEME.
 
 On a list the controls are hdslave Machine's: the wheel moves a row; Push edits it (the wheel then changes it: a
@@ -250,16 +259,17 @@ Instructions a 128-frame block (48 kHz), counted by callgrind (`tools/bench.sh`)
 
 | Case | Instructions | Share of a block on one A55 core |
 |---|---|---|
-| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 27,804 | 0.58 % |
-| The same through Twin Peak (two ladders), Drive full | 37,174 | 0.77 % |
-| The same through 18 dB, Drive full | 27,614 | 0.58 % |
-| Typical: the default patch | 17,909 | 0.37 % |
-| Stopped | 637 | 0.01 % |
+| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 29,475 | 0.61 % |
+| The same through Twin Peak (two ladders), Drive full | 39,432 | 0.82 % |
+| The same through 18 dB, Drive full | 29,351 | 0.61 % |
+| Twin Peak, full Drive, both LFOs at full depth | 53,329 | 1.11 % |
+| Typical: the default patch | 19,019 | 0.40 % |
+| Stopped | 660 | 0.01 % |
 
 The voice runs at the host's rate. A sounding sample costs one exp2 for the cutoff and one division: the diode
 ladder's zero-delay solve has five denominators that are polynomials in the cutoff, so their reciprocals come from
 one division of their product (about 107 cycles a sample on llvm-mca's Cortex-A55 model, against 140 with a
-division each). The pitch's exp2 runs only while the pitch slides or Tuning moves; with the VCA shut only the
+division each). The pitch's exp2 runs while the pitch slides, Tuning moves, or the pitch LFO is active; with the VCA shut only the
 envelopes run, then nothing. The voice's sample is compiled into the run's loop rather than called. A pad costs
 nothing until it is hit (then a step's pitch, or a pattern made again once when one waits for its clock).
 

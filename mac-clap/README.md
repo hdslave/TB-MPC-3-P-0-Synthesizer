@@ -7,6 +7,9 @@ Separate desktop CLAP build of **hdslave TB-MPC-3-P-0** for **FL Studio** (2024+
 - **Multi-Screen MPC Dashboard:** displays all of hdslave TB-MPC-3-P-0's native MPC screens simultaneously on one resizable Retina/HiDPI panel (with the hardware `K1`–`K3` footer panels removed) and direct mouse, trackpad, and touch control over every parameter, plot, sequencer, and pad.
 - **Standalone from the MPC Sample build:** this directory is completely separate from the MPC Sample build in the repository root (`../src`, `../build.sh`). GitHub releases remain MPC Sample-only for now while the desktop builds are being finalized.
 
+Version 0.5.5 adds a sine pitch LFO on **Tone** and a separate sine cutoff LFO at the bottom of **Voice**.
+Both Speed controls follow the host BPM and snap to 1/1, 3/4, 1/2, and 1/3 beat per cycle. Tuning sits directly above Volume.
+
 ## Build & Install (macOS)
 
 Requires Xcode Command Line Tools and CMake 3.20+ (Ninja optional):

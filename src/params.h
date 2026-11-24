@@ -11,8 +11,10 @@
 #include <cstring>
 #include <strings.h>
 
+#include "lfo.h"
+
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.5.4"
+#define TBMPC_VERSION "0.5.5"
 #endif
 
 namespace tbmpc
@@ -26,13 +28,14 @@ enum : uint32_t
     mode, seedBack, swing, // 0.2.0
     gate, mutate, // 0.3.0
     drive, slideTime, accentDecay, filter, peakSpread, // 0.4.0
+    pitchLfoAmount, pitchLfoSpeed, cutoffLfoAmount, cutoffLfoSpeed, // 0.5.5
     count
 };
 }
 
 enum class Kind : uint8_t { continuous, integer, choice, button };
 // How a value reads.
-enum class Unit : uint8_t { semitones, cutoffHz, percent, decay, seedHex, signedInt, plainInt, choice, button, slideTime, octaves };
+enum class Unit : uint8_t { semitones, cutoffHz, percent, decay, seedHex, signedInt, plainInt, choice, button, slideTime, octaves, lfoRate };
 
 struct Param
 {
@@ -263,6 +266,10 @@ inline constexpr Param paramTable[] = {
     CHOICE (clockDiv, "Clock Div", "Clock", clockDivChoices, 5.0f),
     CONT (swing, "Swing", "Clock", 0.5f, 0.75f, 0.5f, percent),
     CHOICE (reset, "Reset", "Clock", resetChoices, 0.0f),
+    CONT (pitchLfoAmount, "Pitch LFO Amount", "Tone", 0.0f, 1.0f, 0.0f, percent),
+    CONT (pitchLfoSpeed, "Pitch LFO Speed", "Tone", lfoMinRate, lfoMaxRate, lfoDefaultRate, lfoRate),
+    CONT (cutoffLfoAmount, "Cutoff LFO Amt", "Voice", 0.0f, 1.0f, 0.0f, percent),
+    CONT (cutoffLfoSpeed, "Cutoff LFO Speed", "Voice", lfoMinRate, lfoMaxRate, lfoDefaultRate, lfoRate),
 };
 #undef CONT
 #undef INT
@@ -314,6 +321,12 @@ inline void formatParam (const Param& p, float v, char* text, uint32_t size, con
             else std::snprintf (text, size, "%.2f s", s);
             break;
         }
+        case Unit::lfoRate:
+            if (const auto* detent = lfoDetent (v))
+                std::snprintf (text, size, "%s", detent->label);
+            else
+                std::snprintf (text, size, "%.3f beat", 1.0 / v);
+            break;
         case Unit::octaves: std::snprintf (text, size, "%.2f oct", v); break;
         case Unit::slideTime: std::snprintf (text, size, "%.0f ms", slideSeconds (v) * 3000.0f); break; // the time to arrive
         case Unit::seedHex: std::snprintf (text, size, "%04x", (unsigned) v); break; // as the module shows it
@@ -353,6 +366,24 @@ inline bool parseParam (const Param& p, const char* text, float& v, const TextCo
         return false;
     while (*end == ' ')
         ++end;
+    if (p.unit == Unit::lfoRate)
+    {
+        double beats = x;
+        if (*end == '/')
+        {
+            const char* start = end + 1;
+            const double divisor = std::strtod (start, &end);
+            if (end == start || !(divisor > 0.0) || !std::isfinite (divisor))
+                return false;
+            beats /= divisor;
+            while (*end == ' ')
+                ++end;
+        }
+        if (!(beats > 0.0) || (*end != '\0' && strcasecmp (end, "beat") && strcasecmp (end, "beats")))
+            return false;
+        v = clampParam (p, (float) (1.0 / beats));
+        return true;
+    }
     const bool kilo = (*end == 'k' || *end == 'K');
     const bool milli = (end[0] == 'm' && end[1] == 's');
     switch (p.unit)

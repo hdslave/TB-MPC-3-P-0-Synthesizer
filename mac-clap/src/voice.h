@@ -111,6 +111,9 @@ public:
         slideFrames = 0;
         pitchOct = targetOct = 0.0f;
         tick = 0;
+        lfoClock = {};
+        pitchLfo.sync();
+        cutoffLfo.sync();
         dirty = true;
         retarget();
         for (int i = 0; i < smoothed; ++i)
@@ -133,12 +136,27 @@ public:
     }
 
     // A knob, from the next sample.
-    void set (uint32_t id, float v)
+    void set (uint32_t id, float v, uint64_t frame)
     {
         if (id >= ParamId::count || knob[id] == v)
             return;
         knob[id] = v;
-        dirty = true;
+        if (id == ParamId::pitchLfoSpeed)
+            pitchLfo.setRate (v, lfoClock.beatAt (frame));
+        else if (id == ParamId::cutoffLfoSpeed)
+            cutoffLfo.setRate (v, lfoClock.beatAt (frame));
+        else
+            dirty = true;
+    }
+
+    void syncLfos (uint64_t frame, double beatsPerFrame, bool locate, double beat)
+    {
+        lfoClock.set (frame, beatsPerFrame, locate, beat);
+        if (locate)
+        {
+            pitchLfo.sync();
+            cutoffLfo.sync();
+        }
     }
 
     // A step from the sequencer: the pitch CV the step starts at and the one it slides to (equal: no slide), in
@@ -186,7 +204,7 @@ public:
 
     bool silent() const { return ! gateOpen && veg == 0.0f; }
 
-    void render (float* __restrict left, float* __restrict right, uint32_t frames)
+    void render (float* __restrict left, float* __restrict right, uint32_t frames, uint64_t firstFrame)
     {
         for (uint32_t i = 0; i < frames; ++i)
         {
@@ -194,7 +212,7 @@ public:
                 control();
             float y = 0.0f;
             if (! silent())
-                y = sample();
+                y = sample (firstFrame + i);
             else if (meg != 0.0f || sweep != 0.0f || sliding)
                 idle(); // the VCA is shut: only the envelopes and the slide go on
             else
@@ -269,7 +287,7 @@ private:
     }
 
     // --- The knobs ---
-    enum Smoothed { tune, cutBase, envDepth, reso, makeup, gain, accentAmount, drivePre, drivePost, driveWet, spreadMul, smoothed };
+    enum Smoothed { tune, cutBase, envDepth, reso, makeup, gain, accentAmount, drivePre, drivePost, driveWet, spreadMul, pitchDepth, cutoffDepth, smoothed };
 
     void retarget()
     {
@@ -303,6 +321,8 @@ private:
         target[makeup] = std::pow (1.0f + k, makeupShare);
         target[gain] = knob[ParamId::volume] * knob[ParamId::volume] * outputGain;
         target[accentAmount] = knob[ParamId::accent];
+        target[pitchDepth] = knob[ParamId::pitchLfoAmount] * pitchLfoOctaves;
+        target[cutoffDepth] = knob[ParamId::cutoffLfoAmount] * cutoffLfoOctaves;
         // Drive: the clipper's gain in, the level made up after it, and how much of it is heard (all of it from an
         // eighth of the turn; at 0 none, and the voice skips it).
         const float driveKnob = knob[ParamId::drive];
@@ -346,7 +366,7 @@ private:
         tuneMoved = true;
     }
 
-    [[gnu::always_inline]] float sample()
+    [[gnu::always_inline]] float sample (uint64_t frame)
     {
         // Pitch: the slide, then the oscillator's increment (worked out only when the pitch or the tuning moves).
         slide();
@@ -390,7 +410,16 @@ private:
         sweep += (accentCv - sweep) * sweepCoeff;
 
         // The oscillator.
-        float p = phase + dt;
+        const bool pitchMod = smooth[pitchDepth] > 0.0f;
+        const bool cutoffMod = smooth[cutoffDepth] > 0.0f;
+        const double beat = pitchMod || cutoffMod ? lfoClock.beatAt (frame) : 0.0;
+        float oscDt = dt;
+        if (pitchMod)
+        {
+            const float bendOctaves = smooth[pitchDepth] * pitchLfo.valueAt (beat);
+            oscDt = std::fmin (exp2Fast (logBaseOverRate + pitchOct + smooth[tune] + bendOctaves), 0.45f);
+        }
+        float p = phase + oscDt;
         p -= p >= 1.0f ? 1.0f : 0.0f;
         phase = p;
         float osc;
@@ -398,14 +427,17 @@ private:
         {
             float q = p + 0.5f;
             q -= q >= 1.0f ? 1.0f : 0.0f;
-            osc = (p < 0.5f ? 1.0f : -1.0f) + polyBlep (p, dt) - polyBlep (q, dt);
+            osc = (p < 0.5f ? 1.0f : -1.0f) + polyBlep (p, oscDt) - polyBlep (q, oscDt);
         }
         else
-            osc = 2.0f * p - 1.0f - polyBlep (p, dt);
+            osc = 2.0f * p - 1.0f - polyBlep (p, oscDt);
 
         // The cutoff in octaves (with pi / rate folded in, so 2^x is the ladder's angle a sample), then g = tan
         // (its series to x^7: under 2.5 % low at the top of the range).
-        const float angle = exp2Fast (smooth[cutBase] + meg * smooth[envDepth] + sweep * accentOctaves);
+        float cutoff = smooth[cutBase] + meg * smooth[envDepth] + sweep * accentOctaves;
+        if (cutoffMod)
+            cutoff += smooth[cutoffDepth] * cutoffLfo.valueAt (beat);
+        const float angle = exp2Fast (cutoff);
         const float x = clampf (angle, minAngle, maxAngle);
         const float x2 = x * x;
         const float g = x * (1.0f + x2 * (0.33333333f + x2 * (0.13333333f + x2 * 0.05396825f)));
@@ -549,6 +581,8 @@ private:
     float rate = 48000.0f, logPiOverRate = 0.0f, logBaseOverRate = 0.0f;
     float knob[ParamId::count] {};
     float target[smoothed] {}, smooth[smoothed] {};
+    LfoClock lfoClock;
+    SineLfo pitchLfo, cutoffLfo;
     float phase = 0.0f, dt = 0.0f;
     float s1 = 0.0f, s2 = 0.0f, s3 = 0.0f, s4 = 0.0f, t1 = 0.0f, t2 = 0.0f, t3 = 0.0f, t4 = 0.0f;
     int filterKind = filter303;

@@ -163,22 +163,26 @@ inline void Screen::ticketList (const Raster& r) const
 {
     using namespace hdui;
     const int top = pinnedTop >= 0 ? pinnedTop : std::min ((row/visible)*visible, std::max (0, fields().count-visible));
-    for (int i = top; i < std::min (top+visible,fields().count); ++i)
+    const int rows = compactVoice() ? desktopVoiceRows : visible;
+    const int perColumn = rows / 2;
+    const int height = compactVoice() ? desktopVoiceTicketH : 24;
+    const int valueY = compactVoice() ? 10 : 12;
+    for (int i = top; i < std::min (top+rows,fields().count); ++i)
     {
-        const int slot = i-top, x = 4+116*(slot/4), y = 3+24*(slot%4);
+        const int slot = i-top, x = 4+116*(slot/perColumn), y = 3+height*(slot%perColumn);
         const auto& f = fields().fields[i];
         const bool focus = i == row;
         const int width = f.id == noParam ? r.w-x-4 : 112;
-        r.box (x, y, width, focus ? 22 : 1, focus ? ticketInk.violet : ticketInk.grid);
+        r.box (x, y, width, focus ? height-2 : 1, focus ? ticketInk.violet : ticketInk.grid);
         r.text (x+3, y+2, f.label, focus ? ticketInk.bg : ticketInk.muted);
         char value[32];
         formatted (f.id, value);
         if (focus && editing)
         {
-            r.box (x+2, y+11, 108, 10, ticketInk.bg);
-            r.text (x+4, y+12, value, ticketInk.live);
+            r.box (x+2, y+valueY-1, 108, height-valueY-2, ticketInk.bg);
+            r.text (x+4, y+valueY, value, ticketInk.live);
         }
-        else r.text (x+3, y+12, value, focus ? ticketInk.bg : ticketInk.paper);
+        else r.text (x+3, y+valueY, value, focus ? ticketInk.bg : ticketInk.paper);
     }
 }
 
@@ -218,7 +222,7 @@ inline void Screen::ticketCards (const Raster& r, const Host& h) const
         const uint32_t id = cardField (k);
         if (id == noParam) continue;
         const auto& p = paramTable[paramIndex (id)];
-        const auto& f = group ? fields().fields[row+k] : layout::voice[k+1];
+        const auto& f = group ? fields().fields[row+k] : layout::performance[k];
         r.text (x+21, 5, f.label, ticketInk.muted);
         if (p.kind == Kind::button)
         {

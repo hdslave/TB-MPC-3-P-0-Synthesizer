@@ -122,7 +122,7 @@ public:
             case ParamId::swing:
             case ParamId::gate:
             case ParamId::mutate: break;
-            default: voice.set (id, v); break;
+            default: voice.set (id, v, frameCount); break;
         }
     }
 
@@ -284,6 +284,10 @@ public:
         bar = barBeats > 0.0 ? barBeats : 4.0;
         const double window = (double) std::max (frames, lastBlock);
         lastBlock = frames;
+        const bool started = ! playing;
+        const double moved = std::fabs (beats - position);
+        const bool relocateClock = started || (moved > 0.5 * perFrame && moved >= window * perFrame);
+        voice.syncLfos (frameCount, perFrame, isPlaying && relocateClock, beats);
         if (! isPlaying)
         {
             if (playing)
@@ -301,9 +305,7 @@ public:
         // A Play, or a place other than where the last block ended by more than a block (a jump, a loop going
         // round): line up again. Less than that is drift (a tempo change inside the last block), followed as it is:
         // the clocks already played are not played again, one passed is played at once.
-        const bool started = ! playing;
-        const double moved = std::fabs (beats - position);
-        if (started || (moved > 0.5 * perFrame && moved >= window * perFrame))
+        if (relocateClock)
             relocate (beats, window, started);
         playing = true;
         position = beats;
@@ -363,7 +365,7 @@ public:
                 }
                 run = std::min (run, padOffIn);
             }
-            voice.render (left, right, run);
+            voice.render (left, right, run, frameCount);
             frameCount += run;
             if (gateOffPending)
                 gateOffIn -= run;

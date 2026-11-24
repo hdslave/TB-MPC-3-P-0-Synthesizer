@@ -382,7 +382,7 @@ void testParameters()
 {
     Instance a;
     const uint32_t count = a.params->count (a.plugin);
-    CHECK (count == 30);
+    CHECK (count == 34);
     std::map<clap_id, int> seen;
     for (uint32_t i = 0; i < count; ++i)
     {
@@ -400,8 +400,24 @@ void testParameters()
     }
     for (const char* name : { "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent", "Waveform", "Volume", "Slide", "Seed Mode",
                               "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset", "Mode", "Seed Back", "Swing", "Gate", "Mutate",
-                              "Drive", "Slide Time", "Accent Decay", "Filter", "Peak Spread" })
+                              "Drive", "Slide Time", "Accent Decay", "Filter", "Peak Spread",
+                              "Pitch LFO Amount", "Pitch LFO Speed", "Cutoff LFO Amt", "Cutoff LFO Speed" })
         CHECK (a.ids.count (name) == 1);
+    for (const char* name : { "Pitch LFO Speed", "Cutoff LFO Speed" })
+    {
+        for (const auto& d : tbmpc::lfoDetents)
+        {
+            const double value = a.valueOf (name, d.label);
+            CHECK (std::fabs (value - d.cyclesPerBeat) < 1.0e-6);
+            // The nearest position on a real 7-bit pot also locks to this ratio.
+            const double steps = std::round ((value - tbmpc::lfoMinRate) * 127.0 / (tbmpc::lfoMaxRate - tbmpc::lfoMinRate));
+            const double potValue = tbmpc::lfoMinRate + steps * (tbmpc::lfoMaxRate - tbmpc::lfoMinRate) / 127.0;
+            char label[32];
+            CHECK (a.params->value_to_text (a.plugin, a.id (name), potValue, label, sizeof (label)));
+            CHECK (std::string (label) == d.label);
+        }
+        CHECK (std::fabs (a.valueOf (name, "0.625 beat") - 1.6) < 1.0e-6);
+    }
     // The seed reads as the module shows it, four hex digits; density as -7..+7; the applet's first scale.
     char text[64] = {};
     a.params->value_to_text (a.plugin, a.id ("Seed"), 0xbeef, text, sizeof (text));
@@ -420,7 +436,8 @@ void testState()
     std::vector<float> l1, r1, l2, r2;
     Instance a;
     a.setup ({ { "Seed Mode", 1.0 }, { "Seed", 0x1234 }, { "Cutoff", 0.31 }, { "Resonance", 0.9 }, { "Density", -2 }, { "Scale", 3 },
-               { "Waveform", 1.0 }, { "Steps", 11 }, { "Transpose", 4 }, { "Slide", 1.0 } });
+               { "Waveform", 1.0 }, { "Steps", 11 }, { "Transpose", 4 }, { "Slide", 1.0 },
+               { "Pitch LFO Amount", 0.3 }, { "Pitch LFO Speed", 2 }, { "Cutoff LFO Amt", 0.7 }, { "Cutoff LFO Speed", 3 } });
     std::vector<uint8_t> saved;
     clap_ostream os { &saved, [] (const clap_ostream* s, const void* d, uint64_t n) -> int64_t {
         auto* v = static_cast<std::vector<uint8_t>*> (s->ctx);
@@ -1673,8 +1690,11 @@ void testScreen (const std::string& folder)
     frame.shift = 0;
     // VOICE: Plus; K1-K3 follow the cursor; the filter's response beside.
     CHECK (in (MELODEE_SCREEN_STEP, 1));
-    CHECK ((knobs() == std::vector<uint32_t> { a.id ("Tuning"), a.id ("Cutoff"), a.id ("Resonance") }));
-    CHECK (in (MELODEE_SCREEN_WHEEL, 1));
+    CHECK ((knobs() == std::vector<uint32_t> { a.id ("Cutoff"), a.id ("Resonance"), a.id ("Env Mod") }));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 6));
+    CHECK ((knobs() == std::vector<uint32_t> { a.id ("Tuning"), a.id ("Volume"), a.id ("Cutoff LFO Amt") }));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 2));
+    CHECK ((knobs() == std::vector<uint32_t> { a.id ("Cutoff LFO Amt"), a.id ("Cutoff LFO Speed"), MELODEE_SCREEN_NO_CONTROL }));
     shot ("voice");
     // TONE: Filter edited to Twin Peak a detent on; its response.
     CHECK (in (MELODEE_SCREEN_STEP, 1));
@@ -1685,6 +1705,9 @@ void testScreen (const std::string& folder)
     CHECK (in (MELODEE_SCREEN_WHEEL, 1));
     CHECK (in (MELODEE_SCREEN_PUSH, 0));
     shot ("tone-18db");
+    CHECK (in (MELODEE_SCREEN_WHEEL, 6));
+    CHECK ((knobs() == std::vector<uint32_t> { a.id ("Pitch LFO Amount"), a.id ("Pitch LFO Speed"), MELODEE_SCREEN_NO_CONTROL }));
+    shot ("tone-lfo");
     // TB-3PO: Regen is a button: no pot; Push presses it.
     CHECK (in (MELODEE_SCREEN_STEP, 1));
     CHECK (in (MELODEE_SCREEN_WHEEL, 3));
@@ -1998,6 +2021,70 @@ double frequency (const std::vector<float>& x, size_t from, size_t to, float h =
         }
     }
     return n > 1 ? (n - 1) * rate48 / (last - first) : 0.0;
+}
+
+void testToneLfos()
+{
+    tbmpc::SineLfo sine;
+    for (int i = 0; i <= 32; ++i)
+    {
+        const double beat = (double) i / 32.0;
+        CHECK (std::fabs (sine.valueAt (beat) - std::sin (2.0 * M_PI * beat)) < 4.0e-6);
+    }
+    const float before = sine.valueAt (0.375);
+    sine.setRate (3.0f, 0.375);
+    CHECK (sine.valueAt (0.375) == before);
+    CHECK (std::fabs (sine.valueAt (0.375 + 1.0 / 3.0) - before) < 1.0e-6);
+    sine.sync();
+    CHECK (sine.valueAt (0.0) == 0.0f);
+
+    auto render = [] (double bpm, double pitchAmount, double cutoffAmount, double speed, uint32_t block,
+                      bool playing = true, double cutoffSpeed = 0.0) {
+        Instance a;
+        a.setup ({ { "Mode", 1 }, { "Filter", 2 }, { "Cutoff", 0.6 }, { "Resonance", 0 }, { "Env Mod", 0 }, { "Accent", 0 },
+                   { "Pitch LFO Amount", pitchAmount }, { "Cutoff LFO Amt", cutoffAmount },
+                   { "Pitch LFO Speed", speed }, { "Cutoff LFO Speed", cutoffSpeed > 0.0 ? cutoffSpeed : speed } });
+        std::vector<float> l, r;
+        a.render (48000, block, l, r, [=] (uint64_t at) {
+            return playing ? playingFrom (0.0, bpm, rate48, at) : Transport { false, bpm, 0.0 };
+        }, [&] (uint64_t at, uint32_t, Events& e) {
+            if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 72, 0.7);
+        });
+        CHECK (l == r);
+        return l;
+    };
+    auto energy = [] (const std::vector<float>& x, size_t from, size_t to) {
+        double sum = 0.0;
+        for (size_t i = from; i < to; ++i)
+            sum += (double) x[i] * x[i];
+        return sum;
+    };
+    for (double bpm : { 90.0, 120.0 })
+        for (const auto& detent : tbmpc::lfoDetents)
+        {
+            const double speed = detent.cyclesPerBeat;
+            const double period = rate48 * 60.0 / (bpm * speed);
+            const size_t high = (size_t) (0.25 * period), low = (size_t) (0.75 * period), span = (size_t) (0.05 * period);
+            const auto dry = render (bpm, 0, 0, speed, 128);
+            const auto pitch = render (bpm, 1, 0, speed, 128);
+            const auto cutoff = render (bpm, 0, 1, speed, 128);
+            const double highHz = frequency (pitch, high-span, high+span);
+            const double lowHz = frequency (pitch, low-span, low+span);
+            CHECK (highHz > 575.0 && lowHz > 445.0 && lowHz < 480.0);
+            CHECK (std::fabs (frequency (cutoff, high-span, high+span) - 523.25) < 2.0);
+            const double highGain = energy (cutoff, high-span, high+span) / energy (dry, high-span, high+span);
+            const double lowGain = energy (cutoff, low-span, low+span) / energy (dry, low-span, low+span);
+            CHECK (highGain > lowGain * 2.0);
+        }
+    // Running by hand while stopped also hears the host tempo. Host block boundaries never reset either sine.
+    for (bool playing : { false, true })
+    {
+        const auto base = render (120, .8, .6, 2.0, 128, playing, 3.0);
+        for (uint32_t block : { 1u, 37u, 4096u })
+            CHECK (base == render (120, .8, .6, 2.0, block, playing, 3.0));
+    }
+    CHECK (render (90, 1, 1, 2, 128, false) != render (120, 1, 1, 2, 128, false));
+    CHECK (render (120, 1, 1, 2, 128, true, 3) != render (120, 1, 1, 2, 128, true, 1));
 }
 
 double hzOf (int32_t cv) { return (double) tbmpc::voiceBaseHz * std::exp2 ((double) cv / 1536.0); }
@@ -2672,6 +2759,7 @@ int main (int argc, char** argv)
     testRepeatedNotes();
     testAccentDecayAcrossSlides();
     testStepPads();
+    testToneLfos();
     testTempoLimits();
     testBendAndWheel();
     testMasterFixes();

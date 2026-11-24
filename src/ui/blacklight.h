@@ -218,7 +218,7 @@ inline void Screen::ticketCards (const Raster& r, const Host& h) const
         const uint32_t id = cardField (k);
         if (id == noParam) continue;
         const auto& p = paramTable[paramIndex (id)];
-        const auto& f = group ? fields().fields[row+k] : layout::voice[k+1];
+        const auto& f = group ? fields().fields[row+k] : layout::performance[k];
         r.text (x+21, 5, f.label, ticketInk.muted);
         if (p.kind == Kind::button)
         {

@@ -15,8 +15,8 @@ On all five pages in both themes, two narrow slices through the smiley’s lower
 | Group | Rows or performance controls |
 |---|---|
 | PATTERN | K1 Cutoff, K2 Resonance, K3 Env Mod. Wheel changes Seed by one per detent, or sixteen with Shift. Turning locks a Random seed. Push presses Regen. Shift + Push presses Seed Back. Minus / Plus changes group. |
-| VOICE | Tuning, Cutoff, Resonance, Env Mod, Decay, Accent, Waveform, Volume |
-| TONE | Filter, Peak Spread, Drive, Slide, Slide Time, Accent Decay |
+| VOICE | Cutoff, Resonance, Env Mod, Decay, Accent, Waveform, Tuning, Volume, Cutoff LFO Amount, Cutoff LFO Speed |
+| TONE | Filter, Peak Spread, Drive, Slide, Slide Time, Accent Decay, Pitch LFO Amount, Pitch LFO Speed |
 | TB-3PO | Mode, Seed Mode, Seed, Regen, Seed Back, Mutate, Density, Scale, Root, Octave, Steps, Gate, Transpose |
 | CLOCK | Clock Div, Swing, Reset, Theme |
 
@@ -24,7 +24,7 @@ On a list the wheel moves one row per detent and stops at the ends. Push enters 
 
 The pots turn the selected row and the two below it. Buttons, Theme and empty rows have no pot binding. Press Plate uses a cobalt arc, ivory pointer and track-colour mark below the dial. Blacklight Transfer uses a track-coloured rail with a white pointer. A hollow square shows a known physical pot position waiting for pickup. Shift replaces the cards with the controls for the current page and edit state. Melodee owns pot takeover, its soft keys, and Shift + wheel when the host uses it to fine-edit the last touched pot.
 
-VOICE and TONE plot the selected filter from 20 Hz to 20 kHz on a logarithmic axis. The vertical range is −36 to +24 dB. The curve uses the synth's response equations at the current settings, before envelope and accent modulation. The dotted vertical marker and its foot show the frequency reported by Cutoff. Twin Peak marks its lower edge. TB-3PO and CLOCK show the published seed and a small score. CLOCK divides each two-step interval at Swing, with a fixed halfway tick for reference. [Parameter descriptions](../README.md#controls)
+VOICE and TONE plot the selected filter from 20 Hz to 20 kHz on a logarithmic axis. The vertical range is −36 to +24 dB. The curve uses the synth's response equations at the current settings, before envelope, accent, and LFO modulation. The dotted vertical marker and its foot show the frequency reported by Cutoff. Twin Peak marks its lower edge. TB-3PO and CLOCK show the published seed and a small score. CLOCK divides each two-step interval at Swing, with a fixed halfway tick for reference. [Parameter descriptions](../README.md#controls)
 
 ## Art and previews
 
@@ -58,7 +58,7 @@ The last command runs the built plug-in through the sibling hdslaveOS checkout (
 | Capture | Live host state |
 |---|---|
 | [1](../assets/previews/melodee/1@2x.png), [2](../assets/previews/melodee/2@2x.png) | Edit opens on seed 3039 in Random. Two wheel detents dial 303B, lock it and leave 3039 on the score. |
-| [3](../assets/previews/melodee/3@2x.png), [4](../assets/previews/melodee/4@2x.png) | VOICE opens on Tuning. Select and edit Cutoff, which moves from 535 Hz to 672 Hz. |
+| [3](../assets/previews/melodee/3@2x.png), [4](../assets/previews/melodee/4@2x.png) | These earlier captures show Cutoff moving from 535 Hz to 672 Hz. VOICE now opens on Cutoff. |
 | [5](../assets/previews/melodee/5@2x.png), [6](../assets/previews/melodee/6@2x.png) | Shift shows the list legend. Releasing Shift and switching to Stage restores the cards under Stage's soft keys. |
 | [7](../assets/previews/melodee/7@2x.png), [8](../assets/previews/melodee/8@2x.png) | TONE selects Twin Peak, then 18 dB. The trace, marker and value follow. |
 | [9](../assets/previews/melodee/9@2x.png), [10](../assets/previews/melodee/10@2x.png) | TB-3PO and CLOCK each open on their first row and retain the published score. |

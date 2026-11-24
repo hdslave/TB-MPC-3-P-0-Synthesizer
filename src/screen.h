@@ -248,8 +248,7 @@ private:
 
     uint32_t cardField (int k) const
     {
-        constexpr uint32_t performance[] = { ParamId::cutoff, ParamId::resonance, ParamId::envMod };
-        if (!group) return performance[k];
+        if (!group) return layout::performance[k].id;
         return row + k < fields().count ? fields().fields[row + k].id : hdui::noParam;
     }
 
@@ -500,7 +499,7 @@ private:
             const uint32_t id = cardField (k);
             if (id == noParam) continue;
             const auto& p = paramTable[paramIndex (id)];
-            const char* name = group ? fields().fields[row+k].label : layout::voice[k+1].label;
+            const char* name = group ? fields().fields[row+k].label : layout::performance[k].label;
             if (id == ParamId::accentDecay) name = "ACC DECAY";
             if (id == ParamId::peakSpread) name = "PEAK SPRD";
             if (id == ParamId::slideTime) name = "SLD TIME";

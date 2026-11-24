@@ -34,9 +34,12 @@ int main (int argc, char** argv)
                    { decay, 1.0 }, { glide, 1 }, { waveform, 1 } };
     else if (mode == "typical")
         values = { { seedMode, 1 }, { seed, 0x5a17 } };
-    else if (mode == "twin" || mode == "18db") // worst, through Twin Peak (two ladders) or 18 dB, with Drive full
+    else if (mode == "twin" || mode == "18db" || mode == "lfos") // worst, through Twin Peak (two ladders) or 18 dB, with Drive full
         values = { { seedMode, 1 }, { seed, 0x5a17 }, { density, -7 }, { clockDiv, 9 }, { resonance, 1.0 }, { envMod, 1.0 }, { accent, 1.0 },
-                   { decay, 1.0 }, { glide, 1 }, { waveform, 1 }, { filter, mode == "twin" ? 1.0 : 2.0 }, { drive, 1.0 } };
+                   { decay, 1.0 }, { glide, 1 }, { waveform, 1 }, { filter, mode == "18db" ? 2.0 : 1.0 }, { drive, 1.0 } };
+
+    if (mode == "lfos")
+        values.insert (values.end(), { { pitchLfoAmount, 1 }, { pitchLfoSpeed, 3 }, { cutoffLfoAmount, 1 }, { cutoffLfoSpeed, 2 } });
 
     struct Events
     {
