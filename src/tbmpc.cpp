@@ -16,6 +16,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <new>
 
 namespace tbmpc
@@ -53,7 +54,13 @@ struct Plugin
     // act at the next block (presses).
     const melodee_screen_host_t* hostScreen = nullptr;
     PatternState patternState;
-    Screen screen { values, patternState };
+    // The screen callbacks are serialized by the host. A background instance only publishes its pattern.
+    std::unique_ptr<Screen> screen;
+    Screen* openScreen()
+    {
+        if (!screen) screen.reset (new (std::nothrow) Screen (values, patternState));
+        return screen.get();
+    }
     std::atomic<uint64_t> outgoing { 0 }, presses { 0 };
     std::atomic<uint64_t> pressedAt { 0 }; // when the page last pressed (steady ms): a press kept waiting is dropped
     std::atomic<bool> screenAnimating { false };
@@ -672,10 +679,12 @@ bool screenDraw (const void* plugin, const melodee_screen_frame_t* f)
         || f->stride < f->width)
         return false;
     auto& p = of (static_cast<const clap_plugin*> (plugin));
+    auto* screen = p.openScreen();
+    if (!screen) return false;
     const hdui::Host h = hostOf (f);
-    p.screen.update (h.nowMs);
-    const bool drew = p.screen.paint (h, f->pixels, (int) f->stride, f->redraw_all != 0);
-    const bool moving = p.screen.animating (h);
+    screen->update (h.nowMs);
+    const bool drew = screen->paint (h, f->pixels, (int) f->stride, f->redraw_all != 0);
+    const bool moving = screen->animating (h);
     p.screenAnimating.store (moving, std::memory_order_relaxed);
     // Still moving (a step lighting): the next paint is asked for from here too, not only from process(), which a
     // host may not be running (Melodee's sleeping instrument).
@@ -690,7 +699,9 @@ bool screenInput (const void* plugin, const melodee_screen_input_t* e)
         return false;
     auto& p = of (static_cast<const clap_plugin*> (plugin));
     hdui::Edits edits;
-    const bool used = p.screen.input ((hdui::Key) e->kind, e->value, e->shift != 0, edits);
+    auto* screen = p.openScreen();
+    if (!screen) return false;
+    const bool used = screen->input ((hdui::Key) e->kind, e->value, e->shift != 0, edits);
     bool changed = false, pressed = false;
     for (int i = 0; i < edits.count; ++i)
     {
@@ -735,8 +746,9 @@ void screenControls (const void* plugin, uint32_t ids[3])
 {
     if (plugin == nullptr || ids == nullptr)
         return;
-    uint32_t chosen[3];
-    of (static_cast<const clap_plugin*> (plugin)).screen.knobs (chosen);
+    uint32_t chosen[3] { hdui::noParam, hdui::noParam, hdui::noParam };
+    if (auto* screen = of (static_cast<const clap_plugin*> (plugin)).openScreen())
+        screen->knobs (chosen);
     for (int k = 0; k < 3; ++k)
         ids[k] = chosen[k] == hdui::noParam ? MELODEE_SCREEN_NO_CONTROL : chosen[k];
 }
