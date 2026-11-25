@@ -336,10 +336,12 @@ private:
         else r.stamp (0, 18, art::editor, art::palette);
         r.box (0, 0, 320, 18, ink::bg);
         constexpr int width = int (sizeof silver::mpcPlate[0]);
-        for (int y = 0; y < r.h; ++y)
+        // Inset the bottom edge one row, exposing the readout background beneath it.
+        constexpr int bottom = titleHeight - 2;
+        for (int y = 0; y <= bottom; ++y)
         {
             const int edge = width - 2*y/3;
-            const auto& row = silver::mpcPlate[y];
+            const auto& row = silver::mpcPlate[y == bottom ? titleHeight - 1 : y];
             for (int x = 0; x < edge; ++x)
                 r.px[y*r.w+x] = silver::mpcPlatePalette[row[x]];
             r.box (edge, y, 3, 1, ink::cobalt);
