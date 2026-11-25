@@ -88,8 +88,8 @@ for name, start, stop in [('hero',0,64),('editor',64,106)]:
     data = im.tobytes()
     contents += table(name, [data[i:i+320] for i in range(0,len(data),320)])
 
-wide = ImageFont.truetype(str(FONTS/'Michroma-Regular.ttf'), 72)
-contents += table('logo', bits(outline(wide, 'TB-MPC-3-P-0',(109,11))))
+wordmark = Image.open(ART/'slink.png').convert('L').point(lambda v: 255 if v > 26 else 0)
+contents += table('logo', bits(wordmark.resize((76,11), Image.Resampling.LANCZOS).point(lambda v: 255 if v >= 95 else 0)))
 bold = ImageFont.truetype(str(FONTS/'BarlowCondensed-BoldItalic.ttf'), 72)
 digits = []
 for ch in '0123456789ABCDEF':

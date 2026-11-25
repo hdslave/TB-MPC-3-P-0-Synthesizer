@@ -1,23 +1,25 @@
-# hdslave TB-MPC-3-P-0 Synthesizer
+# hdslave Slink Synthesizer
 
-**A 303-style acid bass synthesizer driven by a tick-accurate port of Ornament & Crime's TB-3PO generative sequencer, as a CLAP plug-in for the Akai MPC Sample.**
+**A 303-style acid bass synthesizer driven by a tick-accurate port of Ornament & Crime's TB-3PO generative sequencer, for the Akai MPC Sample, freesp16 on SP-16, macOS and Windows.**
 
 <table>
   <tr>
-    <th width="34%">MPC Sample</th>
-    <th width="66%">macOS and Windows · CLAP</th>
+    <th width="26%">MPC Sample</th>
+    <th width="26%">SP-16 · freesp16</th>
+    <th width="48%">macOS and Windows · CLAP</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/tb-mpc-3-p-0-screen.gif"><img src="docs/tb-mpc-3-p-0-screen.gif" alt="TB-MPC-3-P-0 Press Plate screen running in hdslaveOS"></a></td>
-    <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="TB-MPC-3-P-0 acid bass sequencer and voice controls during playback"></a></td>
+    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink Press Plate screen running in hdslaveOS"></a></td>
+    <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16.gif" alt="Slink pitch ribbon and animated smiley"></a></td>
+    <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
   </tr>
 </table>
 
-> **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Releases in this repo stay MPC Sample-only for now while the desktop builds are being finalized.
+> **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Platform downloads are listed in the [Slink 0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0).
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave TB-MPC-3-P-0** (id `com.hdslave.tb-mpc-3-p-0`, version 0.5.5).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.0).
 
-The custom screen uses `melodee.screen/1` on Melodee 0.7 and hdslaveOS based on it. Open Edit on the plug-in track or select PANEL on Stage. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
+On hdslaveOS 0.8.2, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
 TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, and other MIDI notes transpose it (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
@@ -220,8 +222,7 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 
 ## The screen
 
-In hdslaveOS (melodee-hdslave until 2026-11-21), the plug-in draws its own page in place of the parameter list. It
-opens in **Press Plate**: a stamped cobalt and aluminium panel with a lime melting smiley, whose drips jump on a
+Slink’s MPC panel opens in **Press Plate**: a stamped cobalt and aluminium panel with a lime melting smiley, whose drips jump on a
 four-step downbeat or an accented gate. The second theme, **Blacklight Transfer** (the smiley on a blue ticket, the
 pattern as a pitch roll), is under CLOCK: select THEME and Push; Push again goes back. The theme holds for this
 instance on every page, in Edit and Stage, until Melodee restarts; projects and presets keep only the sound.
@@ -273,15 +274,43 @@ division each). The pitch's exp2 runs while the pitch slides, Tuning moves, or t
 envelopes run, then nothing. The voice's sample is compiled into the run's loop rather than called. A pad costs
 nothing until it is hit (then a step's pitch, or a pattern made again once when one waits for its clock).
 
+## freesp16 on SP-16
+
+The ARMv7 build is version **0.6.0**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
+
+Tap a tab, turn the main selector to move between banks, or push the selector to advance one bank. The six encoders follow the selected tab. **Voice** displays the filter response. **LFO** shows pitch and cutoff modulation over one beat. The other tabs show the pattern, with a second row for steps 17–32. The chrome melting smiley pulses on four-step downbeats and accented gates. An ice-blue playhead follows the pitch ribbon. Solid bars are gates, outlined bars are rests, triangles are accents and curved joins mark slides.
+
+| Bank | Encoders 1–6 |
+| --- | --- |
+| Perform | Cutoff, Resonance, Env Mod, Decay, Accent, Volume |
+| Voice | Waveform, Tuning, Filter, Peak Spread, Drive, Volume |
+| Glide | Slide, Slide Time, Accent Decay, Gate, Accent, Decay |
+| LFO | Pitch Amount, Pitch Speed, Cutoff Amount, Cutoff Speed, Tuning, Transpose |
+| Pattern | Seed Mode, Seed, Mutate, Density, Scale, Root |
+| Clock | Mode, Clock Div, Swing, Reset, Steps, Octave |
+
+In **Sequence** mode, tap or slide across the score to audition individual steps. The physical pads do the same in freesp16’s **Scale** pad mode with the chromatic scale, centre window and zero key shift. MIDI notes 60–75 address the first sixteen steps. A pattern longer than sixteen extends that range, up to note 91. Other notes transpose the sequence. In **Notes** mode the pads play chromatic pitches. **Regen** resets the generator and **Seed back** recalls a previous seed. The six factory patches are under the host’s **Presets** menu.
+
+The freesp16 toolchain builds and tests the device plug-in with this command.
+
+```sh
+docker --context colima run --rm --ulimit stack=268435456 -v "$PWD:/work" -w /work \
+    sp16-toolchain:gcc11-egl make -j2 sp16-test
+```
+
+The output is `build/sp16/Slink.clap`. The test loads that binary under Cortex-A9 QEMU. The freesp16 Linux app also exercised the custom page, saved-project recall, pad audio and transport playback. Physical SP-16 playback and real-time load await a unit trial.
+
 ## Install
 
-Copy `build/TB-MPC-3-P-0.clap` to the MPC's card as `Melodee/Plugins/hdslave/hdslave TB-MPC-3-P-0.clap`.
+Slink was previously named TB-MPC-3-P-0. The CLAP and preset-provider IDs, preset keys and state format carry across the rename.
+
+Copy `build/Slink.clap` to the MPC's card as `Melodee/Plugins/hdslave/hdslave TB-MPC-3-P-0.clap`. The MPC and freesp16 archives keep their previous device filenames because projects can store the file path. Both hosts list a newly selected instrument as **hdslave Slink**. Replace an existing copy in place. Older projects may retain their saved track label.
 
 ## Build
 
 ```sh
 colima start melodee            # the Docker VM with Melodee's build images
-./build.sh                      # builds build/TB-MPC-3-P-0.clap and runs the tests
+./build.sh                      # builds build/Slink.clap and runs the tests
 ./build.sh sanitize             # the tests under AddressSanitizer and UBSan (build/asan)
 tools/bench.sh                  # instruction counts (needs Melodee's melodee-profiler image)
 make scales                     # remakes src/scales.h from tools/oc-source/ (any machine with Python 3)

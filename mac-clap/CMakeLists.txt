@@ -11,7 +11,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 set(CLAP_INCLUDE_DIR "${CMAKE_SOURCE_DIR}/../third_party/clap/include")
 set(DESKTOP_DIR "${CMAKE_SOURCE_DIR}/desktop")
-set(TARGET_NAME "TB-MPC-3-P-0")
+set(TARGET_NAME "Slink")
 set(SLUG "tb_mpc_3p0")
 
 # Compile inner plugin DSP/screen with clap_entry renamed to hdslave_inner_clap_entry
@@ -25,6 +25,10 @@ target_include_directories(${SLUG}_inner PRIVATE
     "${DESKTOP_DIR}"
 )
 set_target_properties(${SLUG}_inner PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+if(MINGW)
+    target_compile_definitions(${SLUG}_inner PRIVATE _USE_MATH_DEFINES)
+endif()
 
 if(MSVC)
     target_include_directories(${SLUG}_inner PRIVATE "${DESKTOP_DIR}/win32/compat")

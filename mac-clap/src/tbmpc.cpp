@@ -1,4 +1,4 @@
-// TB-MPC-3-P-0: a TB-303-style bass synthesizer played by a port of TB-3PO, the random acid sequencer of the
+// Slink: a TB-303-style bass synthesizer played by a port of TB-3PO, the random acid sequencer of the
 // Ornament & Crime module's Hemisphere firmware, as a CLAP plug-in made for the Akai MPC Sample.
 // This file is the CLAP side: the factory, ports, parameters, state, presets and the process call, which cuts the
 // block at each event so every change lands on its frame. The sequencer is in tb3po.h, the sound in voice.h, the
@@ -25,7 +25,7 @@ namespace
 const char* const features[] = { CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_SYNTHESIZER, CLAP_PLUGIN_FEATURE_STEREO, nullptr };
 
 const clap_plugin_descriptor descriptor {
-    CLAP_VERSION, "com.hdslave.tb-mpc-3-p-0", "hdslave TB-MPC-3-P-0", "hdslave", "https://github.com/hdslave/TB-MPC-3-P-0-Synthesizer",
+    CLAP_VERSION, "com.hdslave.tb-mpc-3-p-0", "hdslave Slink", "hdslave", "https://github.com/hdslave/hdslave-Slink-Synth",
     "", "", TBMPC_VERSION,
     "A 303-style bass voice (saw or square, diode ladder, accent and slide) played by a port of the TB-3PO random acid "
     "sequencer, in time with the host",
@@ -766,7 +766,7 @@ const clap_plugin_factory factory { factoryCount, factoryDescriptor, factoryCrea
 // Preset discovery: one provider, one location inside the plug-in, the presets of presets.h. Nothing to allocate:
 // the provider is a constant.
 const clap_preset_discovery_provider_descriptor presetProviderDescriptor { CLAP_VERSION, "com.hdslave.tb-mpc-3-p-0.presets",
-                                                                           "hdslave TB-MPC-3-P-0 presets", "hdslave" };
+                                                                           "hdslave Slink presets", "hdslave" };
 
 bool providerInit (const clap_preset_discovery_provider* provider)
 {

@@ -1,14 +1,14 @@
-MELODEE_PLUGIN_SCREEN 1 screen=1 knobs=1,2,3 serial=1 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 2 screen=1 knobs=1,2,3 serial=2 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 3 screen=1 knobs=0,1,2 serial=3 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 4 screen=1 knobs=1,2,3 serial=7 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 5 screen=1 knobs=1,2,3 serial=8 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xff101213 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 6 screen=1 knobs=1,2,3 serial=9 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=1
-MELODEE_PLUGIN_SCREEN 7 screen=1 knobs=9,10,8 serial=13 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 8 screen=1 knobs=9,10,8 serial=16 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 9 screen=1 knobs=14,15,16 serial=17 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 10 screen=1 knobs=27,28,29 serial=18 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 11 screen=1 knobs=-1,-1,-1 serial=19 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 12 screen=1 knobs=-1,-1,-1 serial=20 pixel=0xff141060 page=0xff141060 low=0xff090a23 bar=0 bar2=0 asleep=0
-MELODEE_PLUGIN_SCREEN 13 screen=1 knobs=1,2,3 serial=24 pixel=0xff141060 page=0xff141060 low=0xff090a23 bar=0 bar2=0 asleep=1
-MELODEE_PLUGIN_SCREEN 14 screen=1 knobs=1,2,3 serial=34 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=1
+MELODEE_PLUGIN_SCREEN 1 screen=1 area=0 knobs=Cutoff,Resonance,Env Mod serial=1 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 2 screen=1 area=0 knobs=Cutoff,Resonance,Env Mod serial=2 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 3 screen=1 area=0 knobs=Cutoff,Resonance,Env Mod serial=3 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 4 screen=1 area=0 knobs=Resonance,Env Mod,Decay serial=7 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 5 screen=1 area=0 knobs=Resonance,Env Mod,Decay serial=8 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xff101213 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 6 screen=1 area=0 knobs=Resonance,Env Mod,Decay serial=9 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=1
+MELODEE_PLUGIN_SCREEN 7 screen=1 area=0 knobs=Filter,Peak Spread,Drive serial=13 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 8 screen=1 area=0 knobs=Filter,Peak Spread,Drive serial=16 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 9 screen=1 area=0 knobs=Mode,Seed Mode,Seed serial=17 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 10 screen=1 area=0 knobs=Clock Div,Swing,Reset serial=18 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 11 screen=1 area=0 knobs=-,-,- serial=19 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 12 screen=1 area=0 knobs=-,-,- serial=20 pixel=0xff141060 page=0xff141060 low=0xff090a23 bar=0 bar2=0 asleep=0
+MELODEE_PLUGIN_SCREEN 13 screen=1 area=0 knobs=Cutoff,Resonance,Env Mod serial=24 pixel=0xff141060 page=0xff141060 low=0xff090a23 bar=0 bar2=0 asleep=1
+MELODEE_PLUGIN_SCREEN 14 screen=1 area=0 knobs=Cutoff,Resonance,Env Mod serial=34 pixel=0xffd2cfc1 page=0xffd2cfc1 low=0xffd2cfc1 bar=0 bar2=0 asleep=1

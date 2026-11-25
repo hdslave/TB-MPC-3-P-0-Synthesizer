@@ -14,7 +14,7 @@
 #include "lfo.h"
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.5.5"
+#define TBMPC_VERSION "0.6.0"
 #endif
 
 namespace tbmpc
@@ -214,7 +214,12 @@ constexpr int noteAtZeroVolts = 36;
 // Mode: Sequence: the step pads. Note 36 (hdslaveOS's pad A01 at its default octave and key) plays step 1, and the
 // notes after it the steps after: 16 pads, or as many as Steps when it is longer (so C4, 60, still transposes by
 // nothing in the usual case). The other notes transpose.
-constexpr int firstStepPad = 36, stepPads = 16;
+#ifdef TBMPC_SP16
+constexpr int firstStepPad = 60; // freesp16 SCALE, chromatic, centre window
+#else
+constexpr int firstStepPad = 36;
+#endif
+constexpr int stepPads = 16;
 // Pitch bend's range, and how far the mod wheel at its top opens the cutoff.
 constexpr float bendSemitones = 2.0f, modWheelOctaves = 3.0f;
 inline const char* const rootChoices[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };

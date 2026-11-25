@@ -1,13 +1,14 @@
-// Loads TB-MPC-3-P-0.clap as a host does and checks it: description and ports, parameters, state, presets, the
+// Loads Slink.clap as a host does and checks it: description and ports, parameters, state, presets, the
 // sequencer against the host's transport (each note where the pattern puts it, gates half a step long, stop, restart,
 // a jump), the same output whatever the block size, the seed (Random and Locked, Regen, a new seed while playing),
 // transposing by MIDI note or knob, the step pads, the accent, both slides and bounded output at extreme settings.
 // Writes demo renders as WAV files into the output folder. tests/reference.cpp checks the sequencer against the
 // applet itself; this test uses the same port (src/tb3po.h) to know where the notes must be.
-//   host TB-MPC-3-P-0.clap OUT_FOLDER
+//   host Slink.clap OUT_FOLDER
 #include "wav.h"
 #include "png.h"
 #include "melodee_screen.h"
+#include "sixteen_screen.h"
 #include "params.h"
 #include "tb3po.h"
 
@@ -37,6 +38,7 @@ const clap_plugin_entry* entry = nullptr;
 const clap_plugin_factory* factory = nullptr;
 
 // The host side: log, and the two a preset load tells (counted); the plug-in must cope without the rest.
+bool freescreenHost = false;
 int rescans = 0, textRescans = 0, callbacks = 0, flushes = 0, paints = 0, processRequests = 0, presetsLoaded = 0, presetErrors = 0;
 const void* hostExtension (const clap_host*, const char* id)
 {
@@ -47,7 +49,7 @@ const void* hostExtension (const clap_host*, const char* id)
                                            },
                                            [] (const clap_host*, clap_id, clap_param_clear_flags) {}, [] (const clap_host*) { ++flushes; } };
     static const melodee_screen_host_t screen { [] (const void*, uint32_t) { ++paints; } };
-    if (std::strcmp (id, MELODEE_SCREEN_CLAP_HOST) == 0) return &screen;
+    if (!freescreenHost && std::strcmp (id, MELODEE_SCREEN_CLAP_HOST) == 0) return &screen;
     static const clap_host_preset_load presetLoad {
         [] (const clap_host*, uint32_t, const char*, const char*, int32_t, const char*) { ++presetErrors; },
         [] (const clap_host*, uint32_t, const char*, const char*) { ++presetsLoaded; },
@@ -59,7 +61,7 @@ const void* hostExtension (const clap_host*, const char* id)
 }
 
 clap_host host {
-    CLAP_VERSION, nullptr, "TB-MPC-3-P-0 test host", "tests", "", "1",
+    CLAP_VERSION, nullptr, "Slink test host", "tests", "", "1",
     hostExtension, [] (const clap_host*) {}, [] (const clap_host*) { ++processRequests; }, [] (const clap_host*) { ++callbacks; },
 };
 
@@ -363,7 +365,7 @@ void testDescription()
 {
     CHECK (factory->get_plugin_count (factory) == 1);
     const auto* d = factory->get_plugin_descriptor (factory, 0);
-    CHECK (d != nullptr && std::string (d->name) == "hdslave TB-MPC-3-P-0" && std::string (d->id) == "com.hdslave.tb-mpc-3-p-0");
+    CHECK (d != nullptr && std::string (d->name) == "hdslave Slink" && std::string (d->id) == "com.hdslave.tb-mpc-3-p-0");
     bool instrument = false;
     for (const char* const* f = d->features; f && *f; ++f)
         instrument |= std::strcmp (*f, CLAP_PLUGIN_FEATURE_INSTRUMENT) == 0;
@@ -2717,11 +2719,110 @@ void testMasterFixes()
     }
 }
 
+// Run against the shipped ARM object with freesp16's screen ABI and pad pitches.
+void testSp16Panel()
+{
+    Instance touch(44100), pad(44100);
+    const auto* ui = static_cast<const sixteen_plugin_screen_t*>(touch.plugin->get_extension(touch.plugin, SIXTEEN_EXT_SCREEN));
+    CHECK(ui != nullptr);
+    if (!ui) return;
+    ui->on_open(touch.plugin);
+    for (auto* a : {&touch, &pad})
+    {
+        CHECK(a->loadPreset("acid-line"));
+        a->setup({{"Steps", 32}});
+    }
+    constexpr int stride = 789, h = SIXTEEN_SCREEN_HEIGHT;
+    std::vector<uint32_t> pixels(stride*h, 0x12345678);
+    sixteen_screen_surface_t surface {pixels.data(), SIXTEEN_SCREEN_WIDTH, h, stride, 0};
+    CHECK(ui->render(touch.plugin, &surface, true));
+    CHECK(!ui->render(touch.plugin, &surface, false));
+    for (int row = 0; row < h; ++row)
+    {
+        CHECK(pixels[row*stride+779] != 0x12345678);
+        CHECK(pixels[row*stride+780] == 0x12345678);
+    }
+    uint32_t ids[6];
+    char label[SIXTEEN_TAB_NAME_SIZE];
+    std::vector<clap_id> reachable;
+    for (int bank = 0; bank < 6; ++bank)
+    {
+        CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 65+bank*130, 260));
+        CHECK(ui->knobs(touch.plugin, ids, label) && *label);
+        CHECK(ui->render(touch.plugin, &surface, false));
+        for (auto id : ids)
+        {
+            double v;
+            CHECK(touch.params->get_value(touch.plugin, id, &v));
+            reachable.push_back(id);
+        }
+    }
+    for (const auto& item : touch.ids)
+        if (item.first != "Regen" && item.first != "Seed Back")
+            CHECK(std::find(reachable.begin(), reachable.end(), item.second) != reachable.end());
+    CHECK(ui->selector_push(touch.plugin));
+    CHECK(ui->knobs(touch.plugin, ids, label) && std::string(label) == "Perform");
+    CHECK(ui->selector_turn(touch.plugin, 3));
+    CHECK(ui->knobs(touch.plugin, ids, label) && std::string(label) == "LFO");
+    CHECK(ui->selector_turn(touch.plugin, -3));
+    auto stopped = [](uint64_t) { return Transport{false,120,0}; };
+    std::vector<float> left, right, expected, expectedR;
+    for (const int step : {0, 15, 16, 31})
+    {
+        CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 32+47*(step%16), step < 16 ? 122 : 202));
+        touch.render(1024,64,left,right,stopped);
+        pad.render(1024,64,expected,expectedR,stopped,[step](uint64_t at,uint32_t,Events& e){
+            if (!at) e.note(0, CLAP_EVENT_NOTE_ON, 60+step, 0.72);
+        });
+        CHECK(std::any_of(left.begin(), left.end(), [](float v){ return std::fabs(v) > 0.001f; }));
+        CHECK(left == expected && right == expectedR);
+        CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_UP,0,0));
+    }
+    touch.setup({{"Seed Mode",0}});
+    auto playing = [](uint64_t at) { return playingFrom(0,120,44100,at); };
+    touch.render(8000,64,left,right,playing);
+    const int original = int(touch.value("Seed"));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,705,32));
+    touch.render(8000,64,left,right,[](uint64_t at) { return playingFrom(0,120,44100,8000+at); });
+    CHECK(int(touch.value("Seed")) != original);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,598,32));
+    touch.render(8000,64,left,right,[](uint64_t at) { return playingFrom(0,120,44100,16000+at); });
+    CHECK(int(touch.value("Seed")) == original && touch.value("Seed Mode") == 1.0);
+    // An accent should move the face even on the LFO page, which has no playhead.
+    CHECK(touch.loadPreset("root-pulse"));
+    touch.setup({});
+    CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 460, 260));
+    ui->render(touch.plugin, &surface, true);
+    auto facePixels = [&] {
+        std::vector<uint32_t> tile;
+        for (int row = 0; row < 67; ++row)
+            tile.insert(tile.end(), pixels.begin()+stride*row+421, pixels.begin()+stride*row+489);
+        return tile;
+    };
+    const auto resting = facePixels();
+    std::vector<std::vector<uint32_t>> phases;
+    for (int poll = 0; poll < 65; ++poll)
+    {
+        touch.render(882,64,left,right,[poll](uint64_t at) { return playingFrom(0,120,44100,at+poll*882); });
+        surface.now_ms += 20;
+        ui->render(touch.plugin, &surface, false);
+        auto frame = facePixels();
+        if (std::find(phases.begin(), phases.end(), frame) == phases.end())
+            phases.push_back(frame);
+    }
+    CHECK(phases.size() >= 5);
+    touch.setup({});
+    ui->render(touch.plugin, &surface, false);
+    CHECK(facePixels() == resting);
+    CHECK(!ui->render(touch.plugin, &surface, false));
+    ui->on_close(touch.plugin);
+}
+
 int main (int argc, char** argv)
 {
     if (argc < 3)
     {
-        std::fprintf (stderr, "usage: host TB-MPC-3-P-0.clap OUT_FOLDER\n");
+        std::fprintf (stderr, "usage: host Slink.clap OUT_FOLDER\n");
         return 2;
     }
     void* library = dlopen (argv[1], RTLD_NOW | RTLD_LOCAL);
@@ -2737,6 +2838,18 @@ int main (int argc, char** argv)
         return 1;
     }
     factory = static_cast<const clap_plugin_factory*> (entry->get_factory (CLAP_PLUGIN_FACTORY_ID));
+    if (argc == 4 && std::strcmp(argv[3], "--sp16") == 0)
+    {
+        freescreenHost = true;
+        testDescription();
+        testParameters();
+        testState();
+        testPresets();
+        testSp16Panel();
+        entry->deinit();
+        std::printf("SP-16: %d checks, %d failed\n", checks, failures);
+        return failures == 0 ? 0 : 1;
+    }
     testDescription();
     testParameters();
     testState();

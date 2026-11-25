@@ -2,13 +2,13 @@
 # Capture the actual plug-in in Melodee's Edit and Stage hosts.
 set -eu
 cd "$(dirname "$0")/../.."
-host=${MELODEE_SCREEN_TREE:-"$PWD/../melodee-hdslave"}
+host=${MELODEE_SCREEN_TREE:-"$PWD/../melodee-hdslave-0.7.1"}
 dest=assets/previews/melodee
 mkdir -p "$dest" build/melodee-shots
 docker --context colima-melodee run --rm --platform linux/arm64 \
     -v "$host:/melodee:ro" -v "$PWD:/plug" -w /plug -e HOME=/tmp melodee-builder \
     sh -c 'MELODEE_PLUGIN_STAGE=/tmp/stage /melodee/build/melodee --melodee-plugin-screen \
-        /plug/build/TB-MPC-3-P-0.clap /plug/build/melodee-shots \
+        /plug/build/Slink.clap /plug/build/melodee-shots \
         png:1 wheel:2 png:2 plus png:3 wheel:1 push wheel:6 push png:4 shift png:5 shift stage png:6 \
         edit plus push wheel:1 push png:7 push wheel:1 push png:8 plus png:9 plus png:10 \
         wheel:3 png:11 push png:12 stage minus minus minus minus png:13 \

@@ -1,5 +1,7 @@
 # Acid-rave screen artwork
 
+Archived under the original name of Slink. The prompts below record the original artwork.
+
 The first and third [screen studies](directions.png) supplied the sticker typography, warped checks and hazard stripes. The second study supplied the mint signal ink. Later visual references inspired the [groove illustration](groove-original.png). The [clean checkerboard](checker-original.png) appears on the TB-3PO and Clock pages. The supplied references guided the artwork. The two production illustrations and the three-direction study were created with the built-in OpenAI image generator.
 
 ## Screen directions

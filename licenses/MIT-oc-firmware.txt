@@ -1,4 +1,4 @@
-Parts of TB-MPC-3-P-0 come from the Ornament & Crime module's firmware (the Benisphere Suite, a fork of the
+Parts of Slink come from the Ornament & Crime module's firmware (the Benisphere Suite, a fork of the
 Hemisphere Suite), under the MIT license below:
 
   - src/tb3po.h (the TB-3PO port) and tests/applet.h (the applet's code, kept as the module runs it):

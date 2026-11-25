@@ -1,5 +1,7 @@
 # Acid screen directions
 
+Archived under the original name of Slink. The prompts below record the original artwork.
+
 Kernel, Ripple and Shard explored three chrome mastheads. The selected striped orbit became the instrument signature. On the finished panel the pitch roll occupies the top 150 rows of content and the orbit sits beside the seed readout. The original illustration is preserved in orbit-original.png.
 
 ## kernel

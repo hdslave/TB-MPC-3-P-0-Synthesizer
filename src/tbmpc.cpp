@@ -1,4 +1,4 @@
-// TB-MPC-3-P-0: a TB-303-style bass synthesizer played by a port of TB-3PO, the random acid sequencer of the
+// Slink: a TB-303-style bass synthesizer played by a port of TB-3PO, the random acid sequencer of the
 // Ornament & Crime module's Hemisphere firmware, as a CLAP plug-in made for the Akai MPC Sample.
 // This file is the CLAP side: the factory, ports, parameters, state, presets and the process call, which cuts the
 // block at each event so every change lands on its frame. The sequencer is in tb3po.h, the sound in voice.h, the
@@ -8,6 +8,9 @@
 #include "presets.h"
 #include "screen.h"
 #include "melodee_screen.h"
+#ifdef TBMPC_SP16
+#include "sp16_panel.h"
+#endif
 
 #include <clap/clap.h>
 
@@ -26,7 +29,7 @@ namespace
 const char* const features[] = { CLAP_PLUGIN_FEATURE_INSTRUMENT, CLAP_PLUGIN_FEATURE_SYNTHESIZER, CLAP_PLUGIN_FEATURE_STEREO, nullptr };
 
 const clap_plugin_descriptor descriptor {
-    CLAP_VERSION, "com.hdslave.tb-mpc-3-p-0", "hdslave TB-MPC-3-P-0", "hdslave", "https://github.com/hdslave/TB-MPC-3-P-0-Synthesizer",
+    CLAP_VERSION, "com.hdslave.tb-mpc-3-p-0", "hdslave Slink", "hdslave", "https://github.com/hdslave/hdslave-Slink-Synth",
     "", "", TBMPC_VERSION,
     "An acid-style bass voice (saw or square, diode ladder, accent and slide) played by a generative random acid "
     "sequencer, in time with the host",
@@ -54,6 +57,12 @@ struct Plugin
     // act at the next block (presses).
     const melodee_screen_host_t* hostScreen = nullptr;
     PatternState patternState;
+#ifdef TBMPC_SP16
+    sp16::Panel panel;
+    std::atomic<bool> panelOpen { false };
+    std::atomic<int> touchedStep { -1 };
+    std::atomic<uint64_t> touchedAt { 0 };
+#endif
     // The screen callbacks are serialized by the host. A background instance only publishes its pattern.
     std::unique_ptr<Screen> screen;
     Screen* openScreen()
@@ -508,6 +517,10 @@ struct FlushDenormals
     uint64_t saved;
     FlushDenormals() { asm volatile ("mrs %0, fpcr" : "=r"(saved)); asm volatile ("msr fpcr, %0" ::"r"(saved | (1ull << 24))); }
     ~FlushDenormals() { asm volatile ("msr fpcr, %0" ::"r"(saved)); }
+#elif defined(__arm__) && defined(TBMPC_SP16)
+    unsigned saved;
+    FlushDenormals() { asm volatile ("vmrs %0, fpscr" : "=r"(saved)); asm volatile ("vmsr fpscr, %0" :: "r"(saved | (1u << 24))); }
+    ~FlushDenormals() { asm volatile ("vmsr fpscr, %0" :: "r"(saved)); }
 #elif defined(__SSE__)
     unsigned saved;
     FlushDenormals() { saved = __builtin_ia32_stmxcsr(); __builtin_ia32_ldmxcsr (saved | 0x8040); }
@@ -557,6 +570,12 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
                     p.engine.press (paramTable[i].id);
     }
 
+#ifdef TBMPC_SP16
+    const int audition = p.touchedStep.exchange(-1, std::memory_order_acquire);
+    if (audition >= 0 && audition < p.engine.sequencer().stepCount() && p.applied[paramIndex(ParamId::mode)] < 0.5f
+        && steadyMs() - p.touchedAt.load(std::memory_order_acquire) <= pressFreshMs)
+        p.engine.note(firstStepPad + audition, 0.72f);
+#endif
     // The host's transport. Without a song position (Melodee always sends one), the sequence counts its own from
     // Play, so the first clock is the one Play lands on.
     if (const auto* t = process->transport)
@@ -613,7 +632,11 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
         }
     }
     // The screen: the pattern, where it is, the seed; a paint when that changed or a step is still lighting.
-    if (p.hostScreen != nullptr)
+    bool publishPattern = p.hostScreen != nullptr;
+#ifdef TBMPC_SP16
+    publishPattern |= p.panelOpen.load(std::memory_order_acquire);
+#endif
+    if (publishPattern)
     {
         PatternView v {};
         const Tb3po& seq = p.engine.sequencer();
@@ -646,9 +669,9 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
         {
             p.shownPattern = v;
             p.patternState.write (v);
-            p.hostScreen->redraw (p.host, 0);
+            if (p.hostScreen != nullptr) p.hostScreen->redraw (p.host, 0);
         }
-        else if (p.valuesMoved || p.screenAnimating.load (std::memory_order_relaxed))
+        else if (p.hostScreen != nullptr && (p.valuesMoved || p.screenAnimating.load (std::memory_order_relaxed)))
             p.hostScreen->redraw (p.host, 0);
     }
     p.valuesMoved = false;
@@ -755,8 +778,99 @@ void screenControls (const void* plugin, uint32_t ids[3])
 
 const melodee_screen_t screenExtension { screenDraw, screenInput, screenControls };
 
+#ifdef TBMPC_SP16
+Plugin& panelPlugin(const void* plugin) { return of(static_cast<const clap_plugin*>(plugin)); }
+void wakePanel(Plugin& p)
+{
+    if (p.host->request_process) p.host->request_process(p.host);
+}
+void panelOpen(const void* plugin)
+{
+    auto& p = panelPlugin(plugin);
+    p.panel.dirty = true;
+    p.panelOpen.store(true, std::memory_order_release);
+    wakePanel(p);
+}
+void panelClose(const void* plugin)
+{
+    auto& p = panelPlugin(plugin);
+    p.panelOpen.store(false, std::memory_order_release);
+    p.panel.finger = -1;
+    p.touchedStep.store(-1, std::memory_order_release);
+}
+bool panelRender(const void* plugin, const sixteen_screen_surface_t* s, bool full)
+{
+    if (!s || !s->pixels || s->width != SIXTEEN_SCREEN_WIDTH || s->height != SIXTEEN_SCREEN_HEIGHT || s->stride < s->width)
+        return false;
+    auto& p = panelPlugin(plugin);
+    return p.panel.render(*s, full, p.patternState, p.values);
+}
+bool panelKnobs(const void* plugin, uint32_t ids[6], char label[SIXTEEN_TAB_NAME_SIZE])
+{
+    const auto& bank = sp16::banks[panelPlugin(plugin).panel.bank];
+    std::copy(bank.ids.begin(), bank.ids.end(), ids);
+    std::snprintf(label, SIXTEEN_TAB_NAME_SIZE, "%s", bank.name);
+    return true;
+}
+bool panelTurn(const void* plugin, int32_t delta) { return panelPlugin(plugin).panel.turn(delta); }
+bool panelPush(const void* plugin)
+{
+    auto& panel = panelPlugin(plugin).panel;
+    panel.bank = (panel.bank+1) % std::size(sp16::banks);
+    panel.dirty = true;
+    return true;
+}
+bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
+{
+    auto& p = panelPlugin(plugin);
+    auto& panel = p.panel;
+    if (phase == SIXTEEN_TOUCH_UP)
+    {
+        const bool held = panel.finger >= 0;
+        panel.finger = -1;
+        panel.dirty |= held;
+        return held;
+    }
+    if (x < 0 || x >= SIXTEEN_SCREEN_WIDTH || y < 0 || y >= SIXTEEN_SCREEN_HEIGHT)
+        return false;
+    if (phase == SIXTEEN_TOUCH_DOWN)
+    {
+        if (y >= sp16::tabTop)
+        {
+            panel.bank = x/130;
+            panel.dirty = true;
+            return true;
+        }
+        if (y >= 9 && y < 53 && ((x >= 594 && x < 671) || (x >= 676 && x < 768)))
+        {
+            const uint32_t id = x < 671 ? ParamId::seedBack : ParamId::regen;
+            p.pressedAt.store(steadyMs(), std::memory_order_release);
+            p.presses.fetch_or(1ull << paramIndex(id), std::memory_order_release);
+            wakePanel(p);
+            return true;
+        }
+    }
+    else if (phase != SIXTEEN_TOUCH_MOVE || panel.finger < 0) return false;
+    const int step = panel.stepAt(x,y);
+    if (step < 0 || valueOf(p, ParamId::mode) >= 0.5f) return false;
+    if (step != panel.finger || phase == SIXTEEN_TOUCH_DOWN)
+    {
+        panel.finger = step;
+        panel.dirty = true;
+        p.touchedAt.store(steadyMs(), std::memory_order_release);
+        p.touchedStep.store(step, std::memory_order_release);
+        wakePanel(p);
+    }
+    return true;
+}
+const sixteen_plugin_screen_t panelExtension {panelOpen, panelClose, panelRender, panelTouch, panelTurn, panelPush, panelKnobs};
+#endif
+
 const void* pluginExtension (const clap_plugin*, const char* id)
 {
+#ifdef TBMPC_SP16
+    if (std::strcmp(id, SIXTEEN_EXT_SCREEN) == 0) return &panelExtension;
+#endif
     if (std::strcmp (id, MELODEE_SCREEN_CLAP) == 0) return &screenExtension;
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &paramsExtension;
     if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &stateExtension;
@@ -799,7 +913,7 @@ const clap_plugin_factory factory { factoryCount, factoryDescriptor, factoryCrea
 // Preset discovery: one provider, one location inside the plug-in, the presets of presets.h. Nothing to allocate:
 // the provider is a constant.
 const clap_preset_discovery_provider_descriptor presetProviderDescriptor { CLAP_VERSION, "com.hdslave.tb-mpc-3-p-0.presets",
-                                                                           "hdslave TB-MPC-3-P-0 presets", "hdslave" };
+                                                                           "hdslave Slink presets", "hdslave" };
 
 bool providerInit (const clap_preset_discovery_provider* provider)
 {

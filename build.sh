@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds and tests TB-MPC-3-P-0 in a Linux arm64 container: the image Melodee builds in (Debian bookworm, g++ 12,
+# Builds and tests Slink in a Linux arm64 container: the image Melodee builds in (Debian bookworm, g++ 12,
 # glibc 2.36, older than the MPC's 2.39). Pass make targets to run others, for example `./build.sh bench`.
 set -eu
 cd "$(dirname "$0")"

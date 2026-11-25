@@ -1,5 +1,7 @@
 # Built-in image generator prompts
 
+Archived under the original name of Slink. The prompts below record the original artwork.
+
 ## folio
 
 Use case: ui-mockup. A finished pixel-perfect 4:3 landscape, pure front-on screenshot of a live acid bass sequencer 320x240 low resolution UI, no case, no perspective or margins outside screen. Melodee host soft keys PLUG-INS / PRESETS / TRANSPORT across top 22 pixels, 320x218 instrument canvas below. Original identity "TB-MPC-3-P-0". Sharp custom electronic typography, readable mono numbers, flat phosphor ivory, lichen and one electric chartreuse on oily near-black. Hero hex seed A7F2, Locked. Show a genuinely musical sequence of 16 pitches, silences, accents and ties with a single lit playing step. Pattern position 06/16, division 1/16, scale Dorian, root C, octave +1, density +2. Three compact track-accented bottom parameter cards Cutoff, Resonance, Env Mod. No vendor logos, no device hardware, no gradients, no smiley, no photorealism or blur. A beautifully spare editorial score. Narrow masthead left with an asymmetrical folded ribbon acid sigil, group PATTERN at right. Oversized angular four-character hex seed left beneath it, small transport metadata right. Middle dominated by a continuous panoramic score on a dark inset field, rows of slab noteheads at melodic heights, a low rail of compact independent articulation symbols. Rows of 16 wrap once for 32. Tiny crosshair registration ticks. Elegant use of black.

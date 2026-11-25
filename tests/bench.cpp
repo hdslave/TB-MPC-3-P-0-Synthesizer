@@ -1,4 +1,4 @@
-// TB-MPC-3-P-0's cost: renders a pattern through the CLAP entry for SECONDS at 48 kHz in 128-frame blocks, as Melodee
+// Slink's cost: renders a pattern through the CLAP entry for SECONDS at 48 kHz in 128-frame blocks, as Melodee
 // plays it, and prints the time a block takes here. tools/bench.sh runs it under callgrind for instruction counts
 // (exact and repeatable, unlike timings on a computer that is not the MPC).
 //   bench [worst|typical|stopped] [SECONDS]

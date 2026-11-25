@@ -1,4 +1,4 @@
-// TB-MPC-3-P-0 instrument screen. See docs/screen.md for its score and controls.
+// Slink instrument screen. See docs/screen.md for its score and controls.
 #pragma once
 
 #include "params.h"

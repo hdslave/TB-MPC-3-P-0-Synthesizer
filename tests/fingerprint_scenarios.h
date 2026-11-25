@@ -1,4 +1,4 @@
-// TB-MPC-3-P-0's fingerprint scenarios (tests/fingerprint.cpp). Every one locks its seed: in Random mode a reset
+// Slink's fingerprint scenarios (tests/fingerprint.cpp). Every one locks its seed: in Random mode a reset
 // picks a new seed from the clock, so the sound would differ from run to run.
 #pragma once
 
@@ -6,7 +6,7 @@
 
 namespace
 {
-// The parameters of TB-MPC-3-P-0 0.1, in its table's order: the random scenarios draw for these.
+// The parameters of Slink 0.1, in its table's order: the random scenarios draw for these.
 const std::vector<std::string> order01 { "Tuning", "Cutoff", "Resonance", "Env Mod", "Decay", "Accent", "Waveform", "Volume", "Slide",
     "Seed Mode", "Seed", "Regen", "Density", "Scale", "Root", "Octave", "Steps", "Transpose", "Clock Div", "Reset" };
 // 0.4's: every parameter but the ones that would silence or reseed it (Mode, the buttons, Seed Mode).

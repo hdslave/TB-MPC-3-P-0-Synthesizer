@@ -11,7 +11,7 @@ fi
 cmake -S "$ROOT" -B "$BUILD_DIR" "${GEN_ARGS[@]}" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$BUILD_DIR" --parallel
 
-BUNDLE="$BUILD_DIR/clap/TB-MPC-3-P-0.clap"
+BUNDLE="$BUILD_DIR/clap/Slink.clap"
 echo "Ad-hoc signing $BUNDLE..."
 codesign --force --deep --sign - "$BUNDLE"
 

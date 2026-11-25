@@ -1,8 +1,12 @@
-# TB-MPC-3-P-0 screen
+# Slink screen
+
+On hdslaveOS 0.8.2, open **Stage → Panel**. Edit shows the host’s parameter list. The Edit captures below are from hdslaveOS 0.7.1.
 
 Each new plug-in instance opens in **Press Plate**. To audition **Blacklight Transfer**, use Plus to reach **CLOCK**, turn the wheel to **THEME** and press the encoder. Another press switches back. The choice follows this instance across all five pages and between Edit and Stage for the session. Project and preset files contain the instrument settings only.
 
-The Press Plate screen puts a lime melting smiley on the right end of a stamped cobalt and aluminium panel. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
+The freesp16 edition uses the blue titanium Slink wordmark, an orbiting frame around the pulsing smiley, and a touch-playable pitch ribbon. See the [SP-16 controls](../README.md#freesp16-on-sp-16).
+
+The MPC Press Plate screen puts a lime melting smiley on the right end of a stamped cobalt and aluminium panel. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
 
 Each column of the punched-metal matrix shows one step's number, nearest note, gate, accent and outgoing slide. A filled rectangle opens the gate, a diamond marks an accent, and an arrow marks a slide. A small cobalt dot under a note indicates fractional-semitone CV. Zero CV is C2. The lime column follows playback. Patterns up to 16 steps use one bank. Longer patterns stack two banks so all 32 steps stay visible. The dark strip above the matrix lists scale, root, octave, density and clock division.
 
@@ -28,7 +32,7 @@ VOICE and TONE plot the selected filter from 20 Hz to 20 kHz on a logarithmic ax
 
 ## Art and previews
 
-The approved master supplies the 320 × 64 PATTERN plate and the 320 × 42 editor plate. The asset generator extends a straight section of rail to fill the panel and preserves the smiley’s proportions at both heights. Both plates share a 128-colour palette. Michroma supplies the wordmark, Barlow Condensed Bold Italic the seed and values, and Departure Mono the labels. [Master](../assets/explore/press-plate/master.png) · [Pattern plate](../assets/art/press-hero.png) · [Editor plate](../assets/art/press-editor.png) · [Credits](../THIRD_PARTY.md)
+The approved master supplies the 320 × 64 PATTERN plate and the 320 × 42 editor plate. The asset generator extends a straight section of rail to fill the panel and preserves the smiley’s proportions at both heights. Both plates share a 128-colour palette. The Slink artwork supplies the wordmark, Barlow Condensed Bold Italic the seed and values, and Departure Mono the labels. [Master](../assets/explore/press-plate/master.png) · [Pattern plate](../assets/art/press-hero.png) · [Editor plate](../assets/art/press-editor.png) · [Credits](../THIRD_PARTY.md)
 
 The contact sheet covers 20 fixture states, including a dense 32-step phrase, a pending seed in MIDI Notes mode, and the screen before the first clock. Each state has native RGB, nearest-neighbour 3×, RGB565 and a 320 × 240 Edit composite. The strip follows steps 4–7. The 2× GIF follows one complete cycle sampled every 30 ms, including the frames between steps. [Contact sheet](../assets/previews/contact-sheet-2x.png) · [Step strip](../assets/previews/step-advance-strip.png) · [16-step loop](../assets/previews/step-advance.gif)
 
@@ -53,7 +57,7 @@ docker --context colima-melodee run --rm --platform linux/arm64 \
 tools/ui_preview/melodee
 ```
 
-The last command runs the built plug-in through the sibling hdslaveOS checkout (`../melodee-hdslave`, branch `hdslave`), mounted read-only. Set `MELODEE_SCREEN_TREE` to use a different path to that build. It captures the first six prescribed states, then exercises the two other filters and both sequencer lists.
+The last command runs the built plug-in through the sibling hdslaveOS checkout (`../melodee-hdslave-0.7.1`, version 0.7.1), mounted read-only. Set `MELODEE_SCREEN_TREE` to use a different path to that build. It captures the first six prescribed states, then exercises the two other filters and both sequencer lists.
 
 | Capture | Live host state |
 |---|---|

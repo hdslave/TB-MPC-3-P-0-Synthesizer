@@ -1,6 +1,6 @@
-# TB-MPC-3-P-0: a CLAP bass synthesizer with the TB-3PO sequencer for the Akai MPC Sample (64-bit ARM Linux, Cortex-A55).
+# Slink: a CLAP bass synthesizer with the TB-3PO sequencer for the Akai MPC Sample (64-bit ARM Linux, Cortex-A55).
 # Build inside a Linux arm64 image with ./build.sh, which runs `make all test`.
-#   make            build/TB-MPC-3-P-0.clap
+#   make            build/Slink.clap
 #   make test       the tests against the built plug-in (tests/host.cpp), the port against the applet (tests/reference.cpp)
 #                   and the sound's fingerprint (tests/fingerprint.cpp: the output to the bit, against tests/fingerprint.txt)
 #   make bench      build/bench: renders a busy pattern; tools/bench.sh counts its instructions
@@ -20,9 +20,9 @@ SOURCES := src/tbmpc.cpp
 HEADERS := $(wildcard src/*.h src/ui/*.h)
 
 .PHONY: all test bench clean scales fingerprint-update sanitize
-all: $(OUT)/TB-MPC-3-P-0.clap
+all: $(OUT)/Slink.clap
 
-$(OUT)/TB-MPC-3-P-0.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
+$(OUT)/Slink.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
 	@mkdir -p $(OUT)
 	$(CXX) $(CXXFLAGS) $(SOURCES) $(LDFLAGS) -o $@
 
@@ -38,14 +38,14 @@ $(OUT)/fingerprint: tests/fingerprint.cpp tests/fingerprint_scenarios.h Makefile
 	@mkdir -p $(OUT)
 	$(CXX) -std=c++17 -O2 $(WARN) -Ithird_party/clap/include tests/fingerprint.cpp -ldl -o $@
 
-test: $(OUT)/TB-MPC-3-P-0.clap $(OUT)/host $(OUT)/reference $(OUT)/fingerprint
+test: $(OUT)/Slink.clap $(OUT)/host $(OUT)/reference $(OUT)/fingerprint
 	$(OUT)/reference
-	$(OUT)/host $(OUT)/TB-MPC-3-P-0.clap $(OUT)
-	$(OUT)/fingerprint $(OUT)/TB-MPC-3-P-0.clap tests/fingerprint.txt > /dev/null
+	$(OUT)/host $(OUT)/Slink.clap $(OUT)
+	$(OUT)/fingerprint $(OUT)/Slink.clap tests/fingerprint.txt > /dev/null
 
 # The sound's hashes after a change meant to change the sound (see tests/fingerprint.cpp).
-fingerprint-update: $(OUT)/TB-MPC-3-P-0.clap $(OUT)/fingerprint
-	$(OUT)/fingerprint $(OUT)/TB-MPC-3-P-0.clap > tests/fingerprint.txt
+fingerprint-update: $(OUT)/Slink.clap $(OUT)/fingerprint
+	$(OUT)/fingerprint $(OUT)/Slink.clap > tests/fingerprint.txt
 
 $(OUT)/bench: tests/bench.cpp $(SOURCES) $(HEADERS) Makefile
 	@mkdir -p $(OUT)
@@ -60,13 +60,13 @@ SAN := -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-fr
 SAN_ENV := ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1:abort_on_error=1
 sanitize:
 	@mkdir -p $(OUT)/asan
-	$(CXX) $(subst -O3,-O1,$(CXXFLAGS)) $(SAN) $(SOURCES) -shared -Wl,--version-script=src/exports.map -o $(OUT)/asan/TB-MPC-3-P-0.clap
+	$(CXX) $(subst -O3,-O1,$(CXXFLAGS)) $(SAN) $(SOURCES) -shared -Wl,--version-script=src/exports.map -o $(OUT)/asan/Slink.clap
 	$(CXX) -std=c++17 -O1 $(WARN) $(SAN) -Ithird_party/clap/include -Isrc tests/host.cpp -ldl -o $(OUT)/asan/host
 	$(CXX) -std=c++17 -O1 $(WARN) $(SAN) -Isrc tests/reference.cpp -o $(OUT)/asan/reference
 	$(CXX) -std=c++17 -O1 $(WARN) $(SAN) -Ithird_party/clap/include tests/fingerprint.cpp -ldl -o $(OUT)/asan/fingerprint
 	$(SAN_ENV) $(OUT)/asan/reference
-	$(SAN_ENV) $(OUT)/asan/host $(OUT)/asan/TB-MPC-3-P-0.clap $(OUT)/asan
-	@$(SAN_ENV) $(OUT)/asan/fingerprint $(OUT)/asan/TB-MPC-3-P-0.clap tests/fingerprint.txt > $(OUT)/asan/fingerprint.log 2>&1; \
+	$(SAN_ENV) $(OUT)/asan/host $(OUT)/asan/Slink.clap $(OUT)/asan
+	@$(SAN_ENV) $(OUT)/asan/fingerprint $(OUT)/asan/Slink.clap tests/fingerprint.txt > $(OUT)/asan/fingerprint.log 2>&1; \
 	    rc=$$?; if [ $$rc -gt 1 ]; then cat $(OUT)/asan/fingerprint.log; exit $$rc; fi; echo "sanitize: every fingerprint scenario ran clean"
 
 # src/scales.h from the firmware's files in tools/oc-source (run on any machine with Python 3).
@@ -75,3 +75,28 @@ scales:
 
 clean:
 	rm -rf $(OUT)
+
+# freesp16's ARM EABI/glibc 2.13 toolchain, and a Linux host copy for screen tests.
+SP16_CXX ?= arm-linux-gnueabi-g++
+SP16_OPT := -O3 -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp -ffp-contract=fast -fno-math-errno -fno-trapping-math
+SP16_FLAGS := -DTBMPC_SP16 -DTBMPC_VERSION='"0.6.0"' -ffunction-sections -fdata-sections
+.PHONY: sp16 sp16-preview
+sp16: $(OUT)/sp16/Slink.clap
+sp16-preview: $(OUT)/sp16-preview/Slink.clap
+
+$(OUT)/sp16/Slink.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
+	@mkdir -p $(@D)
+	$(SP16_CXX) $(subst $(OPT),$(SP16_OPT),$(CXXFLAGS)) $(SP16_FLAGS) $(SOURCES) $(LDFLAGS) -o $@
+
+$(OUT)/sp16-preview/Slink.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) $(SP16_FLAGS) $(SOURCES) $(LDFLAGS) -o $@
+
+$(OUT)/sp16/host: tests/host.cpp tests/png.h tests/wav.h $(HEADERS) Makefile
+	@mkdir -p $(@D)
+	$(SP16_CXX) -std=c++17 -O2 $(WARN) -march=armv7-a -mfpu=neon -mfloat-abi=softfp -Ithird_party/clap/include -Isrc $< -static-libgcc -static-libstdc++ -ldl -o $@
+
+.PHONY: sp16-test
+sp16-test: sp16 $(OUT)/sp16/host
+	sp16-check-glibc $(OUT)/sp16/Slink.clap
+	qemu-arm -cpu cortex-a9 -L /opt/sp16/sysroot $(OUT)/sp16/host $(OUT)/sp16/Slink.clap $(OUT)/sp16 --sp16

@@ -44,7 +44,7 @@ font = ImageFont.truetype(str(root/'assets/fonts/DepartureMono-Regular.otf'),22)
 display = ImageFont.truetype(str(root/'assets/fonts/Michroma-Regular.ttf'),38)
 sheet = Image.new('RGB',(24 + 3*664, 100 + ((len(labels)+2)//3)*536),'#0c0e10')
 draw = ImageDraw.Draw(sheet)
-draw.text((24,12),'TB-MPC-3-P-0',font=display,fill='#f1f1dd')
+draw.text((24,12),'Slink',font=display,fill='#f1f1dd')
 draw.text((24,64),'RGB565   /   2x',font=font,fill='#a6aea5')
 for i,(name,label) in enumerate(labels.items()):
     dest = out/'states'/name
