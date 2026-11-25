@@ -22,11 +22,20 @@ On all five pages in both themes, two narrow slices through the smiley’s lower
     <td><a href="slink-mpc-pattern.png"><img src="slink-mpc-pattern.png" alt="Pattern playing on the silver panel, with Cutoff, Resonance and Env Mod below the step grid" width="320"></a></td>
     <td><a href="slink-mpc-voice.png"><img src="slink-mpc-voice.png" alt="Voice page with the selected cutoff, filter response and three satin-chrome knobs" width="320"></a></td>
   </tr>
+  <tr><th>Tone</th><th>Sequencer</th></tr>
+  <tr>
+    <td><a href="slink-mpc-tone.png"><img src="slink-mpc-tone.png" alt="Tone controls beside the filter response on charcoal" width="320"></a></td>
+    <td><a href="slink-mpc-sequencer.png"><img src="slink-mpc-sequencer.png" alt="Sequencer settings beside the playing score" width="320"></a></td>
+  </tr>
+  <tr><th colspan="2">Clock</th></tr>
+  <tr>
+    <td colspan="2" align="center"><a href="slink-mpc-clock.png"><img src="slink-mpc-clock.png" alt="Clock division, swing, reset and theme above the score" width="320"></a></td>
+  </tr>
 </table>
 
-These images show Slink 0.6.3 in the hdslaveOS Stage host at twice the native resolution. A faint horizontal grain runs through the silver title plate, step cells, parameter rows and knob panels. On Pattern, K1–K3 control Cutoff, Resonance and Env Mod. On Voice, they follow the selected row and the two below it.
+These images show Slink 0.6.3 in hdslaveOS Stage at twice the native resolution. [Watch all five pages in motion](slink-screen.gif) A faint horizontal grain runs through the silver title plate, step cells, parameter rows and knob panels. On Pattern, K1–K3 control Cutoff, Resonance and Env Mod. On Voice, they follow the selected row and the two below it.
 
-Voice and Tone draw the filter response in lime on a plain charcoal field. The 1 kHz mark sits on the lower scale. Sequencer and Clock use the same charcoal behind the notes. Sequencer pairs the settings with a taller note display. Clock arranges its four settings in one row above a full-width score and swing indicator. [Clock in Stage](slink-mpc-clock.png)
+Voice and Tone draw the filter response in lime on a plain charcoal field. The 1 kHz mark sits on the lower scale. Sequencer and Clock use the same charcoal behind the notes. Sequencer pairs the settings with a taller note display. Clock arranges its four settings in one row above a full-width score and swing indicator.
 
 ## Controls
 

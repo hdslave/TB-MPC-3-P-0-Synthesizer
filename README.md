@@ -9,11 +9,13 @@
     <th width="48%">macOS and Windows · CLAP</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink 0.6.1 playing a 16-step pattern on the silver MPC panel, with its chrome wordmark and three rotary controls"></a></td>
+    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
     <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16.gif" alt="Slink pitch ribbon and animated smiley"></a></td>
     <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
   </tr>
 </table>
+
+[See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View the Blacklight Transfer theme](docs/slink-mpc-blacklight.png)
 
 [Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
 
