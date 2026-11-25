@@ -6,7 +6,7 @@ Each new plug-in instance opens in **Press Plate**. To audition **Blacklight Tra
 
 The freesp16 edition uses the blue titanium Slink wordmark, an orbiting frame around the pulsing smiley, and a touch-playable pitch ribbon. See the [SP-16 controls](../README.md#freesp16-on-sp-16).
 
-The blue-chrome Slink wordmark starts seven pixels from the left edge and spans 216 pixels of the brushed silver header on all five Press Plate pages. The lettering has three pixels of brushed silver above it and two below it before the dark edge. The brushed face grades from a soft upper-left highlight into a deeper silver at the lower right. The page name sits in the angled tab to its right. The lime melting smiley sits at the right end of the cobalt panel below. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
+The blue-chrome Slink wordmark starts seven pixels from the left edge and spans 216 pixels of the brushed silver header on all five Press Plate pages. The lettering has three pixels of brushed silver above it and two below it before the dark edge. The brushed face grades from a soft upper-left highlight into a deeper silver at the lower right. The page name sits in the angled tab to its right. Iridescent lines run through the cobalt trim and black readout below the nameplate. The lime melting smiley sits at the right end. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
 
 Each column of the punched-metal matrix shows one step's number, nearest note, gate, accent and outgoing slide. A filled rectangle opens the gate, a diamond marks an accent, and an arrow marks a slide. A small cobalt dot under a note indicates fractional-semitone CV. Zero CV is C2. The lime column follows playback. Patterns up to 16 steps use one bank. Longer patterns stack two banks so all 32 steps stay visible. The dark strip above the matrix lists scale, root, octave, density and clock division.
 
@@ -26,7 +26,7 @@ On all five pages in both themes, two narrow slices through the smiley’s lower
 
 These images show Slink 0.6.3 in the hdslaveOS Stage host at twice the native resolution. A faint horizontal grain runs through the silver title plate, step cells, parameter rows and knob panels. On Pattern, K1–K3 control Cutoff, Resonance and Env Mod. On Voice, they follow the selected row and the two below it.
 
-Voice and Tone give the filter plot more width and mark 1 kHz on its scale. Sequencer pairs the settings with a taller note display. Clock arranges its four settings in one row above a full-width score and swing indicator. [Clock in Stage](slink-mpc-clock.png)
+Voice and Tone draw the filter response in lime over a six-petal spiral etched into the glass. The 1 kHz mark sits on the lower scale. Sequencer and Clock use the same glass behind the score. Sequencer pairs the settings with a taller note display. Clock arranges its four settings in one row above a full-width score and swing indicator. [Clock in Stage](slink-mpc-clock.png)
 
 ## Controls
 
@@ -91,15 +91,15 @@ Measured for MPC Slink 0.6.3 on 2026-11-25. Each entry is the mean elapsed time 
 
 | Operation | Press Plate Mac, ms | Press Plate Linux, ms | Blacklight Mac, ms | Blacklight Linux, ms |
 |---|---:|---:|---:|---:|
-| Full PATTERN, 16 steps | 0.048744 | 0.054307 | 0.030283 | 0.034921 |
-| Idle | 0.000029 | 0.000045 | 0.000023 | 0.000049 |
-| Partial step, 16 steps | 0.035157 | 0.037156 | 0.022877 | 0.023487 |
-| Full PATTERN, 32 steps | 0.052440 | 0.058177 | 0.034243 | 0.038455 |
-| Partial step, 32 steps | 0.035570 | 0.037750 | 0.023444 | 0.024477 |
-| Full VOICE, Twin Peak | 0.054167 | 0.064432 | 0.043960 | 0.048177 |
-| Partial VOICE cursor move | 0.031175 | 0.033327 | 0.020038 | 0.021597 |
-| Full VOICE while Resonance changes | 0.057872 | 0.071068 | 0.047573 | 0.054231 |
-| Partial VOICE while Resonance changes | 0.055223 | 0.063012 | 0.042610 | 0.045340 |
+| Full PATTERN, 16 steps | 0.052064 | 0.057456 | 0.030283 | 0.034921 |
+| Idle | 0.000027 | 0.000048 | 0.000023 | 0.000049 |
+| Partial step, 16 steps | 0.036496 | 0.039586 | 0.022877 | 0.023487 |
+| Full PATTERN, 32 steps | 0.055290 | 0.060437 | 0.034243 | 0.038455 |
+| Partial step, 32 steps | 0.037313 | 0.039208 | 0.023444 | 0.024477 |
+| Full VOICE, Twin Peak | 0.059332 | 0.067346 | 0.043960 | 0.048177 |
+| Partial VOICE cursor move | 0.032523 | 0.035986 | 0.020038 | 0.021597 |
+| Full VOICE while Resonance changes | 0.063586 | 0.073301 | 0.047573 | 0.054231 |
+| Partial VOICE while Resonance changes | 0.061318 | 0.066962 | 0.042610 | 0.045340 |
 
 Peak changed pixels per paint, counted across a full clock cycle or a traversal of every editor row. Both targets produced the same counts.
 

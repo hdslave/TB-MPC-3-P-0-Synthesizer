@@ -146,7 +146,18 @@ inline void sequence (const Raster& r, const PatternView& v, int x, int y, int w
 
 inline void scopePanel (const Raster& r, const char* name)
 {
-    r.box (2, 2, r.w - 4, r.h - 5, ink::field);
+    constexpr int glassWidth = int (std::size (hdui::silver::glass[0]));
+    constexpr int glassHeight = int (std::size (hdui::silver::glass));
+    const int width = std::min (r.w-4, glassWidth), height = std::min (r.h-33, glassHeight);
+    const int cropTop = (glassHeight-height)/2;
+    r.box (2, r.h-17, width, 14, ink::field);
+    for (int j = 0; j < height; ++j)
+    {
+        const auto* source = hdui::silver::glass[cropTop+j] + glassWidth-width;
+        auto* dest = r.px + (16+j)*r.w+2;
+        for (int x = 0; x < width; ++x)
+            dest[x] = hdui::silver::glassPalette[source[x]];
+    }
     r.box (2, 2, r.w - 4, 14, ink::card);
     r.text (7, 5, name, ink::paper);
 }

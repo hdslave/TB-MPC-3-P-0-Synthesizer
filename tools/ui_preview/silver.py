@@ -1,4 +1,5 @@
 """Bake the Press Plate nameplate and smoothly indexed satin dials at MPC resolution."""
+from foil import scope_glass
 from math import cos, exp, radians, sin
 from pathlib import Path
 from random import Random
@@ -137,5 +138,12 @@ plate_palette = bytes(mpc_plate.getpalette())
 plate_inks = ['0xff'+plate_palette[i:i+3].hex() for i in range(0, len(plate_palette), 3)]
 header.append('inline constexpr uint32_t mpcPlatePalette[] = {' + ','.join(plate_inks) + '};')
 header += table('mpcPlate', [mpc_plate.crop((0, y, mpc_plate.width, y+1)).tobytes()
-                             for y in range(mpc_plate.height)]) + ['}']
+                             for y in range(mpc_plate.height)])
+
+# Both scope sizes use the same native artwork, aligned at its right edge.
+glass = scope_glass(316, 92).quantize(colors=96, dither=Image.Dither.NONE)
+colors = bytes(glass.getpalette())
+inks = ['0xff'+colors[i:i+3].hex() for i in range(0, len(colors), 3)]
+header.append('inline constexpr uint32_t glassPalette[] = {' + ','.join(inks) + '};')
+header += table('glass', [glass.crop((0, y, glass.width, y+1)).tobytes() for y in range(glass.height)]) + ['}']
 (ROOT / 'src/ui/silver_art.h').write_text('\n'.join(header) + '\n')

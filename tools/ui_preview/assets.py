@@ -1,4 +1,5 @@
 """Build the native display glyphs and indexed screen artwork."""
+from foil import inlay
 from math import cos, radians, sin
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -97,6 +98,7 @@ def glaze(base, finish, usable_light):
 
 atlas = glaze(press_atlas('master.png'), press_atlas('jelly-finish.png'),
               lambda r, g, b: r > 120 and g > 170 and g >= r - 12 and g > b)
+atlas = inlay(atlas)
 palette = bytes(atlas.getpalette())
 inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
 contents = header + ['namespace hdui::art {', 'inline constexpr uint32_t palette[] = {' + ','.join(inks) + '};']
