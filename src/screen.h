@@ -3,7 +3,6 @@
 
 #include "params.h"
 #include "ui/groups.h"
-#include "ui/silver_art.h"
 
 #include <atomic>
 
@@ -153,6 +152,7 @@ public:
     {
         whole |= lastGroup < 0 || theme != paintedTheme;
         picture.background = theme == Theme::blacklight ? hdui::ticketInk.bg : hdui::pressInk.bg;
+        picture.smoothType = theme == Theme::pressPlate;
         const bool page = whole || group != lastGroup;
         const bool selection = page || row != lastRow || editing != lastEditing;
         const bool patternChanged = !(lastView == view);
@@ -235,7 +235,7 @@ private:
         using namespace hdui;
         if (theme == Theme::pressPlate)
         {
-            r.box (0, 2, 320, 31, silver::cardMetal);
+            r.surface (0, 2, 320, 31, silver::cardMetal);
             r.text (8, 12, "PUSH TO SWITCH", ink::bg);
             r.right (312, 12, "Blacklight Transfer", ink::bg);
         }
@@ -299,18 +299,29 @@ private:
         {
             if (d.selection || slip != lastSlip || (!themeRow() && (d.parameters & bit (fields().fields[row].id))))
                 drew |= picture.region<320,30> (pixels, stride, whole, 0, 30, [&](Raster& r) { editorPlate (r, slip); });
-            if (d.selection || d.parameters)
-                drew |= picture.region<160,125> (pixels, stride, whole, 0, 60, [&](Raster& r) { list (r); });
-            if (d.page || d.panel)
-                drew |= picture.region<160,125> (pixels, stride, whole, 160, 60, [&](Raster& r) {
-                    if (group < 3)
-                    {
-                        char s[32];
-                        formatted (ParamId::cutoff, s);
-                        plots::response (r, context(), val (ParamId::cutoff), s);
-                    }
-                    else mini (r, h);
-                });
+            if (group == 4)
+            {
+                if (d.selection || d.parameters)
+                    drew |= picture.region<320,37> (pixels, stride, whole, 0, 60, [&](Raster& r) { clockControls (r); });
+                if (d.page || d.panel)
+                    drew |= picture.region<320,88> (pixels, stride, whole, 0, 97, [&](Raster& r) { mini (r, h); });
+            }
+            else
+            {
+                constexpr int listW = 144;
+                if (d.selection || d.parameters)
+                    drew |= picture.region<listW,125> (pixels, stride, whole, 0, 60, [&](Raster& r) { list (r); });
+                if (d.page || d.panel)
+                    drew |= picture.region<320-listW,125> (pixels, stride, whole, listW, 60, [&](Raster& r) {
+                        if (group < 3)
+                        {
+                            char s[32];
+                            formatted (ParamId::cutoff, s);
+                            plots::response (r, context(), val (ParamId::cutoff), s);
+                        }
+                        else mini (r, h);
+                    });
+            }
         }
         return drew;
     }
@@ -327,7 +338,11 @@ private:
         for (int y = 0; y < r.h; ++y)
         {
             const int edge = 246 - 2*y/3;
-            r.box (width, y, edge-width, 1, silver::palette[silver::plate[y][width-1]]);
+            const Ink base = silver::palette[silver::plate[y][width-1]];
+            r.box (width, y, edge-width, 1, base);
+            if (y < 28)
+                for (int x = 0; x < edge; ++x)
+                    if (r.px[y*r.w+x] == base) r.px[y*r.w+x] = r.brushed (x, y, base);
             r.box (edge, y, 3, 1, ink::cobalt);
         }
         if (!group && val (ParamId::mode) >= .5f)
@@ -352,19 +367,20 @@ private:
         const int n = plots::stepCount (view);
         const unsigned seed = unsigned (val (ParamId::seed));
         const bool pending = pendingSeed();
-        r.hex (22, 6, seed, ink::paper, art::digits, 20);
+        for (int i = 0; i < 4; ++i)
+            r.coverageGlyph (22+i*20, 6, r.w, pressType::seed[(seed >> (12-4*i)) & 15], 27, ink::paper);
         r.text (108, pending ? 4 : 6, pending ? "PENDING" : "SEED", pending ? ink::violet : ink::steel);
         r.text (108, pending ? 14 : 20, val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM", ink::live);
-        const int transportX = pending ? 182 : 169;
+        constexpr int transportX = 184;
         if (h.playing)
-            for (int i = 0; i < 5; ++i) r.box (transportX+1+i, 9+i/2, 1, 8-i, ink::live);
-        else r.box (transportX, 10, 6, 6, ink::steel);
-        r.text (transportX+11, 8, h.playing ? "RUN" : "STOP", ink::paper);
+            for (int i = 0; i < 5; ++i) r.box (transportX+1+i, 4+i/2, 1, 8-i, ink::live);
+        else r.box (transportX, 5, 6, 6, ink::steel);
+        r.text (transportX+10, 4, h.playing ? "RUN" : "STOP", h.playing ? ink::live : ink::steel);
         char s[24];
         if (view.current >= 0 && view.current < n)
             std::snprintf (s, sizeof (s), "%02d/%02d", view.current+1, n);
         else std::snprintf (s, sizeof (s), "--/%02d", n ? n : int (val (ParamId::steps)));
-        r.text (transportX, 22, s, ink::paper);
+        r.reading (transportX, 12, 241, s, ink::paper, true);
         if (pending)
         {
             std::snprintf (s, sizeof (s), "SCORE %04X", unsigned (view.seed) & 65535);
@@ -401,12 +417,20 @@ private:
         const auto& f = fields().fields[row];
         char value[32];
         formatted (f.id, value);
-        const bool large = r.readingWidth (value, true) <= 156;
-        const int wide = r.readingWidth (value, large);
-        r.reading (17, large ? 0 : 1, 179, value, ink::paper, large);
-        const int labelX = std::clamp (23 + wide, 90, 180);
-        r.text (labelX, 5, f.label, ink::live);
-        if (editing) r.box (labelX, 15, 6 * int (std::strlen (f.label)) - 1, 1, ink::violet);
+        constexpr int left = 16, end = 257;
+        const int labelEnd = r.text (left, 5, f.label, ink::live);
+        const bool large = r.readingWidth (value, true) <= end-labelEnd-10;
+        const int valueX = end - r.readingWidth (value, large);
+        r.reading (valueX, large ? 0 : 1, end, value, ink::paper, large);
+        if (editing) r.box (left, 15, labelEnd-left-1, 1, ink::violet);
+        if (f.id == noParam) return;
+        const auto& p = paramTable[paramIndex (f.id)];
+        const int rail = labelEnd + 12, width = valueX - 12 - rail;
+        if (p.kind == Kind::button || width < 24) return;
+        const int at = int (std::lround ((width-1)*(val (f.id)-p.min)/(p.max-p.min)));
+        r.box (rail, 9, width, 2, ink::card);
+        r.box (rail, 9, at+1, 2, ink::violet);
+        r.box (rail+at-1, 7, 3, 6, ink::paper);
     }
 
     static constexpr int visible = 8, rowH = 15;
@@ -421,19 +445,37 @@ private:
             const int y = 2 + (i-top)*rowH;
             const auto& f = fields().fields[i];
             const bool focus = i == row;
-            r.box (2, y, 156, rowH-1, focus ? ink::live : (i-top)%2 ? ink::alternate : ink::metal);
+            r.surface (2, y, r.w-4, rowH-1, focus ? ink::live : (i-top)%2 ? ink::alternate : ink::metal);
             char value[32];
             formatted (f.id, value);
-            r.text (7, y+3, f.label, ink::bg);
-            if (focus && editing)
-            {
-                const int w = int (std::strlen (value))*6 + 5;
-                r.box (155-w,y+1,w,12,ink::bg);
-            }
-            r.right (153, y+3, value, focus && editing ? ink::live : ink::bg);
+            const int labelEnd = r.text (7, y+3, f.label, ink::bg);
+            const int right = r.w-7;
+            const auto& face = r.faceWidth (value, pressType::label) <= right-labelEnd-3
+                             ? pressType::label : pressType::caption;
+            const int valueX = right-r.faceWidth (value, face);
+            if (focus && editing) r.box (valueX-2, y+1, right-valueX+5, 12, ink::bg);
+            r.faceText (valueX, y+3, right, value, focus && editing ? ink::live : ink::bg, face);
         }
         if (fields().count > visible)
-            r.box (159, 2 + top * 120 / fields().count, 1, visible * 120 / fields().count, ink::steel);
+            r.box (r.w-1, 2 + top * 120 / fields().count, 1, visible * 120 / fields().count, ink::steel);
+    }
+
+    void clockControls (const Raster& r) const
+    {
+        using namespace hdui;
+        for (int i = 0; i < fields().count; ++i)
+        {
+            const int x = i*r.w/fields().count + 2, end = (i+1)*r.w/fields().count;
+            const bool focus = i == row;
+            r.surface (x, 2, end-x-1, r.h-4, focus ? ink::live : ink::metal);
+            const auto& f = fields().fields[i];
+            r.text (x+5, 5, f.label, ink::bg);
+            char value[32];
+            formatted (f.id, value);
+            if (focus && editing) r.box (x+2, 15, end-x-5, 18, ink::bg);
+            const Ink color = focus && editing ? ink::live : ink::bg;
+            r.fittedValue (x+4, 15, end-2, value, color);
+        }
     }
 
     void mini (const Raster& r, const Host& h) const
@@ -441,31 +483,32 @@ private:
         using namespace hdui;
         plots::scopePanel (r, "SCORE");
         char s[32];
-        if (plots::stepCount (view))
-            std::snprintf (s, sizeof (s), "%04X", unsigned (view.seed) & 65535);
-        else std::snprintf (s, sizeof (s), "----");
-        r.right (153, 5, s, ink::paper);
-        plots::sequence (r, view, 6, 24, 147, 52, h.playing, pressInk);
+        char seed[8];
+        if (plots::stepCount (view)) std::snprintf (seed, sizeof (seed), "%04X", unsigned (view.seed) & 65535);
+        else std::snprintf (seed, sizeof (seed), "----");
+        std::snprintf (s, sizeof (s), "%s  %s", seedModeChoices[int (val (ParamId::seedMode))], seed);
+        r.right (r.w-8, 5, s, ink::paper);
+        plots::sequence (r, view, 7, 19, r.w-14, r.h-42, h.playing, pressInk);
+        const int footer = r.h-18;
         if (group == 4)
         {
-            r.text (8, 85, "SWING", ink::muted);
+            r.text (8, footer, "SWING", ink::muted);
             formatted (ParamId::swing, s);
-            r.right (128, 85, s, ink::paper);
-            const int split = int (std::lround (142 * val (ParamId::swing)));
-            r.box (8, 106, split - 1, 4, ink::live);
-            r.box (8 + split + 1, 106, 141 - split, 4, ink::pink);
-            r.dot (79, 112, ink::muted);
+            r.right (r.w-8, footer, s, ink::paper);
+            constexpr int left = 48;
+            const int width = r.w-2*left;
+            const int split = int (std::lround (width*val (ParamId::swing)));
+            r.box (left, footer+2, split-1, 4, ink::live);
+            r.box (left+split+1, footer+2, width-split-1, 4, ink::pink);
+            r.box (left+width/2, footer+7, 1, 3, ink::muted);
         }
         else
         {
-            r.text (8, 85, h.playing ? "RUN" : "STOP", ink::muted);
+            r.text (8, footer, h.playing ? "RUN" : "STOP", h.playing ? ink::live : ink::muted);
             if (view.current >= 0 && view.current < plots::stepCount (view))
                 std::snprintf (s, sizeof (s), "%02d/%02d", view.current + 1, view.steps);
             else std::snprintf (s, sizeof (s), "--/--");
-            r.right (128, 85, s, ink::paper);
-            r.text (8, 105, "SEED", ink::muted);
-            formatted (ParamId::seedMode, s);
-            r.right (128, 105, s, ink::steel);
+            r.right (r.w-8, footer, s, ink::paper);
         }
     }
 
@@ -477,9 +520,10 @@ private:
             const int x = 320*k/3, w = 320*(k+1)/3-x;
             const bool ticket = theme == Theme::blacklight;
             if (ticket) r.box (x+2, 0, w-4, 1, ticketInk.violet);
-            else r.box (x+1, 2, w-1, 31, silver::cardMetal);
+            else r.surface (x+1, 2, w-1, 31, silver::cardMetal);
             r.text (x+5, 5, top[k], ticket ? ticketInk.muted : ink::bg);
-            r.reading (x+4, 14, x+w-2, bottom[k], ticket ? ticketInk.paper : ink::bg);
+            if (ticket) r.reading (x+4, 14, x+w-2, bottom[k], ticketInk.paper);
+            else r.fittedValue (x+4, 14, x+w-2, bottom[k], ink::bg);
         }
     }
 
@@ -503,8 +547,8 @@ private:
         const Ink track = h.accent ? h.accent | 0xff000000u : ink::cobalt;
         for (int k = 0; k < 3; ++k)
         {
-            const int x = 320*k/3, end = 320*(k+1)/3, cx = x+15, cy = 16;
-            r.box (x, 2, end-x, 31, silver::cardMetal);
+            const int x = 320*k/3, end = 320*(k+1)/3, cx = end-16, cy = 16;
+            r.surface (x, 2, end-x, 31, silver::cardMetal);
             if (k) r.box (x, 2, 1, 31, ink::rule);
             const uint32_t id = cardField (k);
             if (id == noParam) continue;
@@ -515,34 +559,35 @@ private:
             if (id == ParamId::slideTime) name = "SLD TIME";
             char label[24];
             std::snprintf (label, sizeof (label), "K%d %s", k+1, name);
-            r.text (x+30, 4, label, ink::bg);
+            const int textEnd = cx-14;
+            const auto& labelFace = r.faceWidth (label, pressType::caption) <= textEnd-x-3
+                                  ? pressType::caption : pressType::compact;
+            r.faceText (x+3, 5, textEnd, label, ink::bg, labelFace);
             char s[32];
             formatted (id, s);
             if (p.kind == Kind::button)
             {
                 r.frame (cx-7, cy-7, 15, 15, ink::rule);
-                r.reading (x+29, 13, end-2, k == 0 ? "Push" : "Button", ink::bg);
+                r.reading (x+3, 14, cx-14, k == 0 ? "Push" : "Button", ink::bg);
                 continue;
             }
-            if (r.readingWidth (s) <= end-x-31) r.reading (x+29, 13, end-1, s, ink::bg);
-            else
-            {
-                if (std::strlen (s) > 12) std::memcpy (s+10, "..", 3);
-                r.text (x+30, 18, s, ink::bg);
-            }
+            r.fittedValue (x+3, 14, textEnd, s, ink::bg);
             const int angle = std::clamp (int (std::lround (48*(val (id)-p.min)/(p.max-p.min))), 0, 48);
-            for (int j = 0; j < 23; ++j)
+            constexpr int dialSize = int (sizeof silver::mpcDialRows[0]);
+            for (int j = 0; j < dialSize; ++j)
             {
-                const auto& rowPixels = silver::dialRows[silver::dial[angle][j]];
-                Ink* dest = r.px + (cy-11+j)*r.w + cx-11;
-                for (int i = 0; i < 23; ++i) dest[i] = silver::palette[rowPixels[i]];
+                const auto& rowPixels = silver::mpcDialRows[silver::mpcDial[angle][j]];
+                Ink* dest = r.px + (cy-dialSize/2+j)*r.w + cx-dialSize/2;
+                constexpr auto backing = silver::mpcDialRows[silver::mpcDial[0][0]][0];
+                for (int i = 0; i < dialSize; ++i)
+                    if (rowPixels[i] != backing) dest[i] = silver::palette[rowPixels[i]];
             }
-            r.box (cx-3, cy+12, 7, 2, track);
+            r.box (cx-3, cy+14, 7, 2, track);
             if (h.pot[k] >= 0 && !h.engaged[k])
             {
                 const int pos = std::clamp (int (h.pot[k]), 0, 127) * 48 / 127;
-                const int mx = cx + int (std::lround (art::dial[pos][0]*10 / 64.f));
-                const int my = cy + int (std::lround (art::dial[pos][1]*10 / 64.f));
+                const int mx = cx + int (std::lround (art::dial[pos][0]*12 / 64.f));
+                const int my = cy + int (std::lround (art::dial[pos][1]*12 / 64.f));
                 r.box (mx-2, my-2, 5, 5, ink::bg);
                 r.frame (mx-2, my-2, 5, 5, ink::paper);
             }

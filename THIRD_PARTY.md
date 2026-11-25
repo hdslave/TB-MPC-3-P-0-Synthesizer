@@ -5,7 +5,7 @@ The SP-16 panel uses the MIT-licensed [sixteen.screen extension header published
 | Material | Origin and use |
 |---|---|
 | Departure Mono | Copyright 2022–2024 Helena Zhang. SIL Open Font License 1.1. The instrument uses six-pixel body advances, compact capitals and note names. [Source font](assets/fonts/DepartureMono-Regular.otf) · [Licence](licenses/OFL-departure-mono.txt) |
-| Barlow SemiBold | Copyright 2017 The Barlow Project Authors. SIL Open Font License 1.1. The SP-16 panel uses antialiased glyphs at three sizes. [Font](assets/fonts/Barlow-SemiBold.ttf) · [Licence](licenses/OFL-barlow.txt) |
+| Barlow SemiBold | Copyright 2017 The Barlow Project Authors. SIL Open Font License 1.1. The silver MPC panel uses antialiased glyphs for its labels, note names and readouts. The SP-16 panel uses antialiased glyphs at three sizes. [Font](assets/fonts/Barlow-SemiBold.ttf) · [Licence](licenses/OFL-barlow.txt) |
 | Slink wordmark | Original lettering generated for this instrument with OpenAI’s image generator. The panel pairs it with the original Press Plate face. [Artwork](assets/art/slink.png) · [Panel and animation baker](tools/bake_sp16_panel.py) |
 | Barlow Condensed Bold Italic | Copyright 2017 The Barlow Project Authors. SIL Open Font License 1.1. Used for the seed digits and live value readouts. [Font](assets/fonts/BarlowCondensed-BoldItalic.ttf) · [Licence](licenses/OFL-barlow-condensed.txt) |
 | Press Plate and melting smiley | Original artwork generated for this instrument with OpenAI’s built-in image generator. The approved cobalt and acid-lime composition is compiled at two display sizes. [Master](assets/explore/press-plate/master.png) · [Native pattern plate](assets/art/press-hero.png) · [Native editor plate](assets/art/press-editor.png) |

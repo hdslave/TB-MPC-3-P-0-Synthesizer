@@ -4,6 +4,8 @@
 #include "font.h"
 #include "identity.h"
 #include "blacklight_art.h"
+#include "press_type.h"
+#include "silver_art.h"
 
 #include <algorithm>
 #include <cmath>
@@ -20,7 +22,7 @@ namespace ink
 {
 constexpr Ink bg = 0xff101213, field = 0xff17191b, card = 0xff303438, rule = 0xff60645f;
 constexpr Ink grid = 0xff373b3d, muted = 0xffa7ada9, paper = 0xfffcf2d8, live = 0xffc6ff05;
-constexpr Ink metal = 0xffd2cfc1, alternate = 0xffbdbeb3, steel = 0xffacaea8, header = 0xff474c49;
+constexpr Ink metal = 0xffcdd0d5, alternate = 0xffbfc2c8, steel = 0xffacaea8, header = 0xff474c49;
 constexpr Ink cobalt = 0xff5255ed, violet = 0xffaaa4ff, pink = 0xffef52bd, cursor = 0xff35450f;
 }
 
@@ -62,6 +64,8 @@ struct Raster
 {
     Ink* px;
     int w, h;
+    bool smoothType = false;
+    int originX = 0, originY = 0;
 
     void box (int x, int y, int wide, int high, Ink c) const
     {
@@ -69,6 +73,25 @@ struct Raster
         if (right <= left) return;
         for (int j = std::max (0, y); j < std::min (h, y + high); ++j)
             std::fill (px + j * w + left, px + j * w + right, c);
+    }
+
+    Ink brushed (int x, int y, Ink metal) const
+    {
+        const int shade = silver::brush[(originY+y) & 31][(originX+x) & 127];
+        return metal + shade * 0x010101;
+    }
+
+    void surface (int x, int y, int wide, int high, Ink c) const
+    {
+        if (c != ink::metal && c != ink::alternate && c != silver::cardMetal)
+        {
+            box (x, y, wide, high, c);
+            return;
+        }
+        const int left = std::max (0, x), right = std::min (w, x+wide);
+        for (int j = std::max (0, y); j < std::min (h, y+high); ++j)
+            for (int i = left; i < right; ++i)
+                px[j*w+i] = brushed (i, j, c);
     }
 
     void dot (int x, int y, Ink c) const
@@ -120,8 +143,51 @@ struct Raster
         return (c >= 32 && c < 127 ? c : '?') - 32;
     }
 
-    static int readingWidth (const char* s, bool lead = false)
+    void coverageGlyph (int x, int y, int end, const uint64_t* rows, int height, Ink color) const
     {
+        constexpr unsigned weight[] = { 0, 2, 5, 7, 9, 11, 14, 16 };
+        end = std::min (w, end);
+        for (int j = std::max (0, -y); j < std::min (height, h-y); ++j)
+        {
+            uint64_t bits = rows[j];
+            for (int col = x; bits && col < end; ++col, bits >>= 3)
+            {
+                const unsigned a = unsigned (bits & 7u);
+                if (!a || col < 0) continue;
+                auto& dest = px[(y+j)*w + col];
+                if (a == 7) { dest = color; continue; }
+                // Blend red and blue in separate 16-bit lanes, using the actual panel colour below the glyph.
+                const unsigned fg = weight[a], bg = 16-fg;
+                constexpr Ink rb = 0x00ff00ff, g = 0x0000ff00;
+                dest = 0xff000000u | ((((color & rb)*fg + (dest & rb)*bg + 0x80008u) >> 4) & rb)
+                                   | ((((color & g)*fg + (dest & g)*bg + 0x800u) >> 4) & g);
+            }
+        }
+    }
+
+    static int faceWidth (const char* s, const pressType::Face& face)
+    {
+        int width = 0;
+        for (; *s; ++s) width += face.advance[glyphIndex (*s)];
+        return width;
+    }
+
+    int faceText (int x, int y, int end, const char* s, Ink color, const pressType::Face& face) const
+    {
+        end = std::min (end, w);
+        for (; *s; ++s)
+        {
+            const auto i = glyphIndex (*s);
+            if (x + face.advance[i] > end) break;
+            coverageGlyph (x, y, end, face.rows + i*face.height, face.height, color);
+            x += face.advance[i];
+        }
+        return x;
+    }
+
+    int readingWidth (const char* s, bool lead = false) const
+    {
+        if (smoothType) return faceWidth (s, lead ? pressType::lead : pressType::value);
         int width = 0;
         for (; *s; ++s)
             width += (lead ? art::leadAdvance : art::readingAdvance)[glyphIndex (*s)];
@@ -130,6 +196,11 @@ struct Raster
 
     void reading (int x, int y, int end, const char* s, Ink color, bool lead = false) const
     {
+        if (smoothType)
+        {
+            faceText (x, y, end, s, color, lead ? pressType::lead : pressType::value);
+            return;
+        }
         for (; *s; ++s)
         {
             const auto i = glyphIndex (*s);
@@ -144,6 +215,7 @@ struct Raster
 
     int text (int x, int y, const char* s, Ink color, bool shortCaps = false) const
     {
+        if (smoothType) return faceText (x, y, w, s, color, shortCaps ? pressType::compact : pressType::label);
         for (; *s; ++s, x += font::glyphWidth)
         {
             const unsigned ch = static_cast<unsigned char> (*s);
@@ -156,9 +228,22 @@ struct Raster
         return x;
     }
 
+    void fittedValue (int x, int y, int end, const char* value, Ink color) const
+    {
+        for (const auto* face : { &pressType::value, &pressType::label, &pressType::caption, &pressType::compact })
+            if (faceWidth (value, *face) <= end-x)
+            {
+                faceText (x, y + (face == &pressType::value ? 0 : 4), end, value, color, *face);
+                return;
+            }
+        const int tail = faceText (x, y+4, end-faceWidth ("..", pressType::compact), value, color, pressType::compact);
+        faceText (tail, y+4, end, "..", color, pressType::compact);
+    }
+
     void right (int end, int y, const char* s, Ink c) const
     {
-        text (end - 6 * int (std::strlen (s)), y, s, c);
+        const int width = smoothType ? faceWidth (s, pressType::label) : 6 * int (std::strlen (s));
+        text (end-width, y, s, c);
     }
 
     template<size_t Bytes>
@@ -186,12 +271,13 @@ class Picture
 {
 public:
     Ink background = ink::bg;
+    bool smoothType = false;
 
     template<int W, int H, typename Draw>
     bool region (Ink* dest, int stride, bool whole, int x, int y, Draw draw, int first = 0, int end = W)
     {
         static_assert (W * H <= capacity);
-        Raster r { scratch, W, H };
+        Raster r { scratch, W, H, smoothType, x, y };
         std::fill_n (scratch, W * H, background);
         draw (r);
         bool touched = false;

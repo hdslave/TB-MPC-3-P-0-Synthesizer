@@ -19,21 +19,25 @@ inline void noteName (int semitone, char (&s)[12])
     std::snprintf (s, sizeof (s), "%s%d", rootChoices[pc], (midi - pc) / 12 - 1);
 }
 
-inline void pitchLabel (const Raster& r, int mid, int y, int pitch, hdui::Ink c)
+inline void pitchLabel (const Raster& r, int mid, int y, int pitch, int cellWidth, bool compact)
 {
     char s[12];
     noteName (int (std::lround (pitch / 128.0)), s);
-    const int length = int (std::strlen (s));
-    const int advance = length > 3 ? 4 : 5;
-    int x = mid - (length * advance - 1) / 2;
-    for (const char* ch = s; *ch; ++ch, x += advance)
+    const auto& face = compact ? hdui::pressType::compact : hdui::pressType::caption;
+    const int width = r.faceWidth (s, face);
+    if (width <= cellWidth)
     {
-        const char* at = std::strchr (hdui::font::noteChars, *ch);
-        if (!at) continue;
-        const auto& glyph = hdui::font::notes[at - hdui::font::noteChars];
-        for (int j = 0; j < 8; ++j)
-            for (int k = 0; k < 4; ++k)
-                if ((glyph[j] >> k) & 1) r.dot (x + k, y + j, c);
+        r.faceText (mid-width/2, y, r.w, s, ink::bg, face);
+        return;
+    }
+    const int count = int (std::strlen (s));
+    const int advance = std::min (5, (cellWidth-4)/std::max (1, count-1));
+    int x = mid - ((count-1)*advance+4)/2;
+    for (const char* ch = s; *ch; ++ch)
+    {
+        const char* glyph = std::strchr (hdui::font::noteChars, *ch);
+        if (glyph) r.coverageGlyph (x, y, r.w, hdui::pressType::notes[glyph-hdui::font::noteChars], 8, ink::bg);
+        x += advance;
     }
 }
 
@@ -63,18 +67,24 @@ inline void matrix (const Raster& r, const PatternView& v, bool playing)
                 const int i = bank * 16 + col, a = 40 + 279*col/16, b = 40 + 279*(col+1)/16;
                 const int m = (a+b)/2;
                 const bool current = playing && v.running && v.current == i && i < n;
-                const auto fill = current ? ink::live : i >= n ? ink::field : lane == 0 ? ink::header
-                                          : (col/4)%2 ? ink::alternate : ink::metal;
-                r.box (a, y, b-a-1, height, fill);
+                const auto fill = i >= n ? ink::field : lane == 0 ? ink::header
+                                        : (col/4)%2 ? ink::alternate : ink::metal;
+                r.surface (a, y, b-a-1, height, fill);
+                if (current)
+                {
+                    const int inset = lane >= 2 ? 2 : 0;
+                    r.box (a+inset, y, b-a-1-2*inset, height, ink::live);
+                }
                 if (i >= n) continue;
                 if (lane == 0)
                 {
                     const char num[] = { char ('0'+(i+1)/10), char ('0'+(i+1)%10), 0 };
-                    r.text (m-6, ty, num, current ? ink::bg : ink::paper);
+                    const auto& face = banks == 2 ? hdui::pressType::compact : hdui::pressType::label;
+                    r.faceText (m-r.faceWidth (num, face)/2, ty, b-1, num, current ? ink::bg : ink::paper, face);
                 }
                 else if (lane == 1)
                 {
-                    pitchLabel (r, m, ty, v.pitch[i], ink::bg);
+                    pitchLabel (r, m, ty, v.pitch[i], b-a-1, banks == 2);
                     if (v.pitch[i] % 128) r.dot (b-3, y+height-1, ink::cobalt);
                 }
                 else if (lane == 2)
@@ -147,7 +157,7 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
     const auto& palette = detailed ? hdui::pressInk : hdui::ticketInk;
     const int kind = int (ctx.filter);
     const int left = detailed ? 8 : 7, right = r.w - (detailed ? 8 : 6);
-    const int top = detailed ? 36 : 5, bottom = r.h - (detailed ? 24 : 16);
+    const int top = detailed ? 21 : 5, bottom = r.h - (detailed ? 20 : 16);
     const int width = right - left;
     const float k = feedbackOf (kind, ctx.resonance), nominal = nominalHz (kind, cutoff);
     const double ref = filterGain2 (kind, k, ctx.spread,
@@ -160,9 +170,8 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
     };
     if (detailed)
     {
-        scopePanel (r, "FILTER");
-        r.right (right, 5, filterChoices[kind], palette.paper);
-        r.right (right, 21, reading, palette.muted);
+        scopePanel (r, filterChoices[kind]);
+        r.right (right, 5, reading, palette.paper);
     }
     for (double db : { 0.0, -24.0 })
         r.box (left, py (db), width, 1, palette.grid);
@@ -186,6 +195,7 @@ inline void response (const Raster& r, const TextContext& ctx, float cutoff, con
         previous = y;
     }
     r.text (left, bottom + (detailed ? 8 : 5), "20 Hz", palette.muted);
+    if (detailed) r.text (px (1000)-12, bottom+8, "1 kHz", palette.muted);
     r.right (right, bottom + (detailed ? 8 : 5), "20 kHz", palette.muted);
 }
 } // namespace tbmpc::plots
