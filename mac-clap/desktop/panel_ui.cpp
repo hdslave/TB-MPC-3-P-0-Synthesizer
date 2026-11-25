@@ -1,4 +1,5 @@
 #include "panel_ui.h"
+#include "acid_motion.h"
 #include "../src/params.h"
 #include <chrono>
 #include <cstdio>
@@ -126,7 +127,9 @@ void PanelUI::layout ()
     tool (Item::Motion, 93);
     const int hy = top + toolH + 10, hh = std::clamp (h_ * 21 / 100, 95, 205);
     const int scoreY = hy + hh + 32, scoreH = std::clamp (h_ * 23 / 100, 112, 285);
-    scoreBox_ = {m, scoreY, width, scoreH};
+    const int patternHeight = scoreH + std::clamp (h_ / 22, 24, 52);
+    const int motionHeight = std::clamp (h_ * 8 / 100 - 8, 34, 88);
+    scoreBox_ = {m, scoreY, width, patternHeight - motionHeight};
     const int crownX = column (4).x, rightX = column (12).x;
     brand_ = {m, hy, crownX - m - gap, hh};
     crown_ = {crownX, hy, rightX - crownX - gap, hh};
@@ -140,8 +143,8 @@ void PanelUI::layout ()
     scaleBox_ = {root_.x + root_.w + 4, readoutY, brand_.x + brand_.w - 14 - root_.x - root_.w, readoutH};
     for (int k = 0; k < 3; ++k)
         banks_[k] = {w_ - m - (3 - k) * 66, scoreY - 30, 62, 24};
-    rail_ = {m, scoreY + scoreH + 5, width, std::clamp (h_ / 22, 24, 52)};
-    const int dy = rail_.y + rail_.h + 8;
+    motionBounds_ = {m, scoreY + scoreBox_.h + 5, width, motionHeight};
+    const int dy = motionBounds_.y + motionBounds_.h + 8;
     deck_ = {m, dy, width, h_ - m - dy};
     const int voiceW = (width - 2 * gap) * 30 / 100, toneW = (width - 2 * gap) * 28 / 100;
     const int seqX = m + voiceW + toneW + 2 * gap, seqW = m + width - seqX;
@@ -207,11 +210,6 @@ Rect PanelUI::update (uint64_t now)
     const bool stepChanged = next.current != score_.current || next.seed != score_.seed;
     if (stepChanged && next.running) pulseAt_ = now;
     const bool scoreChanged = !(next == score_) || playing != playing_;
-    if (score_.steps && next.seed != score_.seed)
-    {
-        previousScore_ = score_;
-        rewriteAt_ = now;
-    }
     score_ = next;
     playing_ = playing;
     if (score_.steps <= 16)
@@ -225,38 +223,37 @@ Rect PanelUI::update (uint64_t now)
         dirty_ |= displayed_[i] != v;
         displayed_[i] = v;
     }
-    const float target = float (playing_ && score_.running ? score_.current - 16 * bank_
-                                : inspected_ >= 0          ? inspected_ - 16 * bank_
-                                                           : -1);
-    const uint64_t delta = updated_ && now >= updated_ ? now - updated_ : 0;
-    if (!motion_ || lensSlot_ < 0 || target < 0 || std::abs (target - lensSlot_) > 4)
-        lensSlot_ = target;
-    else
-        lensSlot_ += (target - lensSlot_) * float (1 - std::exp (-double (delta) / 30.));
-    if (motion_ && updated_ && now >= updated_) elapsed_ += std::min<uint64_t> (now - updated_, 150);
+    const uint64_t delta = motion_ && updated_ && now >= updated_ ? std::min<uint64_t> (now - updated_, 150) : 0;
+    elapsed_ += delta;
+    const uint64_t oldMotionFrame = motionMs_ / 16;
+    motionMs_ += delta;
+    const bool vectorMoved = oldMotionFrame != motionMs_ / 16;
+    if (delta)
+    {
+        const bool accented = playing && next.running && next.current >= 0 && next.current < 32 &&
+                              ((next.gates & next.accents) & (uint32_t (1) << next.current));
+        const float target = accented ? 1.f : 0.f;
+        accentLift_ += (target - accentLift_) * float (-std::expm1 (-double (delta) / (accented ? 65. : 180.)));
+    }
     updated_ = now;
     const auto start = std::chrono::steady_clock::now ();
     const int oldCamera = art_.camera.index, oldShaft = art_.shaft.index;
     art_.animate (elapsed_);
     const bool external = p_->screenRequested.exchange (false, std::memory_order_acq_rel);
-    if (!dirty_ && !external && !scoreChanged && oldCamera == art_.camera.index && oldShaft == art_.shaft.index)
-        return {};
-    // Keep the control section in the backing bitmap while the crest and playhead advance.
-    const bool full = dirty_;
-    const bool refreshScore = full || scoreChanged || external;
-    const Rect damage = {0, 0, w_, full ? h_ : deck_.y};
+    const bool repaintScore = dirty_ || scoreChanged || external;
+    const bool repaintHeader = repaintScore || oldCamera != art_.camera.index || oldShaft != art_.shaft.index;
+    if (!repaintHeader && !vectorMoved) return {};
+    const Rect damage = repaintHeader ? Rect{0, 0, w_, dirty_ ? h_ : deck_.y} : motionBounds_;
     c_.resetClip ();
-    c_.fill ({0, 0, w_, refreshScore ? damage.h : crown_.y + crown_.h}, ground);
-    drawHeader ();
-    if (refreshScore)
-        drawScore ();
-    else
+    if (repaintHeader)
     {
-        c_.fill (rail_, ground);
-        drawCode ();
+        c_.fill ({0, 0, w_, repaintScore ? damage.h : crown_.y + crown_.h}, ground);
+        drawHeader ();
     }
-    if (full) drawDeck ();
-    if (popup_ != PopupKind::None) drawPopup ();
+    if (repaintScore) drawScore ();
+    drawAcidMotion (c_, motionBounds_, motionMs_ * .001, accentLift_);
+    if (dirty_) drawDeck ();
+    if (popup_ != PopupKind::None && !damage.intersect (popupRect_).empty ()) drawPopup ();
     dirty_ = false;
     renderMs_ = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - start).count ();
     return damage;
@@ -464,74 +461,6 @@ void PanelUI::drawScore ()
                     c_.fill (cx - 3, cy, 6, 1, quiet);
             }
         }
-    }
-    drawCode ();
-}
-
-// One code group per step: gate width, pitch bits, slide and accent. The lens
-// bends the bars around the active step while their bases stay on the score grid.
-void PanelUI::drawCode ()
-{
-    const Rect r = rail_;
-    const Rect label = {r.x, r.y, column (0).x - r.x - 5, r.h};
-    c_.gradient (label, 0xff32283f, 0xff1b1728);
-    lettering (c_, label.inset (3), "CODE", 17, light, Face::regular, 1);
-    const Rect first = column (0), last = column (15);
-    const float stride = float (last.x - first.x) / 15.f;
-    const bool lens = lensSlot_ >= 0 && lensSlot_ < 16;
-    const float focus = first.x + first.w * .5f + lensSlot_ * stride;
-    const float radius = stride * .78f;
-    auto bend = [&] (float x) {
-        const float d = x - focus, t = d / radius;
-        return int (std::lround (x + (lens ? .9f * d * std::exp (-t * t) : 0.f)));
-    };
-    const float rewrite = motion_ && rewriteAt_ && updated_ >= rewriteAt_
-                              ? std::min (1.f, float (updated_ - rewriteAt_) / 600.f)
-                              : 1.f;
-    for (int bank = 0; bank < 4; ++bank)
-    {
-        const Rect left = column (bank * 4), right = column (bank * 4 + 3);
-        const Rect slot = {left.x, r.y, right.x + right.w - left.x, r.h};
-        c_.gradient (slot, 0xff0c0b16, 0xff171321);
-        c_.hline (slot.x, slot.y + slot.h - 1, slot.w, lineInk);
-        for (int i = bank * 4; i < bank * 4 + 4; ++i)
-        {
-            const int step = bank_ * 16 + i;
-            if (step >= score_.steps) continue;
-            const float turn = std::clamp (rewrite * 2.1f - i * .068f, 0.f, 1.f);
-            const auto &frame = turn < .5f && step < previousScore_.steps ? previousScore_ : score_;
-            const uint32_t mask = uint32_t (1) << step;
-            const bool gate = (frame.gates & mask) != 0;
-            const int pitch = std::clamp (int (std::lround (frame.pitch[step] / 128.f)) + 8, 0, 31);
-            const Rect cell = column (i);
-            auto bar = [&] (int pos, int w, uint32_t ink) {
-                const int x = std::clamp (bend (cell.x + pos * cell.w / 42.f), slot.x, slot.x + slot.w - 1);
-                const int end = std::clamp (bend (cell.x + (pos + w) * cell.w / 42.f), x + 1, slot.x + slot.w);
-                const float d = (x - focus) / radius;
-                const float glint = lens ? std::exp (-d * d * d * d) : 0.f;
-                const int h = int ((r.h - 8 + 4 * glint) * std::abs (2 * turn - 1));
-                if (h < 2) return;
-                const int y = r.y + (r.h - h) / 2;
-                const uint32_t metal = mix (ink, light, .72f * glint);
-                c_.gradient ({x, y, end - x, h / 2}, metal, mix (metal, ground, .25f));
-                c_.gradient ({x, y + h / 2, end - x, h - h / 2}, mix (metal, ground, .6f),
-                             mix (metal, ground, .28f));
-            };
-            const uint32_t ink = gate ? 0xffa4aedc : 0xff514c6f;
-            bar (2, gate ? 6 : 1, ink);
-            for (int bit = 0; bit < 5; ++bit)
-                bar (11 + 4 * bit, (pitch >> (4 - bit)) & 1 ? 3 : 1, ink);
-            if (frame.slides & mask) bar (32, 2, 0xff86bbfc);
-            if (frame.accents & mask) bar (35, 2, 0xffcfaaff);
-        }
-    }
-    if (lens)
-    {
-        const int x = int (std::lround (focus));
-        Rect glass = {int (x - radius * .59f), r.y, int (radius * 1.18f), r.h};
-        glass = glass.intersect ({first.x, r.y, last.x + last.w - first.x, r.h});
-        c_.frame (glass, 0xff929bc4);
-        c_.fill (x, r.y + 1, 1, r.h - 2, 0xffd8e0fc);
     }
 }
 
@@ -958,7 +887,7 @@ void PanelUI::mouseDown (float x, float y, int buttonId, uint32_t mods, int clic
             }
         return;
     }
-    const int step = hitStep (x, rail_.contains (x, y) ? scoreBox_.y : y);
+    const int step = hitStep (x, y);
     if (step >= 0)
     {
         inspected_ = step;

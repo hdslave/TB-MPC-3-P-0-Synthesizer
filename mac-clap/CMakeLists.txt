@@ -44,6 +44,7 @@ endif()
 set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
+    "${DESKTOP_DIR}/acid_motion.cpp"
     "${DESKTOP_DIR}/thorn_art.cpp"
 )
 set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/thorn/panel.bank")

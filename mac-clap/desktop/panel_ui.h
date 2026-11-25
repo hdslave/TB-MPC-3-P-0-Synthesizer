@@ -62,9 +62,9 @@ class PanelUI
     Canvas c_;
     ThornArt art_;
     std::vector<uint32_t> frame_;
-    tbmpc::PatternView score_{}, previousScore_{};
-    uint64_t rewriteAt_ = 0;
-    float lensSlot_ = -1;
+    tbmpc::PatternView score_{};
+    uint64_t motionMs_ = 0;
+    float accentLift_ = 0;
     std::vector<double> displayed_;
     int w_ = kDefaultGuiWidth, h_ = kDefaultGuiHeight, scale_ = 1;
     bool dirty_ = true, fine_ = false, motion_ = true, playing_ = false, follow_ = true;
@@ -72,7 +72,7 @@ class PanelUI
     double renderMs_ = 0;
     int bank_ = 0, inspected_ = -1, lastTouched_ = -1, hover_ = -1;
     Rect items_[size_t (Item::Count)]{}, groupTitles_[4]{}, banks_[3]{};
-    Rect brand_, crown_, counter_, regen_, seed_, root_, scaleBox_, scoreBox_, rail_, filter_, deck_, status_;
+    Rect brand_, crown_, counter_, regen_, seed_, root_, scaleBox_, scoreBox_, motionBounds_, filter_, deck_, status_;
     std::vector<Control> controls_;
     int dragParam_ = -1, dragY_ = -1, wheelParam_ = -1;
     bool moved_ = false;
@@ -109,7 +109,6 @@ class PanelUI
     void drawHeader ();
     void drawScore ();
     void drawDeck ();
-    void drawCode ();
     void trace (Rect r, uint32_t ink);
     void edit (int param, Rect rect, int button, uint32_t mods, int clicks, int second = -1);
     void finishDrag ();

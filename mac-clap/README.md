@@ -4,9 +4,9 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 ![Slink acid bass sequencer and voice controls during playback](assets/desktop-preview.gif)
 
-Desktop 0.7.0 uses the SP-16 Thorn Crown artwork on one resizable panel. The chrome crest and camshaft move above the live score. Voice, Tone, Sequencer and Clock keep all 34 host parameters in reach, down to a 960 × 540 window.
+Desktop 0.7.1 uses the SP-16 Thorn Crown artwork on one resizable panel. The chrome crest and camshaft move above the live score. Voice, Tone, Sequencer and Clock keep all 34 host parameters in reach, down to a 960 × 540 window.
 
-- Start playback in the host to advance the cobalt playhead. **CODE** encodes the pitch, gate, accent and slide under each step. Click a step to inspect it. Patterns longer than 16 steps have two banks and a **Follow** switch.
+- Start playback in the host to advance the cobalt playhead. Beneath the steps, lilac ribbons twist around a thorned eye. Accented gates open the folds. Click a step to inspect it. Patterns longer than 16 steps have two banks and a **Follow** switch.
 - Click the enamel **Regen** button for a new pattern. Drag the seed under the Slink wordmark to set a seed. Click **Key** or **Scale** to choose from a list.
 - Drag or scroll a control to edit it. Hold Shift or enable **Fine** for small adjustments. Clicking a choice opens its menu. Double-click a control to reset it, or right-click for reset and MIDI mapping.
 - Drag the filter response horizontally for cutoff and vertically for resonance. Drag across the score for transpose and vertically for density. These gestures send both parameters to the host for automation.
@@ -43,7 +43,7 @@ Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\C
 
 ## Desktop artwork
 
-The plug-in embeds the Thorn Crown camera film, camshaft loop, chrome wordmark, enamel smiley and satin dial. The score, code strip, filter curve and controls are drawn from live instrument values. The bundled art bank is sufficient for macOS and Windows builds. To repack it from the original motion-study exports, run the following from the repository root with Python, Pillow and FFmpeg available.
+The plug-in embeds the Thorn Crown camera film, camshaft loop, chrome wordmark, enamel smiley and satin dial. The editor draws the monochrome ribbons and curved blades as vectors at the display’s resolution. The score, filter curve and controls follow the instrument. The bundled art bank is sufficient for macOS and Windows builds. To repack it from the original motion-study exports, run the following from the repository root with Python, Pillow and FFmpeg available.
 
 ```sh
 python3 mac-clap/tools/bake_thorn.py camera-film.mp4 "Camshaft loop.mp4" assets.json

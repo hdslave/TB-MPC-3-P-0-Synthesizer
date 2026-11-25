@@ -316,20 +316,38 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         return false;
     }
 
-    // Holding motion freezes the crest. A cut should still change the held shot.
+    // Both moving areas hold their exact frame. A manual camera cut changes
+    // only the crest, and resuming motion advances the vector artwork again.
     click (950, 27);
-    auto crest = [&] {
-        const auto* frame = ui.ui_render (plug,1016,540,2,&width,&height);
+    auto sampleArea = [&](int left, int top, int right, int bottom) {
+        const auto* frame = ui.ui_render (plug, 1016, 540, 2, &width, &height);
         std::vector<uint32_t> sample;
-        for (int y=130; y<300; y+=5)
-            for (int x=700; x<1430; x+=5) sample.push_back (frame[y*width+x]);
+        for (int y = top * 2; y < bottom * 2; y += 3)
+            for (int x = left * 2; x < right * 2; x += 3) sample.push_back (frame[y * width + x]);
         return sample;
     };
-    const auto still = crest();
+    auto crest = [&] { return sampleArea (350, 65, 715, 150); };
+    auto ribbons = [&] { return sampleArea (18, 319, 998, 348); };
+    const auto heldCrest = crest(), heldRibbons = ribbons();
     std::this_thread::sleep_for (std::chrono::milliseconds (110));
-    if (crest() != still) { std::fprintf (stderr, "FAIL: motion hold did not freeze the crest\n"); return false; }
+    if (crest() != heldCrest || ribbons() != heldRibbons)
+    {
+        std::fprintf (stderr, "FAIL: artwork moved while motion was held\n");
+        return false;
+    }
     click (500, 82);
-    if (crest() == still) { std::fprintf (stderr, "FAIL: camera angle did not change\n"); return false; }
+    if (crest() == heldCrest || ribbons() != heldRibbons)
+    {
+        std::fprintf (stderr, "FAIL: a camera cut must change only the crest\n");
+        return false;
+    }
+    click (950, 27);
+    std::this_thread::sleep_for (std::chrono::milliseconds (110));
+    if (ribbons() == heldRibbons)
+    {
+        std::fprintf (stderr, "FAIL: vector motion did not resume\n");
+        return false;
+    }
     return render();
 }
 
