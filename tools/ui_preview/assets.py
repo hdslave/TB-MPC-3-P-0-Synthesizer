@@ -73,13 +73,30 @@ def native_plate(source, height):
     return output
 
 
-source = Image.open(EXPLORE/'press-plate/master.png').convert('RGB')
-hero, editor = (native_plate(source, h) for h in (64,42))
-atlas = Image.new('RGB', (320,106))
-atlas.paste(hero)
-atlas.paste(editor,(0,64))
-atlas = atlas.quantize(colors=128, dither=Image.Dither.NONE)
-palette = bytes(atlas.getpalette())
+def press_atlas(filename):
+    source = Image.open(EXPLORE/'press-plate'/filename).convert('RGB')
+    plates = Image.new('RGB', (320,106))
+    plates.paste(native_plate(source, 64))
+    plates.paste(native_plate(source, 42), (0,64))
+    return plates.quantize(colors=128, dither=Image.Dither.NONE)
+
+
+atlas = press_atlas('master.png')
+finish = press_atlas('jelly-finish.png')
+base_palette = bytes(atlas.getpalette())
+finish_palette = bytes(finish.getpalette())
+# Only transfer lighting inside the original lime fill. Keep the eyes, mouth,
+# outline and plate at their original palette indices, including their edge pixels.
+fill = {i for (r, g, b), i in atlas.palette.colors.items()
+        if r >= 180 and g >= 230 and b < 32}
+lit = {i for (r, g, b), i in finish.palette.colors.items()
+       if r > 120 and g > 170 and g >= r - 12 and g > b}
+offset = len(base_palette) // 3
+indices = bytes(offset + light if base in fill and light in lit else base
+                for base, light in zip(atlas.tobytes(), finish.tobytes()))
+atlas = Image.frombytes('P', atlas.size, indices)
+palette = base_palette + finish_palette
+atlas.putpalette(palette)
 inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
 contents = header + ['namespace hdui::art {', 'inline constexpr uint32_t palette[] = {' + ','.join(inks) + '};']
 for name, start, stop in [('hero',0,64),('editor',64,106)]:
