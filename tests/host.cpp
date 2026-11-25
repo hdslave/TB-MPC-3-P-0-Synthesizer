@@ -2720,7 +2720,7 @@ void testMasterFixes()
 }
 
 // Run against the shipped ARM object with freesp16's screen ABI and pad pitches.
-void testSp16Panel()
+void testSp16Panel(const std::string& folder)
 {
     Instance touch(44100), pad(44100);
     const auto* ui = static_cast<const sixteen_plugin_screen_t*>(touch.plugin->get_extension(touch.plugin, SIXTEEN_EXT_SCREEN));
@@ -2747,6 +2747,7 @@ void testSp16Panel()
     std::vector<clap_id> reachable;
     for (int bank = 0; bank < 6; ++bank)
     {
+        if (bank==0 || bank==5) CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,35,264)); // Pattern bank picker
         CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 65+bank*130, 260));
         CHECK(ui->knobs(touch.plugin, ids, label) && *label);
         CHECK(ui->render(touch.plugin, &surface, false));
@@ -2815,6 +2816,47 @@ void testSp16Panel()
     ui->render(touch.plugin, &surface, false);
     CHECK(facePixels() == resting);
     CHECK(!ui->render(touch.plugin, &surface, false));
+    CHECK(ui->selector_turn(touch.plugin,1)); // LFO to Pattern
+    CHECK(ui->render(touch.plugin,&surface,true));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68)); // local Play
+    touch.render(22050,64,left,right,stopped);
+    CHECK(std::any_of(left.begin(),left.end(),[](float v){return std::fabs(v)>.005f;}));
+    CHECK(ui->render(touch.plugin,&surface,false));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68)); // local Stop
+    touch.render(1024,64,left,right,stopped);
+    CHECK(ui->render(touch.plugin,&surface,false));
+    // A host Play takes over a local preview. The screen becomes a sync
+    // indicator, and the host Stop must not restart the preview.
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68));
+    touch.render(4096,64,left,right,stopped);
+    touch.render(4096,64,left,right,playing);
+    ui->render(touch.plugin,&surface,true);
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68));
+    touch.render(4096,64,left,right,stopped);
+    ui->render(touch.plugin,&surface,true);
+    touch.setup({{"Steps",32}});
+    ui->render(touch.plugin,&surface,true);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,560,40)); // select steps 17–32
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,748,145));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,748,145));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,560,40));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,172,145));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,172,145));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,345,44));
+    ui->render(touch.plugin,&surface,true);
+    auto crestPixels=[&] {
+        std::vector<uint32_t> tile;
+        for(int y=6;y<96;++y) tile.insert(tile.end(),pixels.begin()+y*stride+186,pixels.begin()+y*stride+518);
+        return tile;
+    };
+    auto held=crestPixels();surface.now_ms+=800;ui->render(touch.plugin,&surface,false);
+    CHECK(held==crestPixels());
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,345,44));
+    surface.now_ms+=800;ui->render(touch.plugin,&surface,false);
+    CHECK(held!=crestPixels());
+    for(int row=0;row<h;++row)
+        CHECK(pixels[row*stride+780]==0x12345678);
+    CHECK(writePng((folder+"/thorn-pattern.png").c_str(),pixels.data(),780,285,stride,1));
     ui->on_close(touch.plugin);
 }
 
@@ -2845,7 +2887,7 @@ int main (int argc, char** argv)
         testParameters();
         testState();
         testPresets();
-        testSp16Panel();
+        testSp16Panel(argv[2]);
         entry->deinit();
         std::printf("SP-16: %d checks, %d failed\n", checks, failures);
         return failures == 0 ? 0 : 1;

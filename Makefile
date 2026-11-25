@@ -77,6 +77,8 @@ clean:
 	rm -rf $(OUT)
 
 # freesp16's ARM EABI/glibc 2.13 toolchain, and a Linux host copy for screen tests.
+SP16_ART := src/sp16_thorn_bank.S
+SP16_MEDIA := assets/sp16-thorn/panel.bank assets/sp16-thorn/index.h
 SP16_CXX ?= arm-linux-gnueabi-g++
 SP16_OPT := -O3 -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp -ffp-contract=fast -fno-math-errno -fno-trapping-math
 SP16_FLAGS := -DTBMPC_SP16 -DTBMPC_VERSION='"0.6.0"' -ffunction-sections -fdata-sections
@@ -84,13 +86,13 @@ SP16_FLAGS := -DTBMPC_SP16 -DTBMPC_VERSION='"0.6.0"' -ffunction-sections -fdata-
 sp16: $(OUT)/sp16/Slink.clap
 sp16-preview: $(OUT)/sp16-preview/Slink.clap
 
-$(OUT)/sp16/Slink.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
+$(OUT)/sp16/Slink.clap: $(SP16_ART) $(SP16_MEDIA) $(SOURCES) $(HEADERS) src/exports.map Makefile
 	@mkdir -p $(@D)
-	$(SP16_CXX) $(subst $(OPT),$(SP16_OPT),$(CXXFLAGS)) $(SP16_FLAGS) $(SOURCES) $(LDFLAGS) -o $@
+	$(SP16_CXX) $(subst $(OPT),$(SP16_OPT),$(CXXFLAGS)) $(SP16_FLAGS) $(SOURCES) $(SP16_ART) $(LDFLAGS) -o $@
 
-$(OUT)/sp16-preview/Slink.clap: $(SOURCES) $(HEADERS) src/exports.map Makefile
+$(OUT)/sp16-preview/Slink.clap: $(SP16_ART) $(SP16_MEDIA) $(SOURCES) $(HEADERS) src/exports.map Makefile
 	@mkdir -p $(@D)
-	$(CXX) $(CXXFLAGS) $(SP16_FLAGS) $(SOURCES) $(LDFLAGS) -o $@
+	$(CXX) $(CXXFLAGS) $(SP16_FLAGS) $(SOURCES) $(SP16_ART) $(LDFLAGS) -o $@
 
 $(OUT)/sp16/host: tests/host.cpp tests/png.h tests/wav.h $(HEADERS) Makefile
 	@mkdir -p $(@D)

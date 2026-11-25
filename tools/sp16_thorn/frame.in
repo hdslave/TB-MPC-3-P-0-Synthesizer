@@ -11,7 +11,7 @@
 @container(max-width:530px){#thorn-crown-metal .compact{display:flex}}
 </style>
 <div id="thorn-crown-metal" aria-label="Slink, Thorn Crown">
-  <div class="panel" role="group" aria-label="Thorn Crown sequencer"><canvas width="1560" height="570" role="img" aria-label="Silver and blue Slink 303 panel with a turning chrome acid smiley in the top right, a violet thorn sculpture, a silver step counter with four violet outlines, a sixteen-step sequencer and chrome whips over a twisting violet checker ribbon and a pitch trace below the grid"></canvas><div class="keys"></div></div>
+  <div class="panel" role="group" aria-label="Thorn Crown sequencer"><canvas width="1560" height="570" role="img" aria-label="Silver and blue Slink 303 panel with a turning chrome acid smiley in the top right, a violet thorn sculpture, a silver step counter with four violet outlines, a sixteen-step sequencer and swept chrome whips and forked blue-violet lightning below the grid"></canvas><div class="keys"></div></div>
   <div class="compact"><button data-do="prev" aria-label="Previous step">‹</button><span data-detail>03 / 16 · F3</span><button data-do="next" aria-label="Next step">›</button><button data-do="transport">Play</button><button data-do="gate">Gate</button><button data-do="accent">Accent</button><button data-do="slide">Slide</button><button data-do="regen">Regen</button><button data-do="motion">Hold motion</button></div>
   <div class="sr" role="status" aria-live="polite"></div>
 </div>

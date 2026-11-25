@@ -25,16 +25,12 @@ def build_fragment():
         'fonts': {
             'SlinkSans': embed('barlow-labels.woff2', 'font/woff2'),
             'SlinkItalic': embed('barlow-counter.woff2', 'font/woff2'),
-            'SlinkPitch': embed('martian-pitches.woff2', 'font/woff2'),
         },
     }
     scripts = [(SOURCE / name).read_text() for name in
-               ('camera.js', 'whip-storm.js', 'step-counter.js', 'panel.js')]
+               ('camera.js', 'whip-storm.js', 'step-counter.js', 'lettering.js', 'panel.js')]
     scripts[-1] = scripts[-1].replace('THORN_ASSETS', json.dumps(assets, separators=(',', ':')))
-    # Include the shared SIL licence and both families' copyright notices in exported pages.
-    barlow = (ROOT / 'licenses/OFL-barlow.txt').read_text()
-    martian = (ROOT / 'licenses/OFL-martian-mono.txt').read_text()
-    notice = martian.splitlines()[0] + '\n' + barlow
+    notice = (ROOT / 'licenses/OFL-barlow.txt').read_text()
     return ((SOURCE / 'frame.in').read_text() +
             '\n<script type="text/plain" id="slink-font-licenses">\n' + notice + '\n</script>\n' +
             '<script>\n(()=>{\n' + '\n'.join(scripts) + '\n})();\n</script>\n')

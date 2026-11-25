@@ -60,6 +60,8 @@ struct Plugin
 #ifdef TBMPC_SP16
     sp16::Panel panel;
     std::atomic<bool> panelOpen { false };
+    std::atomic<bool> previewRequested { false };
+    bool previewRunning = false; // audio thread only
     std::atomic<int> touchedStep { -1 };
     std::atomic<uint64_t> touchedAt { 0 };
 #endif
@@ -505,10 +507,26 @@ bool pluginActivate (const clap_plugin* plugin, double rate, uint32_t, uint32_t 
     return true;
 }
 
-void pluginDeactivate (const clap_plugin* plugin) { of (plugin).active = false; }
+void pluginDeactivate (const clap_plugin* plugin)
+{
+    auto& p=of(plugin);
+    p.active=false;
+#ifdef TBMPC_SP16
+    p.previewRequested.store(false, std::memory_order_release);
+    p.previewRunning=false;
+#endif
+}
 bool pluginStart (const clap_plugin*) { return true; }
 void pluginStop (const clap_plugin*) {}
-void pluginReset (const clap_plugin* plugin) { of (plugin).engine.reset(); }
+void pluginReset (const clap_plugin* plugin)
+{
+    auto& p=of(plugin);
+#ifdef TBMPC_SP16
+    p.previewRequested.store(false, std::memory_order_release);
+    p.previewRunning=false;
+#endif
+    p.engine.reset();
+}
 
 // Denormals: flush them to zero for the block (the filter and envelopes decay into them), as the FPU had it after.
 struct FlushDenormals
@@ -576,21 +594,35 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
         && steadyMs() - p.touchedAt.load(std::memory_order_acquire) <= pressFreshMs)
         p.engine.note(firstStepPad + audition, 0.72f);
 #endif
-    // The host's transport. Without a song position (Melodee always sends one), the sequence counts its own from
-    // Play, so the first clock is the one Play lands on.
-    if (const auto* t = process->transport)
+    // Use the host's beat position when supplied. Otherwise the engine counts from Play.
+    const auto* transport = process->transport;
+    bool playing = transport && (transport->flags & CLAP_TRANSPORT_IS_PLAYING);
+    const bool placed = transport && (transport->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE);
+    double beats = placed ? double(transport->song_pos_beats) / CLAP_BEATTIME_FACTOR
+                          : transport ? p.engine.ownPosition() : 0.0;
+    const double bpm = transport && (transport->flags & CLAP_TRANSPORT_HAS_TEMPO) && transport->tempo>0
+                       ? transport->tempo : 120.0;
+    double bar = 4.0;
+    if (transport && (transport->flags & CLAP_TRANSPORT_HAS_TIME_SIGNATURE)
+        && transport->tsig_num>0 && transport->tsig_denom>0)
+        bar = 4.0 * transport->tsig_num / transport->tsig_denom;
+
+#ifdef TBMPC_SP16
+    // Local Play uses the same sample clock as the host. A host start ends the
+    // preview and relocates immediately, including when both start at beat zero.
+    if (playing || p.applied[paramIndex(ParamId::mode)] >= .5f)
+        p.previewRequested.store(false, std::memory_order_release);
+    const bool preview = !playing && p.previewRequested.load(std::memory_order_acquire);
+    if (playing && p.previewRunning)
+        p.engine.transport(false, 0, bpm, bar, frames);
+    if (preview)
     {
-        const bool playing = (t->flags & CLAP_TRANSPORT_IS_PLAYING) != 0;
-        const bool placed = (t->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) != 0;
-        const double bpm = (t->flags & CLAP_TRANSPORT_HAS_TEMPO) && t->tempo > 0.0 ? t->tempo : 120.0;
-        const double beats = placed ? (double) t->song_pos_beats / (double) CLAP_BEATTIME_FACTOR : p.engine.ownPosition();
-        double bar = 4.0;
-        if ((t->flags & CLAP_TRANSPORT_HAS_TIME_SIGNATURE) && t->tsig_num > 0 && t->tsig_denom > 0)
-            bar = 4.0 * t->tsig_num / t->tsig_denom;
-        p.engine.transport (playing, beats, bpm, bar, frames);
+        playing=true;
+        beats=p.previewRunning ? p.engine.ownPosition() : 0.0;
     }
-    else
-        p.engine.transport (false, 0.0, 120.0, 4.0, frames);
+    p.previewRunning=preview;
+#endif
+    p.engine.transport(playing, beats, bpm, bar, frames);
 
     uint32_t done = 0;
     while (done < frames)
@@ -796,6 +828,7 @@ void panelClose(const void* plugin)
     auto& p = panelPlugin(plugin);
     p.panelOpen.store(false, std::memory_order_release);
     p.panel.finger = -1;
+    p.previewRequested.store(false, std::memory_order_release);
     p.touchedStep.store(-1, std::memory_order_release);
 }
 bool panelRender(const void* plugin, const sixteen_screen_surface_t* s, bool full)
@@ -803,6 +836,9 @@ bool panelRender(const void* plugin, const sixteen_screen_surface_t* s, bool ful
     if (!s || !s->pixels || s->width != SIXTEEN_SCREEN_WIDTH || s->height != SIXTEEN_SCREEN_HEIGHT || s->stride < s->width)
         return false;
     auto& p = panelPlugin(plugin);
+    const bool preview=p.previewRequested.load(std::memory_order_acquire);
+    p.panel.dirty |= preview!=p.panel.localPlay;
+    p.panel.localPlay=preview;
     return p.panel.render(*s, full, p.patternState, p.values);
 }
 bool panelKnobs(const void* plugin, uint32_t ids[6], char label[SIXTEEN_TAB_NAME_SIZE])
@@ -835,15 +871,44 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
         return false;
     if (phase == SIXTEEN_TOUCH_DOWN)
     {
-        if (y >= sp16::tabTop)
+        const bool crown=panel.bank==sp16::patternPage;
+        if (crown && panel.thorn.menu && y<sp16::tabTop)
         {
-            panel.bank = x/130;
-            panel.dirty = true;
+            panel.thorn.menu=false;panel.dirty=true;return true;
+        }
+        if (y>=sp16::tabTop && (!crown || panel.thorn.menu))
+        {
+            panel.bank=x/130;
+            panel.thorn.menu=false;panel.dirty=true;return true;
+        }
+        if (crown && x>=7 && x<192 && y>=253 && y<278)
+        {
+            panel.thorn.menu=true;panel.dirty=true;return true;
+        }
+        if (crown && x>=186 && x<518 && y>=6 && y<96)
+        {
+            panel.thorn.heldCamera=!panel.thorn.heldCamera;
             return true;
         }
-        if (y >= 9 && y < 53 && ((x >= 594 && x < 671) || (x >= 676 && x < 768)))
+        if (crown && x>=528 && x<620 && y>=6 && y<96 && panel.shown.steps>16 && !panel.shown.running)
         {
-            const uint32_t id = x < 671 ? ParamId::seedBack : ParamId::regen;
+            panel.thorn.selected=panel.thorn.selected>=16?0:16;
+            panel.dirty=true;return true;
+        }
+        if (crown && x>=622 && x<703 && y>=55 && y<84)
+        {
+            const bool preview=p.previewRequested.load(std::memory_order_acquire);
+            if ((panel.shown.running && !preview) || valueOf(p,ParamId::mode)>=.5f) return false;
+            p.previewRequested.store(!preview,std::memory_order_release);
+            wakePanel(p);return true;
+        }
+        const bool regen=crown ? (x>=719 && x<775 && y>=61 && y<91)
+                               : (x>=676 && x<768 && y>=9 && y<53);
+        const bool back=crown ? (x>=7 && x<179 && y>=50 && y<96)
+                              : (x>=594 && x<671 && y>=9 && y<53);
+        if (regen || back)
+        {
+            const uint32_t id=regen ? ParamId::regen : ParamId::seedBack;
             p.pressedAt.store(steadyMs(), std::memory_order_release);
             p.presses.fetch_or(1ull << paramIndex(id), std::memory_order_release);
             wakePanel(p);
@@ -856,6 +921,7 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
     if (step != panel.finger || phase == SIXTEEN_TOUCH_DOWN)
     {
         panel.finger = step;
+        if (panel.bank==sp16::patternPage) panel.thorn.selected=step;
         panel.dirty = true;
         p.touchedAt.store(steadyMs(), std::memory_order_release);
         p.touchedStep.store(step, std::memory_order_release);

@@ -1,10 +1,6 @@
 // Two flexible metal ribbons crossing a bank of forked lightning.
 function makeWhipStorm(ctx){
-  const width=167,height=24,tau=2*Math.PI;
-  // The right cut meets the pitch trace in the same aperture.
-  const aperture=new Path2D();
-  aperture.moveTo(201,250);aperture.lineTo(456,250);aperture.lineTo(444,280);
-  aperture.lineTo(206,280);aperture.lineTo(201,275);aperture.closePath();
+  const left=201.5,top=253.5,width=167,height=24,tau=2*Math.PI;
   const cosine=Math.cos,sine=Math.sin,clip=(n,lo,hi)=>Math.min(hi,Math.max(lo,n));
   const pack=(r,g,b)=>(255<<24)|(clip(b,0,255)<<16)|(clip(g,0,255)<<8)|clip(r,0,255);
   const gradient=[
@@ -234,43 +230,22 @@ function makeWhipStorm(ctx){
     }
     ink.restore();
   }
-  // A two-ink checker wraps over a turning belt. The cross-section goes edge-on
-  // twice per turn, pinching a broad printed tile down to a single engraved line.
-  const columns=36, rows=4, stride=rows+1;
-  const printX=new Float32Array((columns+1)*stride);
-  const printY=new Float32Array(printX.length);
+  // A very dark warped checker runs below the two polished surfaces like ink on a rave flyer.
   function printedField(phase){
-    ink.fillStyle='#070617';ink.fillRect(0,0,width,height);
-    for(let i=0;i<=columns;i++){
-      const u=i/columns;
-      const twist=tau*(1.16*u-.13)+.69*sine(phase-.8)+.19*sine(phase*2+tau*u);
-      const centre=14+5.6*sine(tau*(1.5*u-.09)+phase);
-      const radius=6+2.5*cosine(tau*u-phase);
-      const x=-11+(width+22)*u+2.4*sine(twist*2+phase);
-      for(let j=0;j<=rows;j++){
-        const v=j*2/rows-1, at=i*stride+j;
-        printX[at]=x+v*(3.7+1.9*sine(twist));
-        printY[at]=centre+radius*v*cosine(twist)+1.7*(1-v*v)*sine(twist);
+    ink.fillStyle='#070516';ink.fillRect(0,0,width,height);
+    for(let band=0;band<3;band++){
+      const offset=band===0?10:band===1?56:133;
+      ink.fillStyle=['#22113e','#151437','#1b1236'][band];
+      const tile=new Path2D();
+      const loc=(i,j)=>{
+        const x=offset+i*3.0+j*1.12+2.2*sine(.40*i+phase+band);
+        return [x,18+j*1.68-3.5*sine(.25*i+phase+band)-.32*i];
+      };
+      for(let i=0;i<12;i++)for(let j=0;j<5;j++){
+        if((i+j)%2||i+j<3||i+j>13)continue;
+        tile.moveTo(...loc(i,j));tile.lineTo(...loc(i+1,j));tile.lineTo(...loc(i+1,j+1));tile.lineTo(...loc(i,j+1));tile.closePath();
       }
-    }
-    for(let colour=0;colour<2;colour++){
-      ink.beginPath();
-      for(let i=0;i<columns;i++)for(let j=0;j<rows;j++){
-        if((i+j)%2!==colour)continue;
-        const a=i*stride+j,b=a+stride;
-        ink.moveTo(printX[a],printY[a]);ink.lineTo(printX[b],printY[b]);
-        ink.lineTo(printX[b+1],printY[b+1]);ink.lineTo(printX[a+1],printY[a+1]);ink.closePath();
-      }
-      ink.fillStyle=colour?'#49328a':'#17112d';ink.fill();
-    }
-    // A misregistered pair of lines detaches at the folds like ink on foil.
-    for(const side of [0,rows]){
-      ink.beginPath();
-      for(let i=0;i<=columns;i++){
-        const k=i*stride+side,y=printY[k]+(side?1:-1)*1.3;
-        if(i===0)ink.moveTo(printX[k],y);else ink.lineTo(printX[k],y);
-      }
-      ink.lineWidth=.37;ink.strokeStyle=side?'#7272c0':'#6f429d';ink.stroke();
+      ink.fill(tile);
     }
   }
   function tipLight(r,phase,power){
@@ -314,8 +289,6 @@ function makeWhipStorm(ctx){
     ink.setTransform(scale,0,0,scale,0,0);drawStorm(active,age,acc,true);
     tipLight(ribbons[0],phase,(.5+.5*cosine(phase*3-.6))**3);
     tipLight(ribbons[1],phase,(.5+.5*cosine(phase*3+2.2))**4);
-    ctx.save();ctx.clip(aperture);
-    ctx.drawImage(scene,201,250,255,30);
-    ctx.restore();
+    ctx.drawImage(scene,left,top,width,height);
   };
 }

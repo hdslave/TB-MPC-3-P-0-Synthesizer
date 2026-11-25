@@ -15,12 +15,12 @@ def difference(a, b):
 
 def check(browser):
     page = browser.new_page()
-    page.set_content('<canvas width="510" height="60"></canvas>')
+    page.set_content('<canvas width="334" height="48"></canvas>')
     page.add_script_tag(path=Path(__file__).with_name('whip-storm.js'))
     page.evaluate("""() => {
         const canvas = document.querySelector('canvas');
         const context = canvas.getContext('2d');
-        context.setTransform(2, 0, 0, 2, -402, -500);
+        context.setTransform(2, 0, 0, 2, -403, -507);
         const draw = makeWhipStorm(context);
         const pattern = [
             [1,1,1,1,0,0,1,1,0,1,1,1,0,1,1,0],
@@ -30,7 +30,7 @@ def check(browser):
         window.capture = ([time, accentAge, edit]) => {
             const rows = pattern.map(row => row.slice());
             if (edit !== null) rows[edit][7] ^= 1;
-            context.clearRect(201, 250, 255, 30);
+            context.clearRect(201.5, 253.5, 167, 24);
             draw(time, ...rows, accentAge ?? Infinity);
             return canvas.toDataURL().split(',')[1];
         };

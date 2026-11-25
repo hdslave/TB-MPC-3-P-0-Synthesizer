@@ -83,28 +83,18 @@
  function stripe(x,y,w,h,colors){
    return gradient(x,y,x+w*.09,y+h,colors.map(([t,c])=>[t,c]));
  }
+ function bracket(x,y,w,h,color){for(const [xx,yy,sx,sy] of [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]]){
+   line(xx,yy,xx+sx*5,yy,color,.75);line(xx,yy,xx,yy+sy*3,color,.75);}}
  const silver=[[0,'#faf9ff'],[.05,'#c3cadf'],[.37,'#dbe0ec'],[.47,'#c9cdda'],[.50,'#9fa8bf'],[.58,'#b8bfd3'],[1,'#858fae']];
  const cobalt=[[0,'#9bd0ff'],[.07,'#639cff'],[.43,'#466bdf'],[.50,'#415ac6'],[1,'#273d9c']];
  const shell=[[0,'#69728b'],[.19,'#d3dcf2'],[.41,'#7892c0'],[.5,'#333950'],[.88,'#80739d'],[1,'#b4afd3']];
  const purple=[[0,'#302041'],[.28,'#251737'],[1,'#110d21']];
- function seedCode(x,y,w,h){
-   // Four groups read the four hex digits, high bit first. All bars pass through
-   // one oblique crease, where the foil changes from cobalt to polished silver.
-   const groupGap=3,cell=(w-3*groupGap)/16;
-   const topInk=gradient(x,y,x+w,y+h*.35,[[0,'#6274b1'],[.4,'#dbe7ff'],[.68,'#8782b8'],[1,'#a8bce8']]);
-   const bottomInk=gradient(x,y+h,x+w,y+h*.5,[[0,'#78769c'],[.45,'#455891'],[.84,'#d0d6f4'],[1,'#707caa']]);
-   for(let i=0;i<16;i++){
-     const bit=(seed>>>(15-i))&1;
-     const xx=x+i*cell+Math.floor(i/4)*groupGap,bar=cell*(bit ? .83 : .35);
-     const fold=y+h*(.76-.49*i/15);
-     path([[xx+2,y],[xx+2+bar,y],[xx+bar,fold],[xx,fold]],topInk);
-     path([[xx,fold+.85],[xx+bar,fold+.85],[xx+bar+1,y+h],[xx+1,y+h]],bottomInk);
-   }
- }
+ function seedCode(x,y,w,h){const bits=w/40;for(let i=0;i<20;i++){
+   const v=(seed>>(i%16))&1;rect(x+i*bits*2,y,bits*(v?1.52:.60),h,i%6===0?'#ced7ff':'#919fbe');}}
  function actionButton(x,y,w,h,label,main){
    const fill=main?stripe(x,y,w,h,cobalt):stripe(x,y,w,h,purple);
    chamfer(x,y,w,h,fill,main?'#9cb6fc':'#7b7299',4);
-   letters(label,x+w/2,y+h/2+.7,15,'#faf9ff','SlinkSans','center');
+   acidText(g,label,x+w/2,y+h/2,main?15:12,w-9,'#faf9ff','center',true);
  }
  function symbol(row,i,cx,cy,ink,sel){
    const on=seq[row-2][i];
@@ -121,41 +111,26 @@
    Object.assign(b.style,{left:x/780*100+'%',top:y/285*100+'%',width:w/780*100+'%',height:h/285*100+'%'});
    b.setAttribute('aria-label',aria);b.addEventListener('click',fn);keys.append(b);bounds.set(id,b);return b;
  }
- // A sliver of cold foil crosses the margins of the selected step as a single cut.
- // Draw its margins only, so pitch names and the three articulation marks sit in clear ink.
- function printPlayhead(x,y,w,h,row){
-   g.save();g.translate(x,y);
-   const foil=gradient(0,0,w,h,[[0,'#d5e8ff'],[.18,'#658ef9'],[.48,'#2c4fa6'],[.73,'#5632a5'],[1,'#b195f1']]);
-   const edge=w-2, drift=[.2,2.5,5.1,5.8,6.4][row];
-   path([[edge-drift-3,1],[edge,1],[edge,h-1],[edge-drift,h-1]],foil);
-   line(1.4,1,1.4,h-1,'#8498fa',.75);
-   if(row===0){
-     path([[2,2],[10,2],[2,10]],'#eef6ff');
-     line(2,12,12,2,'#849dfa',.85);
-   }else if(row===4){
-     path([[edge-1,h-8],[edge-1,h-2],[edge-8,h-2]],'#dfdbff');
-   }
-   g.restore();
- }
- function matrix(makeKeys){
+ function matrix(makeKeys,plate,selected){
    const gutter=5, label=58,x=7,y=103,w=766,h=142,cw=(w-label-gutter*3)/16;
    const hh=[22,41,27,26,26];let yy=y;
    for(let r=0;r<5;r++){
      const rh=hh[r],ink=r===1?'#151629':'#e9eaf6';
      const lab=r===1?stripe(x,yy,label,rh,silver):stripe(x,yy,label,rh,[[0,'#332840'],[.55,'#251c34'],[1,'#19132a']]);
-     chamfer(x,yy,label-3,rh-1,lab,'#71738c',3);letters(names[r],x+6,yy+rh/2+.3,r===1?16:13,ink);
+     chamfer(x,yy,label-3,rh-1,lab,'#71738c',3);acidText(g,names[r],x+5,yy+rh/2,r===1?17:13,label-10,ink,'left');
      for(let i=0;i<16;i++){
-       const bank=Math.floor(i/4),xx=x+label+i*cw+bank*gutter, ww=cw-1.1,sel=i===step;
+       const bank=Math.floor(i/4),xx=x+label+i*cw+bank*gutter, ww=cw-1.1,sel=i===selected;
        if(i%4===0&&i>0){line(xx-3.5,yy+2,xx-1,yy+.4,'#76778f',.7);}
-       const bg=sel?gradient(xx,yy,xx+ww,yy+rh,[[0,'#556cca'],[.34,'#3659c4'],[.53,'#303f9d'],[.55,'#292f81'],[1,'#43287c']]):r===1?stripe(xx,yy,ww,rh,silver):
+       const bg=sel?stripe(xx,yy,ww,rh,cobalt):r===1?stripe(xx,yy,ww,rh,silver):
           gradient(xx,yy,xx,yy+rh,[[0,bank%2?'#30213f':'#262139'],[1,bank%2?'#1a112c':'#141224']]);
        rect(xx,yy,ww,rh-1,bg);line(xx+.5,yy+.6,xx+ww-.5,yy+.6,sel?'#a4bfff':r===1?'#fcf9ff':'#52465f',.75);
        if(r===1&&!sel){line(xx+.7,yy+2,xx+.7,yy+rh-3,'#eff0fa',.65);line(xx+ww-1,yy+3,xx+ww-1,yy+rh-2,'#72778e',.8);}
        if(!sel&&r===0&&i%4===0)rect(xx+2,yy+2,7,1,'#aba9c0');
-       if(sel)printPlayhead(xx,yy,ww,rh-1,r);
+       if(sel&&r===0)path([[xx+2,yy+2],[xx+8,yy+2],[xx+2,yy+8]],'#f2f4ff');
+       if(plate)continue;
        const cx=xx+ww/2,cy=yy+rh/2,fg=sel?'#fff':r===1?'#13172c':'#d6d9ea';
-       if(r===0)mono(two(i+1),cx,cy+.4,13,fg,'center');
-       else if(r===1)letters(noteAt(i),cx,cy+.6,noteAt(i).length>2?19:25,fg,'SlinkPitch','center');
+       if(r===0)acidText(g,two(i+1),cx,cy,12,ww-8,fg);
+       else if(r===1)acidText(g,noteAt(i),cx,cy,23,ww-5,fg);
        else symbol(r,i,cx,cy,fg,sel);
        if(makeKeys)key(r+'-'+i,xx,yy,ww,rh,(r<=1?'Select step '+(i+1):speech[r]+' on step '+(i+1)),()=>hit(r,i));
      }yy+=rh;
@@ -166,30 +141,26 @@
    rect(u,yy,w/16-1.2,1.3,i===step?'#cabaff':'#7c8cc6');if(seq[2][i]&&i<15){
      const n=(semis[(i+1+rotation)%16]+5)/22;line(u+w/16-1,yy,x+(i+1)*w/16,y+2+(1-n)*(h-4),'#7689c0',.7);}
  }}
- function bedDraw(first=false){
+ function bedDraw(first=false,plate=false,selected=step){
    g=staticCtx;g.setTransform(2,0,0,2,0,0);
    rect(0,0,780,285,'#080812');
    const edge=gradient(0,0,780,90,shell);
    chamfer(6,5,173,92,'#10101b',edge,8);drawWordmark();
    line(12,48,173,48,'#7c7691',.8);line(12,50,173,50,'#292735',.75);
-   mono('SEED',13,64,10,'#abadc4');mono(seed.toString(16).toUpperCase().padStart(4,'0'),12,83,17,'#edeef7');seedCode(72,59,98,26);
+   mono('SEED',13,64,10,'#abadc4');if(!plate){mono(seed.toString(16).toUpperCase().padStart(4,'0'),12,83,17,'#edeef7');seedCode(72,59,98,26);}
    chamfer(185,5,334,92,'#05050d',edge,8);
    chamfer(525,5,188,92,stripe(525,5,188,92,purple),edge,8);
    drawStepGlass(g);
-   mono('STEP',534,16,10,'#d2d4ea');mono('/16',615,83,11,'#c1bfdc','right');
-   miniPitch(625,17,77,23);actionButton(622,55,81,29,playing?'Stop':'Play',true);
+   mono('STEP',534,16,10,'#d2d4ea');if(!plate)mono('/16',615,83,11,'#c1bfdc','right');
+   if(!plate)miniPitch(625,17,77,23);actionButton(622,55,81,29,playing?'Stop':'Play',true);
    actionButton(720,63,53,26,'Regen',false);
-   matrix(first);
-   chamfer(7,253,185,25,'#201730','#7b758e',4);mono('C / CHROMATIC',15,266,11,'#ddd6eb');
+   matrix(first,plate,selected);
+   chamfer(7,253,185,25,'#201730','#7b758e',4);if(!plate)mono('C / CHROMATIC',15,266,11,'#ddd6eb');
    for(let i=0;i<17;i++)line(129+i*3.1,271,136+i*3.1,260,'#77678c',.9);
-   chamfer(200,249,343,32,'#111025',edge,6);
-   // The slash is the edge of the storm window and the first rule of the score.
-   line(456.5,250,444.5,280,'#8798ce',.8);
-   line(459,250,447,280,'#533c87',.65);
-   for(let bank=0;bank<4;bank++)rect(460+bank*19,276,bank===Math.floor(step/4)?15:4,1,bank===Math.floor(step/4)?'#abbaff':'#525174');
-   miniPitch(461,252,75,21);
+   line(201,252,369,252,'#525b79',.7);line(201,278,369,278,'#4c4860',.7);
+   bracket(376,254,165,23,'#7380a1');if(!plate)miniPitch(382,256,154,16);
    line(552,265,771,265,'#454359',.8);
-   for(let i=0;i<16;i++){const x=558+13.6*i,hi=i===step;rect(x,hi?258:262,hi?6:(i%4===0?2:1),hi?14:(i%4===0?9:6),hi?'#8facff':i%4===0?'#cacbdd':'#938ca9');}
+   for(let i=0;i<16;i++){const x=558+13.6*i,hi=!plate&&i===step;rect(x,hi?258:262,hi?6:(i%4===0?2:1),hi?14:(i%4===0?9:6),hi?'#8facff':i%4===0?'#cacbdd':'#938ca9');}
    g=out;
  }
  function cameraLabel(){
@@ -245,7 +216,8 @@
    const pose=drawFace();
    const shine=.5+.5*Math.cos(time*.52);
    line(724,58,769,58,gradient(724,58,769,58,[[0,'#242235'],[.25+.45*shine,'#9baac9'],[1,'#332541']]),.8);
-   paintStorm(time);
+   paintStorm(time);const xx=382+((time*.065)%1)*151;
+   const sweep=gradient(xx-8,0,xx+8,0,[[0,'rgba(131,158,252,0)'],[.5,'rgba(157,180,255,.28)'],[1,'rgba(131,158,252,0)']]);rect(xx-8,256,16,18,sweep);
    panel.dataset.pose=String(pose);panel.dataset.shot=shotNames[cameraLabel()];needsPaint=false;
  }
  function schedule(){if(!frameId&&visible&&!document.hidden)frameId=requestAnimationFrame(frame);}
@@ -274,6 +246,11 @@
  document.addEventListener('visibilitychange',()=>{if(document.hidden)suspend();else{needsPaint=true;schedule();}});
  motionPref.addEventListener('change',()=>{options.motion=!motionPref.matches;lastTime=null;update();});
  fallback.addEventListener('loadeddata',()=>{needsPaint=true;schedule();});fallback.addEventListener('seeked',()=>{needsPaint=true;schedule();});
+ if(globalThis.captureThornPlates){
+   globalThis.captureThornPlates({bed,bedDraw,paintCounter,acidText,drawStorm:paintStorm,
+     drawButton:label=>actionButton(622,55,81,29,label,true),
+     drawPose:i=>{rect(717,0,61,58,"#080812");facePose=i;drawFace();}});
+ }
  syncUI();paint();schedule();root.dataset.ready='true';
  if(globalThis.Tweak){const tweak=new Tweak({container:panel,onChange:()=>{lastTime=null;update();}});
    tweak.addToggle(options,'motion',{label:'Panel motion'});tweak.addSlider(options,'speed',{label:'Camera speed',min:.5,max:1.5,step:.25,unit:'×'});}
