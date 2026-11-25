@@ -2,6 +2,7 @@
 #pragma once
 
 #include "params.h"
+#include "pattern_view.h"
 #include "ui/groups.h"
 #include "../../src/ui/silver_art.h"
 
@@ -12,14 +13,6 @@ namespace tbmpc
 // The pattern as the screen shows it, written by the audio thread when it changes and read by the screen's thread:
 // a sequence lock (the version is odd while it is being written, and a read that saw it change is read again), the
 // fields relaxed atomics so neither side ever reads a torn word.
-struct PatternView
-{
-    int32_t steps, current, seed, running;
-    uint32_t gates, slides, accents;  // a bit a step
-    int16_t pitch[32];                // each step's pitch CV, 1/128 semitone
-    bool operator== (const PatternView& o) const { return std::memcmp (this, &o, sizeof (*this)) == 0; }
-};
-static_assert (sizeof (PatternView) == 92, "no padding: compared and copied as bytes");
 
 class PatternState
 {

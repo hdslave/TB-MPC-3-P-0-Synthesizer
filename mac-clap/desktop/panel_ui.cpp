@@ -1,45 +1,92 @@
 #include "panel_ui.h"
-#include "../../src/ui/silver_art.h"
-
-#include <algorithm>
-#include <array>
+#include "../src/params.h"
 #include <chrono>
-#include <cmath>
 #include <cstdio>
-#include <cstring>
 
 namespace hdslave_desktop
 {
-
 namespace
 {
-
-std::string upper (const std::string& s)
+namespace id = tbmpc::ParamId;
+constexpr uint32_t ground = 0xff090810, glass = 0xff0d0c16, lineInk = 0xff423c54;
+constexpr uint32_t light = 0xfff0edf9, muted = 0xffb2adc4, quiet = 0xff858298, cobalt = 0xff6688ff,
+                   lilac = 0xffac99f1;
+struct Field
 {
-    std::string out = s;
-    for (char& ch : out)
-        if (ch >= 'a' && ch <= 'z') ch = char (ch - 'a' + 'A');
-    return out;
+    clap_id id;
+    const char *name;
+};
+constexpr Field voice[] = {{id::cutoff, "Cutoff"},
+                           {id::resonance, "Resonance"},
+                           {id::envMod, "Env mod"},
+                           {id::decay, "Decay"},
+                           {id::accent, "Accent"},
+                           {id::waveform, "Waveform"},
+                           {id::tuning, "Tuning"},
+                           {id::volume, "Volume"},
+                           {id::cutoffLfoAmount, "Cutoff LFO"},
+                           {id::cutoffLfoSpeed, "LFO speed"}};
+constexpr Field tone[] = {{id::filter, "Filter"},
+                          {id::peakSpread, "Peak spread"},
+                          {id::drive, "Drive"},
+                          {id::glide, "Slide"},
+                          {id::slideTime, "Slide time"},
+                          {id::accentDecay, "Accent decay"},
+                          {id::pitchLfoAmount, "Pitch LFO"},
+                          {id::pitchLfoSpeed, "LFO speed"}};
+constexpr Field sequence[] = {{id::mode, "Mode"},        {id::seedMode, "Seed mode"}, {id::seedBack, "Seed back"},
+                              {id::mutate, "Mutate"},    {id::density, "Density"},    {id::scale, "Scale"},
+                              {id::root, "Root"},        {id::octave, "Octave"},      {id::steps, "Steps"},
+                              {id::gate, "Gate length"}, {id::transpose, "Transpose"}};
+constexpr Field clockFields[] = {{id::clockDiv, "Division"}, {id::swing, "Swing"}, {id::reset, "Reset"}};
+struct ControlGroup
+{
+    const char *name;
+    const Field *fields;
+    int count;
+};
+constexpr ControlGroup groups[] = {
+    {"Voice", voice, 10}, {"Tone", tone, 8}, {"Sequencer", sequence, 11}, {"Clock", clockFields, 3}};
+std::string upper (std::string s)
+{
+    for (auto &c : s)
+        if (c >= 'a' && c <= 'z') c -= 32;
+    return s;
+}
+std::string number (const char *fmt, int n)
+{
+    char buf[24];
+    std::snprintf (buf, sizeof (buf), fmt, n);
+    return buf;
+}
+std::string noteName (int pitch)
+{
+    const int midi = tbmpc::noteAtZeroVolts + int (std::lround (pitch / 128.0));
+    return std::string (tbmpc::rootChoices[(midi % 12 + 12) % 12]) +
+           std::to_string (int (std::floor (midi / 12.0)) - 1);
+}
+void plate (Canvas &c, Rect r, uint32_t fill = glass)
+{
+    c.fillChamfer (r, 6, lineInk);
+    c.fillChamfer (r.inset (1), 5, fill);
+}
+void button (Canvas &c, Rect r, std::string_view name, bool active = false)
+{
+    if (r.empty ()) return;
+    c.fillChamfer (r, 3, active ? 0xff6579c2 : lineInk);
+    c.fillChamfer (r.inset (1), 2, active ? 0xff303f81 : 0xff1b1729);
+    lettering (c, r.inset (3), name, 15, active ? light : muted, Face::regular, 1);
+}
 }
 
-void drawButtonBox (Canvas& c, const Rect& r, const std::string& label, const PluginTheme& th,
-                    bool active, bool hot)
+PanelUI::PanelUI (DesktopPlugin *p) : p_ (p), displayed_ (p->params.size (), 0)
 {
-    const uint32_t bg = active ? th.accent : (hot ? mix (th.panel, th.accent, 0.22f) : th.panel);
-    const uint32_t border = active ? 0xFFFFFFFFu : (hot ? th.accent : th.border);
-    const uint32_t fg = active ? 0xFF06080Cu : (hot ? 0xFFFFFFFFu : th.text);
-    c.fillChamfer (r, 3, bg);
-    c.frameChamfer (r, 3, border);
-    c.textAligned (r, label, fg, 1, 1);
+    setSize (w_, h_, 1);
 }
-
-} // namespace
-
-PanelUI::PanelUI (DesktopPlugin* plugin)
-    : p_ (plugin)
+PanelUI::~PanelUI ()
 {
-    if (!p_->params.empty())
-        lastTouched_ = 0;
+    finishDrag ();
+    endWheelGesture ();
 }
 
 void PanelUI::setSize (int w, int h, int scale)
@@ -47,404 +94,553 @@ void PanelUI::setSize (int w, int h, int scale)
     w = std::clamp (w, int (kMinGuiWidth), int (kMaxGuiWidth));
     h = std::clamp (h, int (kMinGuiHeight), int (kMaxGuiHeight));
     scale = std::clamp (scale, 1, 4);
-    if (w == w_ && h == h_ && scale == scale_ && !frame_.empty())
-        return;
+    if (w == w_ && h == h_ && scale == scale_ && !frame_.empty ()) return;
     w_ = w;
     h_ = h;
     scale_ = scale;
-    physW_ = w_ * scale_;
-    physH_ = h_ * scale_;
-    frame_.assign (size_t (physW_) * size_t (physH_), p_->theme.bgBottom | 0xFF000000u);
-    c_.begin (frame_.data(), physW_, physH_, scale_);
-    layoutDirty_ = true;
-    fullDirty_ = true;
+    frame_.resize (size_t (physWidth ()) * physHeight ());
+    c_.begin (frame_.data (), physWidth (), physHeight (), scale_);
+    closePopup ();
+    layout ();
+    dirty_ = true;
 }
 
-void PanelUI::layout()
+void PanelUI::layout ()
 {
-    layoutDirty_ = false;
-    top_ = { 8, 6, w_ - 16, 42 };
-
-    // Top bar items
-    int x = top_.x + 236;
-    const int presetWidth = std::clamp (w_ - 850, 128, 236);
-    const int by = top_.y + 7, bh = 28;
-    items_[(size_t) Item::PresetPrev] = { x, by, 26, bh }; x += 28;
-    items_[(size_t) Item::PresetBox]  = { x, by, presetWidth, bh }; x += presetWidth + 2;
-    items_[(size_t) Item::PresetNext] = { x, by, 26, bh }; x += 34;
-
-    items_[(size_t) Item::Zoom]    = { x, by, 102, bh }; x += 108;
-    items_[(size_t) Item::Shift]   = { x, by, 62, bh };  x += 68;
-    items_[(size_t) Item::Learn]   = { x, by, 86, bh };  x += 90;
-    items_[(size_t) Item::ClearCc] = { x, by, 68, bh };  x += 76;
-
-    const int readoutW = (top_.x + top_.w - 8) - x;
-    items_[(size_t) Item::Readout] = { x, top_.y + 5, readoutW, 32 };
-
-    gridArea_ = { 8, 54, w_ - 16, h_ - 62 };
-
-    const uint32_t count = std::max<uint32_t> (1, p_->tileCount);
-    const int cols = std::max (1, p_->tileCols);
-    const int rows = std::max (1, p_->tileRows);
-
-    tiles_.resize (count);
-    for (uint32_t t = 0; t < count; ++t)
+    const int m = std::clamp (w_ / 78, 12, 28), gap = 8, width = w_ - 2 * m;
+    const int top = m, toolH = 28;
+    int x = m;
+    auto tool = [&] (Item item, int size) {
+        items_[size_t (item)] = {x, top, size, toolH};
+        x += size + 4;
+    };
+    tool (Item::PresetPrev, 28);
+    tool (Item::PresetBox, std::clamp (width / 5, 165, 280));
+    tool (Item::PresetNext, 28);
+    const int readX = x + 12;
+    x = w_ - m - (59 + 4 + 91 + 4 + 76 + 4 + 93);
+    status_ = {readX, top, x - readX - 12, toolH};
+    tool (Item::Fine, 59);
+    tool (Item::Learn, 91);
+    tool (Item::ClearCc, 76);
+    tool (Item::Motion, 93);
+    const int hy = top + toolH + 10, hh = std::clamp (h_ * 21 / 100, 95, 205);
+    const int scoreY = hy + hh + 32, scoreH = std::clamp (h_ * 23 / 100, 112, 285);
+    scoreBox_ = {m, scoreY, width, scoreH};
+    const int crownX = column (4).x, rightX = column (12).x;
+    brand_ = {m, hy, crownX - m - gap, hh};
+    crown_ = {crownX, hy, rightX - crownX - gap, hh};
+    counter_ = {rightX, hy, w_ - m - rightX, hh};
+    const int faceW = std::clamp (counter_.w / 3, 68, 130);
+    regen_ = {w_ - m - faceW - 4, hy + 3, faceW, hh - 6};
+    const int readoutY = hy + hh * 59 / 100, readoutH = hy + hh - readoutY - 3;
+    const int seedW = brand_.w * 33 / 100, keyW = brand_.w * 17 / 100;
+    seed_ = {brand_.x + 10, readoutY, seedW - 12, readoutH};
+    root_ = {brand_.x + seedW + 4, readoutY, keyW - 4, readoutH};
+    scaleBox_ = {root_.x + root_.w + 4, readoutY, brand_.x + brand_.w - 14 - root_.x - root_.w, readoutH};
+    for (int k = 0; k < 3; ++k)
+        banks_[k] = {w_ - m - (3 - k) * 66, scoreY - 30, 62, 24};
+    rail_ = {m, scoreY + scoreH + 5, width, std::clamp (h_ / 22, 24, 52)};
+    const int dy = rail_.y + rail_.h + 8;
+    deck_ = {m, dy, width, h_ - m - dy};
+    const int voiceW = (width - 2 * gap) * 30 / 100, toneW = (width - 2 * gap) * 28 / 100;
+    const int seqX = m + voiceW + toneW + 2 * gap, seqW = m + width - seqX;
+    const int heading = std::clamp (deck_.h / 10, 19, 28), rowsY = dy + heading + 3;
+    const int rowsH = h_ - m - rowsY, rowH = (rowsH + 3) / 5;
+    const int clockY = rowsY + 3 * rowH;
+    groupTitles_[0] = {m, dy, voiceW, heading};
+    groupTitles_[1] = {m + voiceW + gap, dy, toneW, heading};
+    groupTitles_[2] = {seqX, dy, seqW, heading};
+    groupTitles_[3] = {seqX, clockY + 2, seqW, heading};
+    filter_ = {groupTitles_[1].x, rowsY + 4 * rowH, toneW, h_ - m - (rowsY + 4 * rowH)};
+    controls_.clear ();
+    for (int group = 0; group < 4; ++group)
     {
-        tiles_[t].index = t;
-        if (p_->innerTiles && p_->innerTiles->title)
-            tiles_[t].title = p_->innerTiles->title (p_->inner, t);
-        else
-            tiles_[t].title = p_->pluginName;
-    }
-
-    if (zoomedTile_ >= 0 && zoomedTile_ < (int) count)
-    {
-        // Tab bar at the top of gridArea_ for instant tile switching while zoomed
-        const int tabH = 24;
-        const int tabGap = 4;
-        const int tabW = std::max (60, (gridArea_.w - (int (count) - 1) * tabGap) / int (count));
-        for (uint32_t t = 0; t < count; ++t)
+        const auto &pg = groups[group];
+        const auto title = groupTitles_[group];
+        const int cols = group < 2 ? 2 : group == 2 ? 4 : 3;
+        for (int i = 0; i < pg.count; ++i)
         {
-            tiles_[t].tabRect = { gridArea_.x + int (t) * (tabW + tabGap), gridArea_.y, tabW, tabH };
-            tiles_[t].cardRect = {};
-            tiles_[t].headerRect = {};
-            tiles_[t].zoomBtnRect = {};
-            tiles_[t].screenRect = {};
+            const int col = i % cols, row = i / cols;
+            const int rowCols = std::min (cols, pg.count - row * cols);
+            const int x0 = title.x + col * (title.w + 3) / rowCols,
+                      x1 = title.x + (col + 1) * (title.w + 3) / rowCols - 3;
+            const int y0 = title.y + heading + 3 + row * rowH;
+            const int y1 = group == 3 || (group == 0 && row == 4) ? h_ - m : y0 + rowH - 3;
+            controls_.push_back (
+                {{x0, y0, x1 - x0, y1 - y0}, p_->findParamIndex (pg.fields[i].id), pg.fields[i].name});
         }
-
-        const Rect card { gridArea_.x, gridArea_.y + tabH + 6, gridArea_.w, gridArea_.h - tabH - 6 };
-        auto& zt = tiles_[(size_t) zoomedTile_];
-        zt.cardRect = card;
-        zt.headerRect = { card.x + 2, card.y + 2, card.w - 4, 22 };
-        zt.zoomBtnRect = { card.x + card.w - 82, card.y + 4, 76, 18 };
-
-        const int scrH = std::max (120, p_->tileScreenH);
-        const Rect body { card.x + 6, card.y + 26, card.w - 12, card.h - 32 };
-        int sw = body.w;
-        int sh = sw * scrH / MELODEE_SCREEN_WIDTH;
-        if (sh > body.h)
-        {
-            sh = body.h;
-            sw = sh * MELODEE_SCREEN_WIDTH / scrH;
-        }
-        zt.screenRect = { body.x + (body.w - sw) / 2, body.y + (body.h - sh) / 2, sw, sh };
-        return;
     }
+}
 
-    // All-Screens Grid View: size each card tightly around its 320x(tileScreenH) MPC screen
-    const int scrH = std::max (120, p_->tileScreenH);
-    const int gapX = 8, gapY = 8;
-    const int maxCellW = (gridArea_.w - (cols - 1) * gapX) / cols;
-    const int maxCellH = (gridArea_.h - (rows - 1) * gapY) / rows;
-    int sw = std::max (64, maxCellW - 8);
-    int sh = sw * scrH / MELODEE_SCREEN_WIDTH;
-    if (sh > std::max (44, maxCellH - 8))
-    {
-        sh = std::max (44, maxCellH - 8);
-        sw = sh * MELODEE_SCREEN_WIDTH / scrH;
-    }
-    const int cellW = sw + 8;
-    const int cellH = sh + 8;
-    const int gridTotalH = rows * cellH + (rows - 1) * gapY;
-    const int offsetY = (gridArea_.h - gridTotalH) / 2;
+Rect PanelUI::column (int i) const
+{
+    const int label = std::clamp (scoreBox_.w / 16, 58, 100);
+    const int x = scoreBox_.x + label, width = scoreBox_.w - label;
+    const int left = x + i * width / 16 + (i % 4 == 0 ? 4 : 1);
+    return {left, scoreBox_.y, x + (i + 1) * width / 16 - left - 1, scoreBox_.h};
+}
 
-    for (uint32_t t = 0; t < count; ++t)
-    {
-        const int r = int (t) / cols;
-        const int c = int (t) % cols;
-        // Count how many tiles are on this row so partial last rows (e.g. 7 tiles in 4x2) center cleanly
-        const int rowStart = r * cols;
-        const int tilesInRow = std::min (cols, int (count) - rowStart);
-        const int rowTotalW = tilesInRow * cellW + (tilesInRow - 1) * gapX;
-        const int rowOffsetX = (gridArea_.w - rowTotalW) / 2;
-
-        const Rect card {
-            gridArea_.x + rowOffsetX + c * (cellW + gapX),
-            gridArea_.y + offsetY + r * (cellH + gapY),
-            cellW,
-            cellH
-        };
-        auto& tv = tiles_[t];
-        tv.tabRect = {};
-        tv.cardRect = card;
-        tv.screenRect = { card.x + 4, card.y + 4, sw, sh };
-        tv.headerRect = { tv.screenRect.x, tv.screenRect.y, sw, sh * 18 / scrH };
-        const int zoomH = std::min (18, tv.headerRect.h);
-        tv.zoomBtnRect = { tv.screenRect.x + sw - 54, tv.screenRect.y, 52, zoomH };
-    }
+int PanelUI::hitStep (int x, int y) const
+{
+    for (int i = 0; i < 16; ++i)
+        if (column (i).contains (x, y) && bank_ * 16 + i < score_.steps) return bank_ * 16 + i;
+    return -1;
+}
+int PanelUI::hitParam (int x, int y) const
+{
+    if (seed_.contains (x, y)) return p_->findParamIndex (id::seed);
+    if (root_.contains (x, y)) return p_->findParamIndex (id::root);
+    if (scaleBox_.contains (x, y)) return p_->findParamIndex (id::scale);
+    if (regen_.contains (x, y)) return p_->findParamIndex (id::regen);
+    if (filter_.contains (x, y)) return p_->findParamIndex (id::cutoff);
+    for (const auto &ctl : controls_)
+        if (ctl.rect.contains (x, y)) return ctl.param;
+    return -1;
 }
 
 Rect PanelUI::update (uint64_t now)
 {
-    now_ = now;
-    if (wheelParam_ >= 0 && now_ - wheelAt_ > 240)
-        endWheelGesture();
-
-    if (layoutDirty_)
-        layout();
-
-    // Paint the visible pages before composing the desktop controls.
-    const auto t0 = std::chrono::steady_clock::now();
-    p_->paintTiles (now_, zoomedTile_);
-    renderAll();
-    const auto t1 = std::chrono::steady_clock::now();
-    lastRenderMs_ = std::chrono::duration<double, std::milli> (t1 - t0).count();
-
-    fullDirty_ = false;
-    return { 0, 0, w_, h_ };
-}
-
-void PanelUI::renderAll()
-{
-    const auto& th = p_->theme;
-    c_.resetClip();
-    c_.gradient ({ 0, 0, w_, h_ }, th.bgTop, th.bgBottom);
-
-    drawHeaderBar();
-
-    if (zoomedTile_ >= 0 && zoomedTile_ < (int) tiles_.size())
+    if (wheelParam_ >= 0 && now >= wheelAt_ + 240) endWheelGesture ();
+    const auto next = p_->patternReader->read (p_->inner);
+    const bool playing = p_->transportPlaying.load (std::memory_order_relaxed);
+    const bool stepChanged = next.current != score_.current || next.seed != score_.seed;
+    if (stepChanged && next.running) pulseAt_ = now;
+    const bool scoreChanged = !(next == score_) || playing != playing_;
+    if (score_.steps && next.seed != score_.seed)
     {
-        // Draw tile switcher tabs across the top
-        for (size_t t = 0; t < tiles_.size(); ++t)
-        {
-            const bool active = ((int) t == zoomedTile_);
-            const bool hot = ((int) t == hoverTabTile_);
-            drawButtonBox (c_, tiles_[t].tabRect, tiles_[t].title, th, active, hot);
-        }
-        drawTile (zoomedTile_);
+        previousScore_ = score_;
+        rewriteAt_ = now;
     }
+    score_ = next;
+    playing_ = playing;
+    if (score_.steps <= 16)
+        bank_ = 0;
+    else if (follow_ && score_.current >= 0)
+        bank_ = std::clamp (score_.current / 16, 0, 1);
+    if (inspected_ >= score_.steps) inspected_ = -1;
+    for (size_t i = 0; i < displayed_.size (); ++i)
+    {
+        const auto v = p_->displayValue (int (i));
+        dirty_ |= displayed_[i] != v;
+        displayed_[i] = v;
+    }
+    const float target = float (playing_ && score_.running ? score_.current - 16 * bank_
+                                : inspected_ >= 0          ? inspected_ - 16 * bank_
+                                                           : -1);
+    const uint64_t delta = updated_ && now >= updated_ ? now - updated_ : 0;
+    if (!motion_ || lensSlot_ < 0 || target < 0 || std::abs (target - lensSlot_) > 4)
+        lensSlot_ = target;
+    else
+        lensSlot_ += (target - lensSlot_) * float (1 - std::exp (-double (delta) / 30.));
+    if (motion_ && updated_ && now >= updated_) elapsed_ += std::min<uint64_t> (now - updated_, 150);
+    updated_ = now;
+    const auto start = std::chrono::steady_clock::now ();
+    const int oldCamera = art_.camera.index, oldShaft = art_.shaft.index;
+    art_.animate (elapsed_);
+    const bool external = p_->screenRequested.exchange (false, std::memory_order_acq_rel);
+    if (!dirty_ && !external && !scoreChanged && oldCamera == art_.camera.index && oldShaft == art_.shaft.index)
+        return {};
+    // Keep the control section in the backing bitmap while the crest and playhead advance.
+    const bool full = dirty_;
+    const bool refreshScore = full || scoreChanged || external;
+    const Rect damage = {0, 0, w_, full ? h_ : deck_.y};
+    c_.resetClip ();
+    c_.fill ({0, 0, w_, refreshScore ? damage.h : crown_.y + crown_.h}, ground);
+    drawHeader ();
+    if (refreshScore)
+        drawScore ();
     else
     {
-        for (size_t t = 0; t < tiles_.size(); ++t)
-            drawTile ((int) t);
+        c_.fill (rail_, ground);
+        drawCode ();
     }
-
-    if (popup_ != PopupKind::None)
-        drawPopup();
+    if (full) drawDeck ();
+    if (popup_ != PopupKind::None) drawPopup ();
+    dirty_ = false;
+    renderMs_ = std::chrono::duration<double, std::milli> (std::chrono::steady_clock::now () - start).count ();
+    return damage;
 }
 
-void PanelUI::drawHeaderBar()
+void PanelUI::drawHeader ()
 {
-    const auto& th = p_->theme;
-    c_.fillChamfer (top_, 5, th.headerTop);
-    c_.frameChamfer (top_, 5, th.border);
-
-    // Use the same baked blue-chrome wordmark as the instrument pages.
-    using namespace hdui::silver;
-    constexpr int plateW = int (std::size (plate[0])), plateH = int (std::size (plate));
-    static const auto nameplate = [] {
-        std::array<uint32_t, plateW * plateH> pixels {};
-        for (int y = 0; y < plateH; ++y)
-            for (int x = 0; x < plateW; ++x)
-                pixels[y * plateW + x] = palette[plate[y][x]];
-        return pixels;
-    }();
-    c_.blitSharp (nameplate.data(), plateW, plateH, { top_.x + 5, top_.y + 1, plateW, plateH });
-    c_.text (top_.x + 10, top_.y + 31, "hdslave  /  v" + p_->pluginVersion, th.muted);
-
-    // Preset selector
-    drawButtonBox (c_, items_[(size_t) Item::PresetPrev], "<", th, false, hoverItem_ == Item::PresetPrev);
-    std::string presetLabel = "INIT PATCH";
-    if (!p_->presets.empty())
+    auto label = [&] (Item i, std::string_view name, bool active = false) {
+        button (c_, items_[size_t (i)], name, active);
+    };
+    label (Item::PresetPrev, "<");
+    label (Item::PresetNext, ">");
+    const int pi = p_->currentPresetIndex;
+    label (Item::PresetBox, pi >= 0 && pi < int (p_->presets.size ()) ? "Factory   /   " + p_->presets[pi].name
+                                                                      : "Factory presets");
+    label (Item::Fine, "Fine", fine_);
+    label (Item::Motion, motion_ ? "Motion on" : "Motion off", motion_);
+    const bool learn = p_->midiLearnTarget.load (std::memory_order_relaxed) != CLAP_INVALID_ID;
+    label (Item::Learn, learn ? "Learning..." : "MIDI learn", learn);
+    label (Item::ClearCc, "Clear CC");
+    const int active = dragParam_ >= 0 ? dragParam_ : hover_ >= 0 ? hover_ : lastTouched_;
+    std::string status;
+    if (learn)
+        status = p_->midiLearnTarget.load () == DesktopPlugin::kLearnArmedNoParam ? "Choose a control to learn"
+                                                                                  : "Move a MIDI controller";
+    else if (active >= 0)
     {
-        const int idx = std::clamp (p_->currentPresetIndex, 0, int (p_->presets.size()) - 1);
-        char num[16];
-        std::snprintf (num, sizeof (num), "%02d/%02d ",
-                       p_->currentPresetIndex >= 0 ? idx + 1 : 0,
-                       int (p_->presets.size()));
-        presetLabel = std::string (num) + (p_->currentPresetIndex >= 0 ? p_->presets[(size_t) idx].name : "DEFAULT");
+        status = p_->params[active].name + "   /   " + valueText (active);
+        const int cc = p_->findCcForParam (p_->params[active].id);
+        if (cc >= 0) status += "   /   CC " + std::to_string (cc);
     }
-    drawButtonBox (c_, items_[(size_t) Item::PresetBox], presetLabel, th,
-                   popup_ == PopupKind::Presets, hoverItem_ == Item::PresetBox);
-    drawButtonBox (c_, items_[(size_t) Item::PresetNext], ">", th, false, hoverItem_ == Item::PresetNext);
+    lettering (c_, status_, status, 15, muted);
 
-    // View / Shift / MIDI CC controls
-    drawButtonBox (c_, items_[(size_t) Item::Zoom],
-                   zoomedTile_ >= 0 ? "ALL SCREENS" : "ZOOM SCREEN",
-                   th, zoomedTile_ >= 0, hoverItem_ == Item::Zoom);
-
-    drawButtonBox (c_, items_[(size_t) Item::Shift], "SHIFT",
-                   th, p_->screenShift, hoverItem_ == Item::Shift);
-
-    const uint32_t learnTgt = p_->midiLearnTarget.load (std::memory_order_relaxed);
-    const bool learning = (learnTgt != CLAP_INVALID_ID);
-    drawButtonBox (c_, items_[(size_t) Item::Learn],
-                   learning ? "LEARNING..." : "MIDI LEARN",
-                   th, learning, hoverItem_ == Item::Learn);
-
-    char ccText[24];
-    const int mappedCount = p_->countMappedCc();
-    if (mappedCount > 0) std::snprintf (ccText, sizeof (ccText), "CLR (%d)", mappedCount);
-    else std::snprintf (ccText, sizeof (ccText), "CLR CC");
-    drawButtonBox (c_, items_[(size_t) Item::ClearCc], ccText, th, false, hoverItem_ == Item::ClearCc);
-
-    // Readout box
-    const Rect& ro = items_[(size_t) Item::Readout];
-    c_.fillChamfer (ro, 3, 0xFF07090Eu);
-    c_.frameChamfer (ro, 3, learning ? th.accent : th.border);
-    bool learnLine = false;
-    const std::string line = readoutText (learnLine);
-    c_.textAligned (ro.inset (4), line, learnLine ? th.accent : th.text, 1, 0);
+    plate (c_, brand_);
+    plate (c_, crown_, 0xff030309);
+    plate (c_, counter_, 0xff1c152b);
+    const Rect mesh = counter_.inset (5);
+    for (int x = mesh.x + 11; x < mesh.x + mesh.w; x += 20)
+        c_.fill (x, mesh.y, 1, mesh.h, 0xff282137);
+    for (int y = mesh.y + 9; y < mesh.y + mesh.h; y += 20)
+        c_.hline (mesh.x, y, mesh.w, 0xff282137);
+    const int bh = seed_.y - brand_.y - 10;
+    art_.logo.fit (c_, {brand_.x + 12, brand_.y + 6, brand_.w - 24, bh});
+    c_.hline (seed_.x, seed_.y - 2, brand_.w - 20, lineInk);
+    const int seed = int (p_->displayValue (p_->findParamIndex (id::seed)));
+    const bool pending = score_.steps > 0 && score_.seed != seed;
+    auto readout = [&] (Rect r, const char *name, const std::string &value, int pt) {
+        lettering (c_, {r.x + 3, r.y + 1, r.w - 4, r.h / 3}, name, 14, muted);
+        lettering (c_, {r.x + 3, r.y + r.h / 3, r.w - 5, r.h * 2 / 3}, value, pt, light);
+    };
+    readout (seed_, pending ? "NEXT SEED" : "SEED", number ("%04X", seed), 32);
+    readout (root_, "KEY", valueText (p_->findParamIndex (id::root)), 28);
+    readout (scaleBox_, "SCALE", valueText (p_->findParamIndex (id::scale)), 22);
+    c_.fill (root_.x - 4, root_.y + 5, 1, root_.h - 11, lineInk);
+    art_.camera.fit (c_, crown_.inset (3));
+    const int shot = int (elapsed_ % 20000);
+    const char *view = shot < 3200 || shot >= 18500 ? "WIDE"
+                       : shot < 8800                ? "LEFT WING"
+                       : shot < 13000               ? "CORE"
+                                                    : "RIGHT WING";
+    lettering (c_, {crown_.x + 10, crown_.y + crown_.h - 19, 90, 15}, view, 13, muted);
+    c_.hline (crown_.x + 9, crown_.y + 8, 10, quiet);
+    c_.fill (crown_.x + 9, crown_.y + 8, 1, 8, quiet);
+    c_.hline (crown_.x + crown_.w - 21, crown_.y + crown_.h - 9, 11, quiet);
+    Rect r = counter_.inset (10);
+    r.w = regen_.x - r.x - 5;
+    art_.shaft.fit (c_, {r.x + r.w / 3, r.y, r.w * 2 / 3 - 4, 21});
+    lettering (c_, {r.x, r.y, r.w, 20}, "STEP", 16, muted);
+    const int n = score_.steps ? score_.steps : int (p_->displayValue (p_->findParamIndex (id::steps)));
+    const bool live = playing_ && score_.running;
+    const std::string step = score_.steps && score_.current >= 0 ? number ("%02d", score_.current + 1) : "--";
+    lettering (c_, {r.x, r.y + 18, r.w * 6 / 10, r.h - 38}, step, std::min (96, r.h - 30), light, Face::italic);
+    lettering (c_, {r.x + r.w * 6 / 10, r.y + 24, r.w * 4 / 10, r.h - 44}, "/ " + std::to_string (n), 26, muted);
+    c_.disc (r.x + 4, r.y + r.h - 8, 3, live ? cobalt : quiet);
+    const int statusWidth = r.w >= 160 ? r.w * 2 / 3 - 18 : r.w - 14;
+    lettering (c_, {r.x + 13, r.y + r.h - 21, statusWidth, 20},
+               live       ? "Host playing"
+               : playing_ ? "Notes mode"
+                          : "Host stopped",
+               15, muted);
+    if (r.w >= 160) trace ({r.x + r.w * 2 / 3, r.y + r.h - 19, r.w / 3 - 3, 15}, 0xffa8a2d8);
+    int pose = 0;
+    if (motion_ && live && updated_ >= pulseAt_ && updated_ - pulseAt_ < 250)
+        pose = std::min (5, int ((updated_ - pulseAt_) / 45));
+    else if (motion_ && elapsed_ % 5100 > 4800)
+        pose = std::min (5, int (elapsed_ % 5100 - 4800) / 50);
+    art_.face.fit (c_, {regen_.x + 6, regen_.y + 5, regen_.w - 12, regen_.h - 41}, pose, 6);
+    button (c_, {regen_.x + 6, regen_.y + regen_.h - 32, regen_.w - 12, 25}, "Regen",
+            hover_ == p_->findParamIndex (id::regen));
 }
 
-void PanelUI::drawTile (int tileIdx)
+void PanelUI::trace (Rect r, uint32_t ink)
 {
-    if (tileIdx < 0 || tileIdx >= (int) tiles_.size()) return;
-    const auto& tv = tiles_[(size_t) tileIdx];
-    if (tv.cardRect.empty()) return;
-
-    const auto& th = p_->theme;
-    const bool isFocused = (focusedTile_ == tileIdx);
-    const bool isHovered = (hoverTile_ == tileIdx);
-
-    // Tile hardware bezel card
-    c_.fillChamfer (tv.cardRect, 4, th.panel);
-    c_.frameChamfer (tv.cardRect, 4, isFocused ? th.accent : (isHovered ? mix (th.border, th.accent, 0.45f) : th.border));
-
-    // Recessed screen bezel + sharp scaled 320x218 MPC screen blit
-    const Rect bezel = tv.screenRect.inset (-2);
-    c_.fill (bezel, 0xFF040608u);
-    c_.frame (bezel, isFocused ? mix (th.border, th.accent, 0.5f) : th.border);
-
-    const uint32_t* srcPx = nullptr;
-    if (tileIdx < (int) p_->tilePixels.size() && p_->tilePixels[(size_t) tileIdx].size() == size_t (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT))
-        srcPx = p_->tilePixels[(size_t) tileIdx].data();
-    else if (p_->screenPixels.size() == size_t (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT))
-        srcPx = p_->screenPixels.data();
-
-    if (srcPx)
-        c_.blitSharp (srcPx, MELODEE_SCREEN_WIDTH, std::max (120, p_->tileScreenH), tv.screenRect);
-
-    if (zoomedTile_ >= 0)
+    if (r.empty () || score_.steps < 1) return;
+    const int n = std::clamp (score_.steps, 1, 32);
+    const auto range = std::minmax_element (score_.pitch, score_.pitch + n);
+    const int span = std::max (384, int (*range.second) - int (*range.first));
+    int previousY = 0;
+    for (int i = 0; i < n; ++i)
     {
-        c_.fill (tv.headerRect, th.headerTop);
-        c_.text (tv.headerRect.x + 8, tv.headerRect.y + 5, tv.title, th.text);
+        const int x = r.x + i * r.w / n, nextX = r.x + (i + 1) * r.w / n;
+        const int y = r.y + r.h - 2 - (score_.pitch[i] - *range.first) * (r.h - 4) / span;
+        if (i) c_.fill (x, std::min (previousY, y), 1, std::abs (previousY - y) + 1, lineInk);
+        const bool live = playing_ && score_.running && score_.current == i;
+        c_.fill (x, y, std::max (1, nextX - x - 1), live ? 3 : 2, live ? light : ink);
+        previousY = y;
     }
-    drawButtonBox (c_, tv.zoomBtnRect, zoomedTile_ >= 0 ? "GRID" : "ZOOM",
-                   th, zoomedTile_ >= 0, hoverZoomBtnTile_ == tileIdx);
+}
 
-    // Interactive hotspot highlight overlay (hover or active drag)
-    const bool draggingHere = (drag_ != Drag::None && dragTile_ == tileIdx && dragSpot_.kind != HDSLAVE_HOTSPOT_NONE);
-    const bool hoveringHere = (drag_ == Drag::None && hoverTile_ == tileIdx && hoverSpot_.kind != HDSLAVE_HOTSPOT_NONE);
-
-    if (draggingHere || hoveringHere)
+void PanelUI::drawScore ()
+{
+    const Rect r = scoreBox_;
+    const int n = std::clamp (score_.steps, 0, 32);
+    lettering (c_, {r.x, r.y - 35, 128, 30}, "Pattern", 26, light, Face::italic);
+    std::string subtitle;
+    if (!n)
+        subtitle = "Awaiting host clock";
+    else if (inspected_ >= 0)
     {
-        const hdslave_tile_hotspot_t& sp = draggingHere ? dragSpot_ : hoverSpot_;
-        const Rect hr = spotToLogicalRect (tileIdx, sp);
-        if (!hr.empty())
+        const uint32_t mask = uint32_t (1) << inspected_;
+        subtitle = "Step " + number ("%02d", inspected_ + 1) + "   /   " + noteName (score_.pitch[inspected_]);
+        subtitle += score_.gates & mask ? "   Gate" : "   Rest";
+        if (score_.accents & mask) subtitle += "   Accent";
+        if (score_.slides & mask) subtitle += "   Slide";
+    }
+    else if (score_.seed != int (p_->displayValue (p_->findParamIndex (id::seed))))
+        subtitle = "Playing seed " + number ("%04X", score_.seed);
+    lettering (c_, {r.x + 104, r.y - 31, r.w / 2, 24}, subtitle, 15, muted);
+    if (n > 16)
+    {
+        button (c_, banks_[0], "01 - 16", bank_ == 0);
+        button (c_, banks_[1], "17 - 32", bank_ == 1);
+        button (c_, banks_[2], "Follow", follow_);
+    }
+    const int pct[] = {0, 17, 48, 66, 83, 100};
+    const char *lanes[] = {"STEP", "NOTE", "GATE", "ACC", "SLD"};
+    for (int j = 0; j < 5; ++j)
+    {
+        const int y = r.y + r.h * pct[j] / 100, height = r.h * pct[j + 1] / 100 - (y - r.y) - 2;
+        const Rect title{r.x, y, column (0).x - r.x - 5, height};
+        const bool note = j == 1;
+        c_.gradient (title, note ? 0xffdaddeb : 0xff32283f, note ? 0xff8992b1 : 0xff1b1728);
+        lettering (c_, title.inset (4), lanes[j], std::min (height - 5, 19), note ? ground : light, Face::regular,
+                   1);
+        for (int k = 0; k < 16; ++k)
         {
-            const uint32_t col = draggingHere ? 0xFFFFFFFFu : th.accent;
-            c_.fill (hr, th.accent, draggingHere ? 38 : 22);
-            c_.frame (hr, col, draggingHere ? 245 : 190);
-
-            // Corner ticks for crisp visual feedback
-            const int tk = std::min (5, std::min (hr.w, hr.h) / 3);
-            if (tk >= 2)
+            const int step = 16 * bank_ + k;
+            Rect cell = column (k);
+            cell.y = y;
+            cell.h = height;
+            const bool exists = step < n, current = exists && playing_ && score_.running && step == score_.current;
+            const bool selected = exists && step == inspected_;
+            if (current)
+                c_.gradient (cell, note ? 0xff819eff : 0xff5e87f6, note ? 0xff476ce5 : 0xff293888);
+            else if (note)
+                c_.gradient (cell, exists ? 0xffe1e2f1 : 0xff4a4658, exists ? 0xff9099b7 : 0xff302b3b);
+            else
+                c_.gradient (cell, j == 0 ? 0xff30243f : 0xff292136, 0xff171423);
+            if (note && exists && !current)
             {
-                c_.fill (hr.x, hr.y, tk, 2, col);
-                c_.fill (hr.x, hr.y, 2, tk, col);
-                c_.fill (hr.x + hr.w - tk, hr.y, tk, 2, col);
-                c_.fill (hr.x + hr.w - 2, hr.y, 2, tk, col);
-                c_.fill (hr.x, hr.y + hr.h - 2, tk, 2, col);
-                c_.fill (hr.x, hr.y + hr.h - tk, 2, tk, col);
-                c_.fill (hr.x + hr.w - tk, hr.y + hr.h - 2, tk, 2, col);
-                c_.fill (hr.x + hr.w - 2, hr.y + hr.h - tk, 2, tk, col);
+                const int horizon = cell.h * 52 / 100;
+                c_.gradient ({cell.x, cell.y, cell.w, horizon}, 0xffeeeef9, 0xffc5c9df);
+                c_.gradient ({cell.x, cell.y + horizon, cell.w, cell.h - horizon}, 0xff9da3bd, 0xffb9bfd6);
+                c_.fill (cell.x, cell.y + 1, 1, cell.h - 2, 0xffe9ebf8);
             }
-
-            // Show MIDI CC badge if the hovered parameter is mapped to a CC
-            if (sp.param_id != CLAP_INVALID_ID)
+            c_.hline (cell.x, cell.y, cell.w, current ? 0xffa6bcff : note && exists ? 0xfff5f3ff : lineInk);
+            if (current && j == 0)
+                for (int i = 0; i < 6; ++i)
+                    c_.hline (cell.x + 2, cell.y + 2 + i, 6 - i, light);
+            if (selected) c_.hline (cell.x, cell.y, cell.w, lilac);
+            const int cx = cell.x + cell.w / 2, cy = cell.y + cell.h / 2;
+            const uint32_t ink = current ? 0xffffffff : light;
+            if (j == 0)
+                lettering (c_, cell, number ("%02d", step + 1), std::min (22, height - 2),
+                           exists || !n ? ink : quiet, Face::regular, 1);
+            else if (j == 1)
+                lettering (c_, cell.inset (2), exists ? noteName (score_.pitch[step]) : "-",
+                           std::min (39, height - 2),
+                           current  ? light
+                           : exists ? 0xff171928
+                                    : quiet,
+                           Face::italic, 1);
+            else if (exists)
             {
-                const int cc = p_->findCcForParam (sp.param_id);
-                if (cc >= 0)
+                const uint32_t mask = uint32_t (1) << step;
+                if (j == 2)
                 {
-                    char ccTag[16];
-                    std::snprintf (ccTag, sizeof (ccTag), "CC%d", cc);
-                    c_.tag (hr.x + 2, std::max (tv.screenRect.y, hr.y - 14), ccTag, th.accent, 0xFF05070Au, 2);
+                    const int sz = std::clamp (height / 3, 6, 13);
+                    Rect g{cx - sz / 2, cy - sz / 2, sz, sz};
+                    if (score_.gates & mask)
+                        c_.fill (g, ink);
+                    else
+                        c_.frame (g, quiet);
                 }
+                else if (j == 3 && (score_.accents & mask))
+                    for (int i = -5; i <= 5; ++i)
+                        c_.fill (cx - (5 - std::abs (i)), cy + i, 1 + 2 * (5 - std::abs (i)), 1, ink);
+                else if (j == 4 && (score_.slides & mask))
+                {
+                    c_.line (cx - 5, cy + 4, cx + 4, cy - 4, 2.f, ink);
+                    c_.fill (cx - 1, cy - 5, 7, 2, ink);
+                    c_.fill (cx + 4, cy - 5, 2, 6, ink);
+                }
+                else
+                    c_.fill (cx - 3, cy, 6, 1, quiet);
             }
         }
     }
+    drawCode ();
 }
 
-Rect PanelUI::spotToLogicalRect (int tileIdx, const hdslave_tile_hotspot_t& spot) const
+// One code group per step: gate width, pitch bits, slide and accent. The lens
+// bends the bars around the active step while their bases stay on the score grid.
+void PanelUI::drawCode ()
 {
-    if (tileIdx < 0 || tileIdx >= (int) tiles_.size() || spot.w <= 0 || spot.h <= 0)
-        return {};
-    const Rect& sr = tiles_[(size_t) tileIdx].screenRect;
-    if (sr.empty()) return {};
-    const int scrH = std::max (120, p_->tileScreenH);
-    const int x0 = sr.x + (spot.x * sr.w) / MELODEE_SCREEN_WIDTH;
-    const int y0 = sr.y + (spot.y * sr.h) / scrH;
-    const int x1 = sr.x + ((spot.x + spot.w) * sr.w) / MELODEE_SCREEN_WIDTH;
-    const int y1 = sr.y + ((spot.y + spot.h) * sr.h) / scrH;
-    return { x0, y0, std::max (4, x1 - x0), std::max (4, y1 - y0) };
-}
-
-int PanelUI::hitTileScreen (float x, float y, int& outMx, int& outMy) const
-{
-    const int ix = int (x), iy = int (y);
-    const int scrH = std::max (120, p_->tileScreenH);
-    for (size_t t = 0; t < tiles_.size(); ++t)
+    const Rect r = rail_;
+    const Rect label = {r.x, r.y, column (0).x - r.x - 5, r.h};
+    c_.gradient (label, 0xff32283f, 0xff1b1728);
+    lettering (c_, label.inset (3), "CODE", 17, light, Face::regular, 1);
+    const Rect first = column (0), last = column (15);
+    const float stride = float (last.x - first.x) / 15.f;
+    const bool lens = lensSlot_ >= 0 && lensSlot_ < 16;
+    const float focus = first.x + first.w * .5f + lensSlot_ * stride;
+    const float radius = stride * .78f;
+    auto bend = [&] (float x) {
+        const float d = x - focus, t = d / radius;
+        return int (std::lround (x + (lens ? .9f * d * std::exp (-t * t) : 0.f)));
+    };
+    const float rewrite = motion_ && rewriteAt_ && updated_ >= rewriteAt_
+                              ? std::min (1.f, float (updated_ - rewriteAt_) / 600.f)
+                              : 1.f;
+    for (int bank = 0; bank < 4; ++bank)
     {
-        if (zoomedTile_ >= 0 && (int) t != zoomedTile_)
-            continue;
-        const Rect& sr = tiles_[t].screenRect;
-        if (sr.contains (ix, iy) && sr.w > 0 && sr.h > 0)
+        const Rect left = column (bank * 4), right = column (bank * 4 + 3);
+        const Rect slot = {left.x, r.y, right.x + right.w - left.x, r.h};
+        c_.gradient (slot, 0xff0c0b16, 0xff171321);
+        c_.hline (slot.x, slot.y + slot.h - 1, slot.w, lineInk);
+        for (int i = bank * 4; i < bank * 4 + 4; ++i)
         {
-            outMx = std::clamp ((ix - sr.x) * MELODEE_SCREEN_WIDTH / sr.w, 0, MELODEE_SCREEN_WIDTH - 1);
-            outMy = std::clamp ((iy - sr.y) * scrH / sr.h, 0, scrH - 1);
-            return (int) t;
+            const int step = bank_ * 16 + i;
+            if (step >= score_.steps) continue;
+            const float turn = std::clamp (rewrite * 2.1f - i * .068f, 0.f, 1.f);
+            const auto &frame = turn < .5f && step < previousScore_.steps ? previousScore_ : score_;
+            const uint32_t mask = uint32_t (1) << step;
+            const bool gate = (frame.gates & mask) != 0;
+            const int pitch = std::clamp (int (std::lround (frame.pitch[step] / 128.f)) + 8, 0, 31);
+            const Rect cell = column (i);
+            auto bar = [&] (int pos, int w, uint32_t ink) {
+                const int x = std::clamp (bend (cell.x + pos * cell.w / 42.f), slot.x, slot.x + slot.w - 1);
+                const int end = std::clamp (bend (cell.x + (pos + w) * cell.w / 42.f), x + 1, slot.x + slot.w);
+                const float d = (x - focus) / radius;
+                const float glint = lens ? std::exp (-d * d * d * d) : 0.f;
+                const int h = int ((r.h - 8 + 4 * glint) * std::abs (2 * turn - 1));
+                if (h < 2) return;
+                const int y = r.y + (r.h - h) / 2;
+                const uint32_t metal = mix (ink, light, .72f * glint);
+                c_.gradient ({x, y, end - x, h / 2}, metal, mix (metal, ground, .25f));
+                c_.gradient ({x, y + h / 2, end - x, h - h / 2}, mix (metal, ground, .6f),
+                             mix (metal, ground, .28f));
+            };
+            const uint32_t ink = gate ? 0xffa4aedc : 0xff514c6f;
+            bar (2, gate ? 6 : 1, ink);
+            for (int bit = 0; bit < 5; ++bit)
+                bar (11 + 4 * bit, (pitch >> (4 - bit)) & 1 ? 3 : 1, ink);
+            if (frame.slides & mask) bar (32, 2, 0xff86bbfc);
+            if (frame.accents & mask) bar (35, 2, 0xffcfaaff);
         }
     }
-    return -1;
+    if (lens)
+    {
+        const int x = int (std::lround (focus));
+        Rect glass = {int (x - radius * .59f), r.y, int (radius * 1.18f), r.h};
+        glass = glass.intersect ({first.x, r.y, last.x + last.w - first.x, r.h});
+        c_.frame (glass, 0xff929bc4);
+        c_.fill (x, r.y + 1, 1, r.h - 2, 0xffd8e0fc);
+    }
 }
 
-Item PanelUI::hitItem (float x, float y) const
+void PanelUI::drawDeck ()
 {
-    const int ix = int (x), iy = int (y);
-    for (size_t i = 0; i < (size_t) Item::Count; ++i)
-        if (items_[i].contains (ix, iy))
-            return (Item) i;
-    return Item::Count;
-}
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto t = groupTitles_[i];
+        lettering (c_, {t.x + 2, t.y, t.w, t.h}, groups[i].name, std::min (23, t.h + 1), light, Face::italic);
+        const int ruleX = t.x + (i == 2 ? 91 : 52);
+        c_.hline (ruleX, t.y + t.h * 2 / 3, t.x + t.w - ruleX, lineInk);
+    }
+    for (const auto &ctl : controls_)
+    {
+        if (ctl.param < 0) continue;
+        const Rect r = ctl.rect;
+        const auto &pr = p_->params[size_t (ctl.param)];
+        const auto kind = tbmpc::paramTable[tbmpc::paramIndex (pr.id)].kind;
+        const bool hot = ctl.param == hover_ || ctl.param == dragParam_;
+        c_.fill (r, hot ? 0xff26223a : 0xff181521);
+        c_.hline (r.x, r.y, r.w, hot ? lilac : lineInk);
+        const int inset = std::clamp (r.w / 15, 7, 14);
+        const int d = std::clamp (std::min (r.h * 7 / 10, r.w / 4), 17, 52);
+        const int tx = r.x + inset, tw = r.w - 2 * inset - d - 5;
+        const int half = r.h / 2;
+        lettering (c_, {tx, r.y + 2, tw, half - 1}, ctl.label, std::min (16, half), muted);
+        lettering (c_, {tx, r.y + half - 1, tw, r.h - half - 1}, valueText (ctl.param), std::min (23, half + 3),
+                   light, Face::italic);
+        const int cx = r.x + r.w - inset - d / 2, cy = r.y + r.h / 2;
+        if (kind == tbmpc::Kind::button)
+        {
+            c_.frame ({cx - 7, cy - 7, 14, 14}, hot ? light : lilac);
+            c_.fill (cx - 3, cy - 3, 6, 6, lilac);
+            continue;
+        }
+        const float radius = d / 2.f;
+        art_.knob.fit (c_, {cx - d / 2, cy - d / 2, d, d});
+        const double angle = (.75 + 1.5 * norm (ctl.param)) * 3.141592653589793;
+        c_.line (cx + std::cos (angle) * radius * .32, cy + std::sin (angle) * radius * .32,
+                 cx + std::cos (angle) * (radius - 3), cy + std::sin (angle) * (radius - 3), 2.2f, 0xffcfddff);
+        c_.fill (r.x, r.y + r.h - 2, int (r.w * norm (ctl.param)), 2, hot ? cobalt : 0xff5968ac);
+    }
 
+    if (!filter_.empty ())
+    {
+        const Rect r = filter_.inset (4);
+        c_.fill (filter_, glass);
+        c_.hline (filter_.x, filter_.y, filter_.w, lineInk);
+        const int labelW = std::clamp (r.w / 4, 52, 79);
+        lettering (c_, {r.x + 3, r.y, labelW - 3, r.h}, "Response", 14, muted);
+        Rect plot{r.x + labelW, r.y + 3, r.w - labelW - 4, r.h - 6};
+        for (int i = 1; i < 5; ++i)
+            c_.fill (plot.x + i * plot.w / 5, plot.y, 1, plot.h, 0xff262232);
+        for (int i = 0; i < 4; ++i)
+            c_.hline (plot.x, plot.y + i * plot.h / 4, plot.w, 0xff262232);
+        auto val = [&] (clap_id id) { return float (p_->displayValue (p_->findParamIndex (id))); };
+        const int kind = int (val (id::filter));
+        const float k = tbmpc::feedbackOf (kind, val (id::resonance)),
+                    nominal = tbmpc::nominalHz (kind, val (id::cutoff));
+        const float spread = val (id::peakSpread);
+        const double ref = tbmpc::filterGain2 (kind, k, spread, 20.0 / nominal);
+        int prev = 0;
+        for (int x = 0; x < plot.w; ++x)
+        {
+            const double hz = 20.0 * std::pow (1000.0, double (x) / std::max (1, plot.w - 1));
+            const double db = 10 * std::log10 (tbmpc::filterGain2 (kind, k, spread, hz / nominal) / ref + 1e-12);
+            const int y = plot.y + int (std::clamp ((12 - db) / 60., 0., 1.) * (plot.h - 1));
+            if (x) c_.line (plot.x + x - 1, prev, plot.x + x, y, 1.6f, cobalt);
+            prev = y;
+        }
+    }
+}
 double PanelUI::norm (int param) const
 {
-    if (param < 0 || param >= int (p_->params.size())) return 0.0;
-    const auto& pr = p_->params[(size_t) param];
-    const double r = pr.range();
+    if (param < 0 || param >= int (p_->params.size ())) return 0.0;
+    const auto &pr = p_->params[(size_t)param];
+    const double r = pr.range ();
     return r > 0.0 ? std::clamp ((p_->displayValue (param) - pr.minVal) / r, 0.0, 1.0) : 0.0;
 }
 
 double PanelUI::fromNorm (int param, double n) const
 {
-    if (param < 0 || param >= int (p_->params.size())) return 0.0;
-    const auto& pr = p_->params[(size_t) param];
+    if (param < 0 || param >= int (p_->params.size ())) return 0.0;
+    const auto &pr = p_->params[(size_t)param];
     n = std::clamp (n, 0.0, 1.0);
-    double v = pr.minVal + n * pr.range();
-    if (pr.isStepped()) v = std::clamp (std::round (v), pr.minVal, pr.maxVal);
+    double v = pr.minVal + n * pr.range ();
+    if (pr.isStepped ()) v = std::clamp (std::round (v), pr.minVal, pr.maxVal);
     return v;
 }
 
 void PanelUI::setParam (int param, double v)
 {
-    if (param < 0 || param >= int (p_->params.size())) return;
+    if (param < 0 || param >= int (p_->params.size ())) return;
     p_->setEdit (param, v);
     lastTouched_ = param;
 }
 
 void PanelUI::stepParam (int param, int steps)
 {
-    if (param < 0 || param >= int (p_->params.size()) || steps == 0) return;
+    if (param < 0 || param >= int (p_->params.size ()) || steps == 0) return;
     if (wheelParam_ != param)
     {
-        endWheelGesture();
+        endWheelGesture ();
         wheelParam_ = param;
         p_->beginEdit (param);
     }
-    wheelAt_ = nowMs();
-    const auto& pr = p_->params[(size_t) param];
-    if (pr.isStepped())
+    wheelAt_ = nowMs ();
+    const auto &pr = p_->params[(size_t)param];
+    if (pr.isStepped ())
     {
         setParam (param, std::clamp (p_->displayValue (param) + double (steps), pr.minVal, pr.maxVal));
     }
@@ -454,7 +650,7 @@ void PanelUI::stepParam (int param, int steps)
     }
 }
 
-void PanelUI::endWheelGesture()
+void PanelUI::endWheelGesture ()
 {
     if (wheelParam_ >= 0)
     {
@@ -465,576 +661,27 @@ void PanelUI::endWheelGesture()
 
 void PanelUI::resetParam (int param)
 {
-    if (param < 0 || param >= int (p_->params.size())) return;
-    endWheelGesture();
-    p_->setValueOnce (param, p_->params[(size_t) param].defVal);
+    if (param < 0 || param >= int (p_->params.size ())) return;
+    endWheelGesture ();
+    p_->setValueOnce (param, p_->params[(size_t)param].defVal);
     lastTouched_ = param;
-}
-
-void PanelUI::applyAbsoluteSpot (int tileIdx, const hdslave_tile_hotspot_t& spot, float lx, float ly)
-{
-    if (tileIdx < 0 || tileIdx >= (int) tiles_.size()) return;
-    const Rect& sr = tiles_[(size_t) tileIdx].screenRect;
-    if (sr.w <= 0 || sr.h <= 0) return;
-
-    const int scrH = std::max (120, p_->tileScreenH);
-    const float mx = (lx - float (sr.x)) * float (MELODEE_SCREEN_WIDTH) / float (sr.w);
-    const float my = (ly - float (sr.y)) * float (scrH) / float (sr.h);
-
-    const float nx = spot.w > 1 ? std::clamp ((mx - float (spot.x)) / float (spot.w), 0.0f, 1.0f) : 0.5f;
-    float ny = spot.h > 1 ? std::clamp ((my - float (spot.y)) / float (spot.h), 0.0f, 1.0f) : 0.5f;
-    if (spot.invert_y) ny = 1.0f - ny;
-
-    if (dragParam_ >= 0 && dragParamY_ >= 0)
-    {
-        setParam (dragParam_, fromNorm (dragParam_, nx));
-        setParam (dragParamY_, fromNorm (dragParamY_, ny));
-    }
-    else if (dragParam_ >= 0)
-    {
-        setParam (dragParam_, fromNorm (dragParam_, ny));
-    }
-}
-
-void PanelUI::mouseDown (float x, float y, int button, uint32_t mods, int clicks)
-{
-    endWheelGesture();
-    downX_ = lastX_ = x;
-    downY_ = lastY_ = y;
-    moved_ = false;
-    dragButton_ = button;
-    downMods_ = mods;
-
-    // 1. Active popup handling
-    if (popup_ != PopupKind::None)
-    {
-        if (popupRect_.contains (int (x), int (y)))
-        {
-            for (size_t i = 0; i < popupRects_.size(); ++i)
-            {
-                if (popupRects_[i].contains (int (x), int (y)))
-                {
-                    popupPick (int (i));
-                    return;
-                }
-            }
-            return;
-        }
-        closePopup();
-        return;
-    }
-
-    // 2. Top header bar controls
-    const Item it = hitItem (x, y);
-    if (it != Item::Count)
-    {
-        switch (it)
-        {
-            case Item::PresetPrev:
-                if (!p_->presets.empty())
-                {
-                    const int n = int (p_->presets.size());
-                    const int next = p_->currentPresetIndex <= 0 ? n - 1 : p_->currentPresetIndex - 1;
-                    p_->loadPresetByIndex (next);
-                }
-                return;
-            case Item::PresetNext:
-                if (!p_->presets.empty())
-                {
-                    const int n = int (p_->presets.size());
-                    const int next = (p_->currentPresetIndex + 1) % n;
-                    p_->loadPresetByIndex (next);
-                }
-                return;
-            case Item::PresetBox:
-                openPresets();
-                return;
-            case Item::Zoom:
-                if (zoomedTile_ >= 0) zoomedTile_ = -1;
-                else zoomedTile_ = std::clamp (focusedTile_, 0, std::max (0, int (tiles_.size()) - 1));
-                layoutDirty_ = true;
-                return;
-            case Item::Shift:
-                p_->screenShift = !p_->screenShift;
-                p_->screenWholeNeeded = true;
-                return;
-            case Item::Learn:
-            {
-                const uint32_t cur = p_->midiLearnTarget.load (std::memory_order_relaxed);
-                if (cur != CLAP_INVALID_ID)
-                    p_->midiLearnTarget.store (CLAP_INVALID_ID, std::memory_order_release);
-                else if (lastTouched_ >= 0 && lastTouched_ < int (p_->params.size()))
-                    p_->midiLearnTarget.store (p_->params[(size_t) lastTouched_].id, std::memory_order_release);
-                else
-                    p_->midiLearnTarget.store (DesktopPlugin::kLearnArmedNoParam, std::memory_order_release);
-                return;
-            }
-            case Item::ClearCc:
-                if (lastTouched_ >= 0 && lastTouched_ < int (p_->params.size())
-                    && p_->findCcForParam (p_->params[(size_t) lastTouched_].id) >= 0)
-                    p_->clearCcForParam (p_->params[(size_t) lastTouched_].id);
-                else
-                    p_->clearAllCc();
-                return;
-            default:
-                return;
-        }
-    }
-
-    // 3. Zoomed-mode tile tab bar
-    if (zoomedTile_ >= 0)
-    {
-        for (size_t t = 0; t < tiles_.size(); ++t)
-        {
-            if (tiles_[t].tabRect.contains (int (x), int (y)))
-            {
-                zoomedTile_ = (int) t;
-                focusedTile_ = (int) t;
-                layoutDirty_ = true;
-                return;
-            }
-        }
-    }
-
-    // 4. Tile header & [ZOOM] button
-    for (size_t t = 0; t < tiles_.size(); ++t)
-    {
-        if (zoomedTile_ >= 0 && (int) t != zoomedTile_)
-            continue;
-        if (tiles_[t].zoomBtnRect.contains (int (x), int (y)))
-        {
-            focusedTile_ = (int) t;
-            zoomedTile_ = (zoomedTile_ == (int) t) ? -1 : (int) t;
-            layoutDirty_ = true;
-            return;
-        }
-        if (tiles_[t].headerRect.contains (int (x), int (y)))
-        {
-            focusedTile_ = (int) t;
-            if (clicks >= 2)
-            {
-                zoomedTile_ = (zoomedTile_ == (int) t) ? -1 : (int) t;
-                layoutDirty_ = true;
-            }
-            return;
-        }
-    }
-
-    // 5. Direct Mouse / Touch inside any 320x218 MPC Screen Tile
-    int mx = 0, my = 0;
-    const int tileIdx = hitTileScreen (x, y, mx, my);
-    if (tileIdx < 0 || !p_->innerTiles)
-        return;
-
-    focusedTile_ = tileIdx;
-    const bool shift = ((mods & kModShift) != 0) || p_->screenShift;
-
-    if (p_->innerTiles->focus)
-        p_->innerTiles->focus (p_->inner, (uint32_t) tileIdx, mx, my, shift);
-
-    hdslave_tile_hotspot_t spot {};
-    if (!p_->innerTiles->hit_test || !p_->innerTiles->hit_test (p_->inner, (uint32_t) tileIdx, mx, my, &spot)
-        || spot.kind == HDSLAVE_HOTSPOT_NONE)
-        return;
-
-    const int pIdx = (spot.param_id != CLAP_INVALID_ID) ? p_->findParamIndex (spot.param_id) : -1;
-    const int pIdxY = (spot.param_id_y != CLAP_INVALID_ID) ? p_->findParamIndex (spot.param_id_y) : -1;
-
-    if (pIdx >= 0)
-    {
-        lastTouched_ = pIdx;
-        // If MIDI Learn is armed waiting for a parameter pick, bind this parameter
-        if (p_->midiLearnTarget.load (std::memory_order_relaxed) == DesktopPlugin::kLearnArmedNoParam)
-            p_->midiLearnTarget.store (spot.param_id, std::memory_order_release);
-    }
-
-    // Right-click on a parameter opens its quick context menu (Reset / MIDI Learn / Choices)
-    if (button == 1 && pIdx >= 0 && spot.kind == HDSLAVE_HOTSPOT_PARAM)
-    {
-        openMenu (pIdx, x, y);
-        return;
-    }
-
-    // Double-click or Alt/Cmd-click on a parameter resets it to default
-    if (pIdx >= 0 && (clicks >= 2 || (mods & (kModAlt | kModCmd)) != 0) && spot.kind == HDSLAVE_HOTSPOT_PARAM)
-    {
-        resetParam (pIdx);
-        if (pIdxY >= 0) resetParam (pIdxY);
-        return;
-    }
-
-    dragTile_ = tileIdx;
-    dragSpot_ = spot;
-    dragParam_ = pIdx;
-    dragParamY_ = pIdxY;
-
-    switch (spot.kind)
-    {
-        case HDSLAVE_HOTSPOT_BUTTON:
-            if (pIdx >= 0)
-            {
-                const auto& pr = p_->params[(size_t) pIdx];
-                p_->setValueOnce (pIdx, pr.maxVal);
-            }
-            break;
-
-        case HDSLAVE_HOTSPOT_ACTION:
-            if (p_->innerTiles->action)
-                p_->innerTiles->action (p_->inner, (uint32_t) tileIdx, spot.custom_id, 0, shift || button == 1);
-            break;
-
-        case HDSLAVE_HOTSPOT_NOTE_PAD:
-            activeNote_ = std::clamp ((int) spot.custom_id, 0, 127);
-            p_->sendNote (activeNote_, true, 0.85);
-            drag_ = Drag::NotePad;
-            break;
-
-        case HDSLAVE_HOTSPOT_BIT_TOGGLE:
-            if (pIdx >= 0)
-            {
-                const int bitIdx = std::clamp ((int) spot.custom_id, 0, 15);
-                const int mask = (int) std::lround (p_->displayValue (pIdx));
-                bitPaintValue_ = ((mask & (1 << bitIdx)) == 0);
-                const int nextMask = bitPaintValue_ ? (mask | (1 << bitIdx)) : (mask & ~(1 << bitIdx));
-                p_->beginEdit (pIdx);
-                setParam (pIdx, double (nextMask));
-                drag_ = Drag::BitPaint;
-            }
-            break;
-
-        case HDSLAVE_HOTSPOT_PARAM:
-            if (pIdx >= 0)
-            {
-                p_->beginEdit (pIdx);
-                dragStartNorm_ = norm (pIdx);
-                dragAccum_ = 0.0;
-                if (pIdxY >= 0)
-                {
-                    p_->beginEdit (pIdxY);
-                    dragStartNormY_ = norm (pIdxY);
-                }
-                if (spot.is_absolute)
-                {
-                    drag_ = Drag::ParamAbsolute;
-                    applyAbsoluteSpot (tileIdx, spot, x, y);
-                }
-                else if (pIdxY >= 0)
-                {
-                    drag_ = Drag::Param2D;
-                }
-                else
-                {
-                    drag_ = Drag::Param1D;
-                }
-            }
-            break;
-
-        default:
-            break;
-    }
-}
-
-void PanelUI::mouseMove (float x, float y, uint32_t mods)
-{
-    if (popup_ != PopupKind::None)
-    {
-        popupHover_ = -1;
-        for (size_t i = 0; i < popupRects_.size(); ++i)
-            if (popupRects_[i].contains (int (x), int (y)))
-                popupHover_ = int (i);
-        return;
-    }
-
-    if (drag_ != Drag::None)
-    {
-        const float dx = x - lastX_;
-        const float dy = y - lastY_;
-        lastX_ = x;
-        lastY_ = y;
-        if (std::fabs (x - downX_) > 2.5f || std::fabs (y - downY_) > 2.5f)
-            moved_ = true;
-
-        const bool fine = ((mods & kModShift) != 0) || p_->screenShift || (dragButton_ == 1);
-        const double sens = fine ? 950.0 : 170.0;
-
-        if (drag_ == Drag::Param1D && dragParam_ >= 0)
-        {
-            const double delta = (double (-dy) + double (dx) * 0.45) / sens;
-            dragStartNorm_ = std::clamp (dragStartNorm_ + delta, 0.0, 1.0);
-            setParam (dragParam_, fromNorm (dragParam_, dragStartNorm_));
-        }
-        else if (drag_ == Drag::Param2D && dragParam_ >= 0 && dragParamY_ >= 0)
-        {
-            const double deltaX = double (dx) / sens;
-            const double deltaY = double (dragSpot_.invert_y ? -dy : dy) / sens;
-            dragStartNorm_ = std::clamp (dragStartNorm_ + deltaX, 0.0, 1.0);
-            dragStartNormY_ = std::clamp (dragStartNormY_ + deltaY, 0.0, 1.0);
-            setParam (dragParam_, fromNorm (dragParam_, dragStartNorm_));
-            setParam (dragParamY_, fromNorm (dragParamY_, dragStartNormY_));
-        }
-        else if (drag_ == Drag::ParamAbsolute)
-        {
-            applyAbsoluteSpot (dragTile_, dragSpot_, x, y);
-        }
-        else if (drag_ == Drag::BitPaint && dragParam_ >= 0)
-        {
-            int mx = 0, my = 0;
-            const int tIdx = hitTileScreen (x, y, mx, my);
-            if (tIdx == dragTile_ && p_->innerTiles && p_->innerTiles->hit_test)
-            {
-                hdslave_tile_hotspot_t sp {};
-                if (p_->innerTiles->hit_test (p_->inner, (uint32_t) tIdx, mx, my, &sp)
-                    && sp.kind == HDSLAVE_HOTSPOT_BIT_TOGGLE && sp.param_id == dragSpot_.param_id)
-                {
-                    const int bitIdx = std::clamp ((int) sp.custom_id, 0, 15);
-                    const int mask = (int) std::lround (p_->displayValue (dragParam_));
-                    const int nextMask = bitPaintValue_ ? (mask | (1 << bitIdx)) : (mask & ~(1 << bitIdx));
-                    if (nextMask != mask)
-                        setParam (dragParam_, double (nextMask));
-                }
-            }
-        }
-        else if (drag_ == Drag::NotePad)
-        {
-            int mx = 0, my = 0;
-            const int tIdx = hitTileScreen (x, y, mx, my);
-            if (tIdx == dragTile_ && p_->innerTiles && p_->innerTiles->hit_test)
-            {
-                hdslave_tile_hotspot_t sp {};
-                if (p_->innerTiles->hit_test (p_->inner, (uint32_t) tIdx, mx, my, &sp)
-                    && sp.kind == HDSLAVE_HOTSPOT_NOTE_PAD)
-                {
-                    const int newNote = std::clamp ((int) sp.custom_id, 0, 127);
-                    if (newNote != activeNote_)
-                    {
-                        if (activeNote_ >= 0) p_->sendNote (activeNote_, false, 0.0);
-                        activeNote_ = newNote;
-                        p_->sendNote (activeNote_, true, 0.85);
-                        dragSpot_ = sp;
-                    }
-                }
-            }
-        }
-        return;
-    }
-
-    // Hover tracking
-    hoverItem_ = hitItem (x, y);
-    hoverZoomBtnTile_ = -1;
-    hoverTabTile_ = -1;
-    for (size_t t = 0; t < tiles_.size(); ++t)
-    {
-        if (zoomedTile_ >= 0 && tiles_[t].tabRect.contains (int (x), int (y)))
-            hoverTabTile_ = (int) t;
-        if (zoomedTile_ >= 0 && (int) t != zoomedTile_)
-            continue;
-        if (tiles_[t].zoomBtnRect.contains (int (x), int (y)))
-            hoverZoomBtnTile_ = (int) t;
-    }
-
-    int mx = 0, my = 0;
-    hoverTile_ = hitTileScreen (x, y, mx, my);
-    hoverSpot_ = {};
-    hoverSpot_.param_id = CLAP_INVALID_ID;
-    hoverSpot_.param_id_y = CLAP_INVALID_ID;
-    hoverParam_ = -1;
-
-    if (hoverTile_ >= 0 && p_->innerTiles && p_->innerTiles->hit_test)
-    {
-        if (p_->innerTiles->hit_test (p_->inner, (uint32_t) hoverTile_, mx, my, &hoverSpot_))
-        {
-            if (hoverSpot_.param_id != CLAP_INVALID_ID)
-                hoverParam_ = p_->findParamIndex (hoverSpot_.param_id);
-        }
-    }
-}
-
-void PanelUI::mouseUp (float, float, int, uint32_t mods)
-{
-    if (drag_ == Drag::None)
-        return;
-
-    const bool shift = ((mods & kModShift) != 0) || ((downMods_ & kModShift) != 0) || p_->screenShift;
-
-    // If the user clicked a boolean or discrete choice cell without dragging, step/toggle it immediately!
-    if (drag_ == Drag::Param1D && !moved_ && dragParam_ >= 0 && dragParam_ < int (p_->params.size()))
-    {
-        const auto& pr = p_->params[(size_t) dragParam_];
-        if (pr.isBool())
-        {
-            const double cur = p_->displayValue (dragParam_);
-            setParam (dragParam_, cur >= 0.5 ? 0.0 : 1.0);
-        }
-        else if (pr.isStepped() && pr.range() <= 32.0)
-        {
-            const double cur = std::round (p_->displayValue (dragParam_));
-            const double span = pr.range() + 1.0;
-            const double dir = shift ? -1.0 : 1.0;
-            double next = cur + dir;
-            if (next > pr.maxVal) next = pr.minVal;
-            if (next < pr.minVal) next = pr.maxVal;
-            (void) span;
-            setParam (dragParam_, next);
-        }
-    }
-
-    if (drag_ == Drag::NotePad && activeNote_ >= 0)
-    {
-        p_->sendNote (activeNote_, false, 0.0);
-        activeNote_ = -1;
-    }
-
-    if (dragParam_ >= 0 && (drag_ == Drag::Param1D || drag_ == Drag::Param2D || drag_ == Drag::ParamAbsolute || drag_ == Drag::BitPaint))
-        p_->endEdit (dragParam_);
-    if (dragParamY_ >= 0 && (drag_ == Drag::Param2D || drag_ == Drag::ParamAbsolute))
-        p_->endEdit (dragParamY_);
-
-    drag_ = Drag::None;
-    dragTile_ = -1;
-    dragParam_ = -1;
-    dragParamY_ = -1;
-    dragSpot_ = {};
-}
-
-void PanelUI::wheel (float x, float y, float, float dy, bool precise, uint32_t mods)
-{
-    if (std::fabs (dy) < 1e-4f || popup_ != PopupKind::None)
-        return;
-
-    int mx = 0, my = 0;
-    const int tileIdx = hitTileScreen (x, y, mx, my);
-    if (tileIdx < 0 || !p_->innerTiles || !p_->innerTiles->hit_test)
-        return;
-
-    focusedTile_ = tileIdx;
-    const bool shift = ((mods & kModShift) != 0) || p_->screenShift;
-
-    hdslave_tile_hotspot_t spot {};
-    if (!p_->innerTiles->hit_test (p_->inner, (uint32_t) tileIdx, mx, my, &spot) || spot.kind == HDSLAVE_HOTSPOT_NONE)
-        return;
-
-    wheelAccum_ += precise ? (dy * 0.15f) : dy;
-    const int steps = (int) std::trunc (wheelAccum_);
-    if (steps == 0)
-        return;
-    wheelAccum_ -= float (steps);
-
-    if (spot.kind == HDSLAVE_HOTSPOT_ACTION && p_->innerTiles->action)
-    {
-        p_->innerTiles->action (p_->inner, (uint32_t) tileIdx, spot.custom_id, steps, shift);
-        return;
-    }
-
-    if (spot.param_id != CLAP_INVALID_ID)
-    {
-        const int pIdx = p_->findParamIndex (spot.param_id);
-        if (pIdx >= 0)
-        {
-            if (p_->innerTiles->focus)
-                p_->innerTiles->focus (p_->inner, (uint32_t) tileIdx, mx, my, shift);
-            stepParam (pIdx, steps);
-        }
-    }
-}
-
-void PanelUI::rotate (float x, float y, float degrees)
-{
-    wheel (x, y, 0.0f, degrees * 0.25f, true, 0);
-}
-
-void PanelUI::mouseExit()
-{
-    hoverItem_ = Item::Count;
-    hoverTile_ = -1;
-    hoverZoomBtnTile_ = -1;
-    hoverTabTile_ = -1;
-    hoverSpot_ = {};
-    hoverParam_ = -1;
-}
-
-bool PanelUI::key (int k)
-{
-    if (k == 5) // Escape
-    {
-        if (popup_ != PopupKind::None)
-        {
-            closePopup();
-            return true;
-        }
-        if (zoomedTile_ >= 0)
-        {
-            zoomedTile_ = -1;
-            layoutDirty_ = true;
-            return true;
-        }
-    }
-    const int target = hoverParam_ >= 0 ? hoverParam_ : lastTouched_;
-    if (target >= 0)
-    {
-        if (k == 0 || k == 3) { stepParam (target, -1); return true; }
-        if (k == 1 || k == 2) { stepParam (target, +1); return true; }
-    }
-    return false;
 }
 
 std::string PanelUI::valueText (int param) const
 {
-    if (param < 0 || param >= int (p_->params.size())) return "";
-    const auto& pr = p_->params[(size_t) param];
+    if (param < 0 || param >= int (p_->params.size ())) return "";
+    const auto &pr = p_->params[(size_t)param];
     return p_->formatParamValue (pr.id, p_->displayValue (param));
 }
 
-std::string PanelUI::readoutText (bool& learnLine) const
+void PanelUI::openPresets ()
 {
-    learnLine = false;
-    const uint32_t learnTgt = p_->midiLearnTarget.load (std::memory_order_relaxed);
-    if (learnTgt != CLAP_INVALID_ID)
-    {
-        learnLine = true;
-        if (learnTgt == DesktopPlugin::kLearnArmedNoParam)
-            return "MIDI LEARN: CLICK ANY PARAMETER ON ANY SCREEN";
-        const int idx = p_->findParamIndex (learnTgt);
-        if (idx >= 0)
-            return "WAIT CC -> " + upper (p_->params[(size_t) idx].name);
-    }
-
-    const int activeParam = (dragParam_ >= 0) ? dragParam_ : ((hoverParam_ >= 0) ? hoverParam_ : lastTouched_);
-    if (activeParam >= 0 && activeParam < int (p_->params.size()))
-    {
-        const auto& pr = p_->params[(size_t) activeParam];
-        std::string line;
-        if (!pr.module.empty())
-            line += upper (pr.module) + " / ";
-        line += upper (pr.name) + ": " + valueText (activeParam);
-
-        if (dragParamY_ >= 0 && dragParamY_ < int (p_->params.size()))
-        {
-            const auto& prY = p_->params[(size_t) dragParamY_];
-            line += "  |  " + upper (prY.name) + ": " + valueText (dragParamY_);
-        }
-
-        const int cc = p_->findCcForParam (pr.id);
-        if (cc >= 0)
-        {
-            char ccBuf[16];
-            std::snprintf (ccBuf, sizeof (ccBuf), " [CC %d]", cc);
-            line += ccBuf;
-        }
-        return line;
-    }
-    return "CLICK, DRAG, OR SCROLL ANY PARAMETER ON ANY MPC SCREEN";
-}
-
-// Popups (Presets / Choices / Right-click Parameter Menu) -----------------------------------------------------
-
-void PanelUI::openPresets()
-{
-    if (p_->presets.empty()) return;
+    if (p_->presets.empty ()) return;
     popup_ = PopupKind::Presets;
     popupParam_ = -1;
-    popupItems_.clear();
-    popupValues_.clear();
-    for (size_t i = 0; i < p_->presets.size(); ++i)
+    popupItems_.clear ();
+    popupValues_.clear ();
+    for (size_t i = 0; i < p_->presets.size (); ++i)
     {
         char num[12];
         std::snprintf (num, sizeof (num), "%02zu. ", i + 1);
@@ -1042,20 +689,20 @@ void PanelUI::openPresets()
         popupValues_.push_back (double (i));
     }
     popupSelected_ = p_->currentPresetIndex;
-    layoutPopup (items_[(size_t) Item::PresetBox]);
+    layoutPopup (items_[(size_t)Item::PresetBox]);
 }
 
-void PanelUI::openChoices (int param, const Rect& anchor)
+void PanelUI::openChoices (int param, const Rect &anchor)
 {
-    if (param < 0 || param >= int (p_->params.size())) return;
-    const auto& pr = p_->params[(size_t) param];
-    const int count = int (std::round (pr.range())) + 1;
-    if (count < 2 || count > 64) return;
+    if (param < 0 || param >= int (p_->params.size ())) return;
+    const auto &pr = p_->params[(size_t)param];
+    const int count = int (std::round (pr.range ())) + 1;
+    if (count < 2 || count > tbmpc::scaleCount) return;
 
     popup_ = PopupKind::Choices;
     popupParam_ = param;
-    popupItems_.clear();
-    popupValues_.clear();
+    popupItems_.clear ();
+    popupValues_.clear ();
     const int cur = int (std::round (p_->displayValue (param)));
     popupSelected_ = -1;
     for (int i = 0; i < count; ++i)
@@ -1063,20 +710,19 @@ void PanelUI::openChoices (int param, const Rect& anchor)
         const double v = pr.minVal + double (i);
         popupItems_.push_back (p_->formatParamValue (pr.id, v));
         popupValues_.push_back (v);
-        if (int (std::round (v)) == cur)
-            popupSelected_ = i;
+        if (int (std::round (v)) == cur) popupSelected_ = i;
     }
     layoutPopup (anchor);
 }
 
 void PanelUI::openMenu (int param, float x, float y)
 {
-    if (param < 0 || param >= int (p_->params.size())) return;
-    const auto& pr = p_->params[(size_t) param];
+    if (param < 0 || param >= int (p_->params.size ())) return;
+    const auto &pr = p_->params[(size_t)param];
     popup_ = PopupKind::Menu;
     popupParam_ = param;
-    popupItems_.clear();
-    popupValues_.clear();
+    popupItems_.clear ();
+    popupValues_.clear ();
 
     popupItems_.push_back ("RESET TO DEFAULT (" + p_->formatParamValue (pr.id, pr.defVal) + ")");
     popupValues_.push_back (0);
@@ -1092,62 +738,37 @@ void PanelUI::openMenu (int param, float x, float y)
     popupItems_.push_back ("MIDI LEARN CC FOR " + upper (pr.name));
     popupValues_.push_back (1);
 
-    if (pr.isStepped() && pr.range() >= 1.0 && pr.range() <= 48.0)
+    if (tbmpc::paramTable[tbmpc::paramIndex (pr.id)].kind == tbmpc::Kind::choice)
     {
         popupItems_.push_back ("CHOOSE VALUE FROM LIST...");
         popupValues_.push_back (3);
     }
     popupSelected_ = -1;
-    layoutPopup ({ int (x), int (y), 12, 12 });
+    layoutPopup ({int (x), int (y), 12, 12});
 }
 
-void PanelUI::closePopup()
+void PanelUI::closePopup ()
 {
     popup_ = PopupKind::None;
     popupParam_ = -1;
-    popupItems_.clear();
-    popupValues_.clear();
-    popupRects_.clear();
+    popupItems_.clear ();
+    popupValues_.clear ();
+    popupRects_.clear ();
     popupHover_ = -1;
-}
-
-void PanelUI::layoutPopup (const Rect& anchor)
-{
-    const int n = int (popupItems_.size());
-    if (n == 0) { closePopup(); return; }
-    const int maxRows = 14;
-    const int cols = (n + maxRows - 1) / maxRows;
-    const int rows = (n + cols - 1) / cols;
-    int colW = 170;
-    for (const auto& s : popupItems_)
-        colW = std::max (colW, Canvas::textWidth (s) + 20);
-    colW = std::min (colW, 250);
-    const int rowH = 22;
-    const int pw = cols * colW + 12;
-    const int ph = rows * rowH + 12;
-    int px = std::clamp (anchor.x, 8, std::max (8, w_ - pw - 8));
-    int py = anchor.y + anchor.h + 4;
-    if (py + ph > h_ - 8)
-        py = std::max (8, anchor.y - ph - 4);
-
-    popupRect_ = { px, py, pw, ph };
-    popupRects_.resize ((size_t) n);
-    for (int i = 0; i < n; ++i)
-    {
-        const int c = i / rows;
-        const int r = i % rows;
-        popupRects_[(size_t) i] = { px + 6 + c * colW, py + 6 + r * rowH, colW - 2, rowH - 2 };
-    }
 }
 
 void PanelUI::popupPick (int i)
 {
-    if (i < 0 || i >= int (popupValues_.size())) { closePopup(); return; }
+    if (i < 0 || i >= int (popupValues_.size ()))
+    {
+        closePopup ();
+        return;
+    }
     const PopupKind k = popup_;
     const int param = popupParam_;
-    const double val = popupValues_[(size_t) i];
+    const double val = popupValues_[(size_t)i];
     const Rect anchor = popupRect_;
-    closePopup();
+    closePopup ();
 
     if (k == PopupKind::Presets)
     {
@@ -1160,31 +781,333 @@ void PanelUI::popupPick (int i)
     }
     else if (k == PopupKind::Menu && param >= 0)
     {
-        const auto& pr = p_->params[(size_t) param];
-        if (int (val) == 0) resetParam (param);
-        else if (int (val) == 1) p_->midiLearnTarget.store (pr.id, std::memory_order_release);
-        else if (int (val) == 2) p_->clearCcForParam (pr.id);
-        else if (int (val) == 3) openChoices (param, { anchor.x, anchor.y, 20, 20 });
+        const auto &pr = p_->params[(size_t)param];
+        if (int (val) == 0)
+            resetParam (param);
+        else if (int (val) == 1)
+            p_->midiLearnTarget.store (pr.id, std::memory_order_release);
+        else if (int (val) == 2)
+            p_->clearCcForParam (pr.id);
+        else if (int (val) == 3)
+            openChoices (param, {anchor.x, anchor.y, 20, 20});
     }
 }
 
-void PanelUI::drawPopup()
+void PanelUI::layoutPopup (const Rect &anchor)
 {
-    const auto& th = p_->theme;
-    c_.fill (popupRect_.inset (-2), 0xFF000000u, 150);
-    c_.fillChamfer (popupRect_, 4, 0xFF0A0D14u);
-    c_.frameChamfer (popupRect_, 4, th.accent);
-
-    for (size_t i = 0; i < popupItems_.size(); ++i)
+    const int n = int (popupItems_.size ());
+    if (!n)
     {
-        const Rect& r = popupRects_[i];
-        const bool sel = (int (i) == popupSelected_);
-        const bool hot = (int (i) == popupHover_);
-        if (sel || hot)
-            c_.fillChamfer (r, 2, hot ? th.accent : mix (th.panel, th.accent, 0.35f));
-        const uint32_t fg = hot ? 0xFF06080Cu : (sel ? 0xFFFFFFFFu : th.text);
-        c_.textAligned (r.inset (4), popupItems_[i], fg, 1, 0);
+        closePopup ();
+        return;
     }
+    const int rows = std::min (n, std::min (12, (h_ - 40) / 25));
+    const int width = std::min (w_ - 16, 292), height = rows * 25 + 12;
+    popupFirst_ = std::clamp (popupSelected_ - rows / 2, 0, n - rows);
+    const int x = std::clamp (anchor.x, 8, w_ - width - 8);
+    const int y =
+        std::clamp (anchor.y + anchor.h + 3 <= h_ - height - 8 ? anchor.y + anchor.h + 3 : anchor.y - height - 3,
+                    8, h_ - height - 8);
+    popupRect_ = {x, y, width, height};
+    popupRects_.resize (rows);
+    for (int i = 0; i < rows; ++i)
+        popupRects_[i] = {x + 5, y + 6 + i * 25, width - 10, 25};
+    popupHover_ = -1;
+    dirty_ = true;
+}
+
+void PanelUI::drawPopup ()
+{
+    plate (c_, popupRect_, 0xff191526);
+    for (size_t i = 0; i < popupRects_.size (); ++i)
+    {
+        const auto r = popupRects_[i];
+        const int index = popupFirst_ + int (i);
+        if (index == popupHover_ || index == popupSelected_) c_.fill (r, 0xff374073);
+        lettering (c_, {r.x + 8, r.y, r.w - 18, r.h}, popupItems_[index], 16, light);
+    }
+    if (popupRects_.size () < popupItems_.size ())
+    {
+        const int scale = popupRect_.h - 12;
+        c_.fill (popupRect_.x + popupRect_.w - 5,
+                 popupRect_.y + 6 + scale * popupFirst_ / int (popupItems_.size ()), 2,
+                 std::max (8, scale * int (popupRects_.size ()) / int (popupItems_.size ())), lilac);
+    }
+}
+
+void PanelUI::edit (int param, Rect r, int buttonId, uint32_t mods, int clicks, int second)
+{
+    if (param < 0) return;
+    const auto &pr = p_->params[size_t (param)];
+    hover_ = lastTouched_ = param;
+    if (p_->midiLearnTarget.load () == DesktopPlugin::kLearnArmedNoParam)
+    {
+        p_->midiLearnTarget.store (pr.id);
+        return;
+    }
+    if (buttonId == 1)
+    {
+        openMenu (param, downX_, downY_);
+        return;
+    }
+    if (clicks >= 2 || (mods & (kModAlt | kModCmd)))
+    {
+        resetParam (param);
+        return;
+    }
+    if (tbmpc::paramTable[tbmpc::paramIndex (pr.id)].kind == tbmpc::Kind::button)
+    {
+        p_->setValueOnce (param, pr.maxVal);
+        return;
+    }
+    dragParam_ = param;
+    dragY_ = second;
+    dragRect_ = r;
+    start_ = norm (param);
+    if (second >= 0) startY_ = norm (second);
+}
+
+void PanelUI::finishDrag ()
+{
+    if (moved_ && dragParam_ >= 0 && dragY_ < 0) p_->endEdit (dragParam_);
+    dragParam_ = dragY_ = -1;
+    moved_ = false;
+}
+
+void PanelUI::mouseDown (float x, float y, int buttonId, uint32_t mods, int clicks)
+{
+    finishDrag ();
+    endWheelGesture ();
+    dirty_ = true;
+    downX_ = x;
+    downY_ = y;
+    if (popup_ != PopupKind::None)
+    {
+        for (size_t i = 0; i < popupRects_.size (); ++i)
+            if (popupRects_[i].contains (x, y))
+            {
+                popupPick (popupFirst_ + int (i));
+                return;
+            }
+        closePopup ();
+        return;
+    }
+    for (size_t i = 0; i < size_t (Item::Count); ++i)
+    {
+        if (!items_[i].contains (x, y)) continue;
+        switch (Item (i))
+        {
+        case Item::PresetPrev:
+        case Item::PresetNext:
+            if (!p_->presets.empty ())
+            {
+                const int n = int (p_->presets.size ());
+                const int index = p_->currentPresetIndex < 0
+                                      ? (Item (i) == Item::PresetNext ? 0 : n - 1)
+                                      : (p_->currentPresetIndex + (Item (i) == Item::PresetNext ? 1 : n - 1)) % n;
+                p_->loadPresetByIndex (index);
+            }
+            break;
+        case Item::PresetBox:
+            openPresets ();
+            break;
+        case Item::Fine:
+            fine_ = !fine_;
+            break;
+        case Item::Learn:
+            p_->midiLearnTarget.store (p_->midiLearnTarget.load () == CLAP_INVALID_ID
+                                           ? DesktopPlugin::kLearnArmedNoParam
+                                           : CLAP_INVALID_ID);
+            break;
+        case Item::ClearCc:
+            if (lastTouched_ >= 0 && p_->findCcForParam (p_->params[lastTouched_].id) >= 0)
+                p_->clearCcForParam (p_->params[lastTouched_].id);
+            else
+                p_->clearAllCc ();
+            break;
+        case Item::Motion:
+            motion_ = !motion_;
+            break;
+        default:
+            break;
+        }
+        return;
+    }
+    if (score_.steps > 16)
+        for (int i = 0; i < 3; ++i)
+            if (banks_[i].contains (x, y))
+            {
+                if (i == 2)
+                    follow_ = !follow_;
+                else
+                {
+                    bank_ = i;
+                    follow_ = false;
+                }
+                return;
+            }
+    if (crown_.contains (x, y))
+    {
+        constexpr uint64_t shots[] = {0, 5000, 11000, 14000, 20000};
+        const auto t = elapsed_ % 20000;
+        for (auto next : shots)
+            if (next > t)
+            {
+                elapsed_ = elapsed_ - t + next;
+                break;
+            }
+        return;
+    }
+    const int step = hitStep (x, rail_.contains (x, y) ? scoreBox_.y : y);
+    if (step >= 0)
+    {
+        inspected_ = step;
+        edit (p_->findParamIndex (id::transpose), scoreBox_, buttonId, mods, clicks,
+              p_->findParamIndex (id::density));
+        return;
+    }
+    if (filter_.contains (x, y))
+    {
+        edit (p_->findParamIndex (id::cutoff), filter_, buttonId, mods, clicks,
+              p_->findParamIndex (id::resonance));
+        return;
+    }
+    for (const auto &control : controls_)
+        if (control.rect.contains (x, y))
+        {
+            edit (control.param, control.rect, buttonId, mods, clicks);
+            return;
+        }
+    const int param = hitParam (x, y);
+    if (param >= 0)
+        edit (param,
+              seed_.contains (x, y)       ? seed_
+              : root_.contains (x, y)     ? root_
+              : scaleBox_.contains (x, y) ? scaleBox_
+                                          : regen_,
+              buttonId, mods, clicks);
+}
+
+void PanelUI::mouseMove (float x, float y, uint32_t mods)
+{
+    if (popup_ != PopupKind::None)
+    {
+        int next = -1;
+        for (size_t i = 0; i < popupRects_.size (); ++i)
+            if (popupRects_[i].contains (x, y)) next = popupFirst_ + int (i);
+        dirty_ |= popupHover_ != next;
+        popupHover_ = next;
+        return;
+    }
+    if (dragParam_ >= 0)
+    {
+        const float dx = x - downX_, dy = downY_ - y;
+        if (!moved_ && std::abs (dx) + std::abs (dy) < 3) return;
+        if (!moved_)
+        {
+            if (dragY_ < 0) p_->beginEdit (dragParam_);
+            moved_ = true;
+        }
+        const double sensitivity = (mods & kModShift || fine_) ? .12 : 1.;
+        if (dragY_ >= 0)
+        {
+            p_->setValueOnce (dragParam_,
+                              fromNorm (dragParam_, start_ + dx * sensitivity / std::max (40, dragRect_.w)));
+            p_->setValueOnce (dragY_, fromNorm (dragY_, startY_ + dy * sensitivity / std::max (40, dragRect_.h)));
+        }
+        else
+            setParam (dragParam_, fromNorm (dragParam_, start_ + (dy + dx * .25) * sensitivity / 130.));
+        dirty_ = true;
+        return;
+    }
+    const int over = hitParam (x, y);
+    dirty_ |= hover_ != over;
+    hover_ = over;
+}
+
+void PanelUI::mouseUp (float, float, int, uint32_t)
+{
+    if (dragParam_ >= 0 && dragY_ < 0 && !moved_)
+    {
+        const auto &pr = p_->params[dragParam_];
+        if (tbmpc::paramTable[tbmpc::paramIndex (pr.id)].kind == tbmpc::Kind::choice)
+            openChoices (dragParam_, dragRect_);
+    }
+    finishDrag ();
+    dirty_ = true;
+}
+
+void PanelUI::wheel (float x, float y, float, float dy, bool precise, uint32_t mods)
+{
+    if (std::abs (dy) < .0001f) return;
+    wheelAccum_ += dy * (precise ? .15 : 1.);
+    const int steps = int (wheelAccum_);
+    if (!steps) return;
+    wheelAccum_ -= steps;
+    dirty_ = true;
+    if (popup_ != PopupKind::None)
+    {
+        popupFirst_ = std::clamp (popupFirst_ - steps, 0, int (popupItems_.size () - popupRects_.size ()));
+        popupHover_ = -1;
+        return;
+    }
+    int param = hitParam (x, y);
+    if (param < 0 && hitStep (x, y) >= 0) param = p_->findParamIndex (id::transpose);
+    if (param < 0) return;
+    if (tbmpc::paramTable[tbmpc::paramIndex (p_->params[param].id)].kind == tbmpc::Kind::button) return;
+    if ((fine_ || (mods & kModShift)) && !p_->params[param].isStepped ())
+    {
+        if (wheelParam_ != param)
+        {
+            endWheelGesture ();
+            wheelParam_ = param;
+            p_->beginEdit (param);
+        }
+        wheelAt_ = nowMs ();
+        setParam (param, fromNorm (param, norm (param) + steps / 1600.));
+    }
+    else
+        stepParam (param, steps);
+}
+void PanelUI::mouseExit ()
+{
+    hover_ = -1;
+    dirty_ = true;
+}
+bool PanelUI::key (int k)
+{
+    dirty_ = true;
+    if (popup_ != PopupKind::None)
+    {
+        if (k == 5)
+            closePopup ();
+        else if (k == 4)
+            popupPick (popupHover_ >= 0 ? popupHover_ : std::max (0, popupSelected_));
+        else if (k == 2 || k == 3)
+        {
+            popupHover_ = std::clamp ((popupHover_ >= 0 ? popupHover_ : popupSelected_) + (k == 2 ? -1 : 1), 0,
+                                      int (popupItems_.size ()) - 1);
+            popupFirst_ =
+                std::clamp (popupFirst_, std::max (0, popupHover_ - int (popupRects_.size ()) + 1), popupHover_);
+        }
+        else
+            return false;
+        return true;
+    }
+    if ((k == 0 || k == 1) && score_.steps)
+    {
+        inspected_ = std::clamp ((inspected_ >= 0 ? inspected_ : std::max (0, score_.current)) + (k == 0 ? -1 : 1),
+                                 0, score_.steps - 1);
+        bank_ = inspected_ / 16;
+        follow_ = false;
+        return true;
+    }
+    if ((k == 2 || k == 3) && lastTouched_ >= 0)
+    {
+        stepParam (lastTouched_, k == 2 ? 1 : -1);
+        return true;
+    }
+    return false;
 }
 
 } // namespace hdslave_desktop

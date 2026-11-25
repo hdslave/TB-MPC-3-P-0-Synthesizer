@@ -17,7 +17,7 @@
 
 [Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
 
-The [desktop CLAP build](mac-clap/) brings the sequencer and voice controls together on one interactive panel.
+The desktop Thorn Crown panel brings the animated chrome crest, live pattern and all 34 controls into one window. [Desktop build and controls](mac-clap/)
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.3).
 

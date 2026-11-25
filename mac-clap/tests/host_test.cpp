@@ -1,11 +1,13 @@
 #include <clap/clap.h>
 
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #ifdef _WIN32
@@ -48,6 +50,7 @@ struct StrictHostCtx
     uint32_t lastOutTime = 0;
     int bareParamValues = 0;
     int outParamValues = 0;
+    std::set<clap_id> edited;
 };
 
 void checkHostPtr (const clap_host_t* h, const char* fn)
@@ -148,6 +151,7 @@ bool CLAP_ABI strictOutPush (const clap_output_events_t* list, const clap_event_
         {
             ++ctx->outParamValues;
             const auto* pv = reinterpret_cast<const clap_event_param_value_t*> (h);
+            ctx->edited.insert (pv->param_id);
             if (ctx->openGesture != pv->param_id)
             {
                 ++ctx->bareParamValues;
@@ -221,10 +225,9 @@ std::string resolveBinaryPath (const std::string& clapPath, std::string& baseOut
 #endif
 }
 
-// At this size each grid page is exactly 320 x 218 logical pixels. Exercise the
-// painted dials through the same mouse path as the native views, then read host values.
-bool testSlinkDials (const clap_plugin_t* plug, const hdslave_desktop_debug_api_t& ui,
-                     const clap_plugin_params_t& params, clap_process_t& block)
+// Exercise all four sections of the compact panel through native mouse coordinates at 2x.
+bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug_api_t& ui,
+                          const clap_plugin_params_t& params, clap_process_t& block)
 {
     int width = 0, height = 0;
     auto render = [&] { return ui.ui_render (plug, 1016, 540, 2, &width, &height) != nullptr
@@ -232,6 +235,11 @@ bool testSlinkDials (const clap_plugin_t* plug, const hdslave_desktop_debug_api_
     auto click = [&](int x, int y) {
         ui.ui_mouse (plug, 0, x, y, 0, 0, 0, 1);
         ui.ui_mouse (plug, 2, x, y, 0, 0, 0, 1);
+    };
+    auto process = [&] {
+        static_cast<StrictHostCtx*> (block.out_events->ctx)->lastOutTime = 0;
+        block.steady_time += block.frames_count;
+        plug->process (plug, &block);
     };
     auto drag = [&](int x, int y, const char* name) {
         for (uint32_t i = 0; i < params.count (plug); ++i)
@@ -243,8 +251,7 @@ bool testSlinkDials (const clap_plugin_t* plug, const hdslave_desktop_debug_api_
             ui.ui_mouse (plug, 0, x, y, 0, 0, 0, 1);
             ui.ui_mouse (plug, 1, x, y-24, 0, 0, 0, 1);
             ui.ui_mouse (plug, 2, x, y-24, 0, 0, 0, 1);
-            block.steady_time += block.frames_count;
-            plug->process (plug, &block);
+            process();
             if (params.get_value (plug, info.id, &after) && after > before) return true;
             break;
         }
@@ -252,18 +259,77 @@ bool testSlinkDials (const clap_plugin_t* plug, const hdslave_desktop_debug_api_
         return false;
     };
 
-    // Pattern K1–K3. The two one-pixel column boundaries must agree with the MPC drawing.
-    if (!render() || !drag (117, 267, "Cutoff") || !drag (118, 267, "Resonance")
-        || !drag (225, 267, "Env Mod")) return false;
-    click (379, 230); // Voice cutoff LFO amount row: K1 and K2 now follow the two LFO rows.
-    if (!render() || !drag (365, 267, "Cutoff LFO Amt") || !drag (473, 267, "Cutoff LFO Speed")) return false;
-    click (721, 413); // Clock > Theme.
-    // In Blacklight the same LFO is in the right-hand ticket column above its dial.
-    if (!render() || !drag (568, 218, "Cutoff LFO Amt") || !drag (365, 267, "Cutoff LFO Amt")) return false;
-    click (730, 501); // Click the theme hint to switch back.
-    click (303, 72);  // Zoom Pattern.
-    if (!render() || !drag (235, 490, "Cutoff")) return false;
-    click (963, 98);  // Grid.
+    if (!render() || !drag (80, 394, "Cutoff") || !drag (230, 394, "Resonance")
+        || !drag (80, 514, "Cutoff LFO Amt") || !drag (230, 514, "Cutoff LFO Speed")
+        || !drag (380, 484, "Pitch LFO Amount") || !drag (515, 484, "Pitch LFO Speed")
+        || !drag (950, 394, "Mutate") || !drag (797, 506, "Swing")
+        || !drag (60, 143, "Seed")) return false;
+
+    auto idOf = [&](const char* name) {
+        for (uint32_t i = 0; i < params.count (plug); ++i)
+        {
+            clap_param_info_t info {};
+            if (params.get_info (plug, i, &info) && std::strcmp (info.name, name) == 0) return info.id;
+        }
+        return clap_id (CLAP_INVALID_ID);
+    };
+    auto value = [&](const char* name) {
+        double v = -1;
+        params.get_value (plug, idOf (name), &v);
+        return v;
+    };
+    const double previous = value ("Seed");
+    click (966, 139);
+    process();
+    if (value ("Seed") == previous)
+    {
+        std::fprintf (stderr, "FAIL: Regen did not change the seed\n");
+        return false;
+    }
+
+    // Both axes must reach host automation and the instrument.
+    auto& reported = static_cast<StrictHostCtx*> (block.out_events->ctx)->edited;
+    reported.clear();
+    const double beforeCutoff = value ("Cutoff"), beforeResonance = value ("Resonance");
+    ui.ui_mouse (plug, 0, 440, 510, 0, 0, 0, 1);
+    ui.ui_mouse (plug, 1, 397, 532, 0, 0, 0, 1);
+    ui.ui_mouse (plug, 2, 397, 532, 0, 0, 0, 1);
+    process();
+    if (!reported.count (idOf ("Cutoff")) || !reported.count (idOf ("Resonance"))
+        || value ("Cutoff") >= beforeCutoff || value ("Resonance") >= beforeResonance)
+    {
+        std::fprintf (stderr, "FAIL: filter XY drag did not automate both axes\n");
+        return false;
+    }
+
+    // The scale selector scrolls through the entire host choice range.
+    click (235, 144);
+    ui.ui_mouse (plug, 3, 235, 219, 0, 0, -1000, 0);
+    click (235, 461);
+    process();
+    clap_param_info_t scaleInfo {};
+    for (uint32_t i=0; i<params.count (plug); ++i)
+        if (params.get_info (plug,i,&scaleInfo) && scaleInfo.id == idOf ("Scale")) break;
+    if (value ("Scale") != scaleInfo.max_value)
+    {
+        std::fprintf (stderr, "FAIL: last scale is unreachable from the menu\n");
+        return false;
+    }
+
+    // Holding motion freezes the crest. A cut should still change the held shot.
+    click (950, 27);
+    auto crest = [&] {
+        const auto* frame = ui.ui_render (plug,1016,540,2,&width,&height);
+        std::vector<uint32_t> sample;
+        for (int y=130; y<300; y+=5)
+            for (int x=700; x<1430; x+=5) sample.push_back (frame[y*width+x]);
+        return sample;
+    };
+    const auto still = crest();
+    std::this_thread::sleep_for (std::chrono::milliseconds (110));
+    if (crest() != still) { std::fprintf (stderr, "FAIL: motion hold did not freeze the crest\n"); return false; }
+    click (500, 82);
+    if (crest() == still) { std::fprintf (stderr, "FAIL: camera angle did not change\n"); return false; }
     return render();
 }
 
@@ -480,7 +546,7 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
             writePpm (snapDir + "/" + baseName + ".ppm", px, pw, ph);
 
         if (std::strcmp (desc->id, "com.hdslave.tb-mpc-3-p-0") == 0
-            && !testSlinkDials (plug, *dbg, *params, proc)) return false;
+            && !testIntegratedPanel (plug, *dbg, *params, proc)) return false;
 
         dbg->ui_close (plug);
     }

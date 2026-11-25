@@ -247,6 +247,28 @@ void handle (Plugin& p, const clap_event_header* e, const clap_output_events* ou
     }
 }
 
+// Called by the thread that currently owns the engine. The editor reads only the published copy.
+bool publishPattern (Plugin& p)
+{
+    PatternView v {};
+    const Tb3po& seq = p.engine.sequencer();
+    v.steps = seq.stepCount();
+    v.current = seq.currentStep();
+    v.seed = seq.playingSeed();
+    v.running = p.engine.running() ? 1 : 0;
+    for (int s = 0; s < 32; ++s)
+    {
+        v.pitch[s] = (int16_t) std::clamp<int32_t> (seq.pitchOfStep (s), -32768, 32767);
+        v.gates |= (uint32_t) seq.gated (s) << s;
+        v.slides |= (uint32_t) seq.slid (s) << s;
+        v.accents |= (uint32_t) seq.accented (s) << s;
+    }
+    if (v == p.shownPattern) return false;
+    p.shownPattern = v;
+    p.patternState.write (v);
+    return true;
+}
+
 void paramsFlush (const clap_plugin* plugin, const clap_input_events* in, const clap_output_events* out)
 {
     auto& p = of (plugin);
@@ -281,6 +303,7 @@ void paramsFlush (const clap_plugin* plugin, const clap_input_events* in, const 
             }
         }
     }
+    if (p.active && count && p.hostScreen && publishPattern (p)) p.hostScreen->redraw (p.host, 0);
     tellHost (p, out, 0);
 }
 
@@ -327,8 +350,11 @@ void setAll (Plugin& p, const float* values)
         p.values[i].store (values[i], std::memory_order_relaxed);
     p.mainChanged.store (true, std::memory_order_release);
     if (! p.active) // not processing: the engine takes them now; otherwise at the next block
+    {
         for (uint32_t i = 0; i < paramCount; ++i)
             p.applied[i] = values[i], p.engine.set (paramTable[i].id, values[i]);
+        publishPattern (p);
+    }
     // Cutoff's text may read differently now, and the screen shows the new values.
     p.textStale.store (true, std::memory_order_release);
     if (p.host != nullptr && p.host->request_callback != nullptr)
@@ -454,7 +480,7 @@ bool pluginInit (const clap_plugin* plugin)
     p.engine.start (defaults);
     p.hostParams = static_cast<const clap_host_params*> (p.host->get_extension (p.host, CLAP_EXT_PARAMS));
     p.hostScreen = static_cast<const melodee_screen_host_t*> (p.host->get_extension (p.host, MELODEE_SCREEN_CLAP_HOST));
-    p.shownPattern.steps = -1; // nothing shown yet
+    publishPattern (p);
     return true;
 }
 
@@ -590,26 +616,7 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
     // The screen: the pattern, where it is, the seed; a paint when that changed or a step is still lighting.
     if (p.hostScreen != nullptr)
     {
-        PatternView v {};
-        const Tb3po& seq = p.engine.sequencer();
-        v.steps = seq.stepCount();
-        v.current = seq.currentStep();
-        v.seed = seq.playingSeed();
-        v.running = p.engine.running() ? 1 : 0;
-        for (int s = 0; s < 32; ++s)
-        {
-            v.pitch[s] = (int16_t) std::clamp<int32_t> (seq.pitchOfStep (s), -32768, 32767);
-            v.gates |= (uint32_t) seq.gated (s) << s;
-            v.slides |= (uint32_t) seq.slid (s) << s;
-            v.accents |= (uint32_t) seq.accented (s) << s;
-        }
-        if (! (v == p.shownPattern))
-        {
-            p.shownPattern = v;
-            p.patternState.write (v);
-            p.hostScreen->redraw (p.host, 0);
-        }
-        else if (p.valuesMoved || p.screenAnimating.load (std::memory_order_relaxed))
+        if (publishPattern (p) || p.valuesMoved || p.screenAnimating.load (std::memory_order_relaxed))
             p.hostScreen->redraw (p.host, 0);
     }
     p.valuesMoved = false;
@@ -721,8 +728,12 @@ namespace tbmpc
 namespace
 {
 
+PatternView CLAP_ABI readPattern (const clap_plugin_t* plugin) { return of (plugin).patternState.read(); }
+const PatternReader desktopPattern { readPattern };
+
 const void* pluginExtension (const clap_plugin*, const char* id)
 {
+    if (std::strcmp (id, patternViewId) == 0) return &desktopPattern;
     if (std::strcmp (id, MELODEE_SCREEN_CLAP) == 0) return &screenExtension;
     if (std::strcmp (id, CLAP_EXT_HDSLAVE_TILES) == 0) return &tilesExtension;
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &paramsExtension;

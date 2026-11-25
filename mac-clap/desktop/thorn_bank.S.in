@@ -1,0 +1,6 @@
+.section __TEXT,__const
+.globl _slink_panel_bank
+.private_extern _slink_panel_bank
+.p2align 4
+_slink_panel_bank:
+.incbin "@THORN_BANK@"

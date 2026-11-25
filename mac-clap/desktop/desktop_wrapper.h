@@ -8,8 +8,8 @@
 #include <vector>
 
 #define HDSLAVE_DESKTOP_SHELL 1
-#include "hdslave_tiles.h"
-#include "plugin_theme.h"
+#include "melodee_screen.h"
+#include "../src/pattern_view.h"
 
 namespace hdslave_desktop
 {
@@ -28,8 +28,6 @@ enum class UiEventKind : uint8_t
     GestureBegin = 0,
     Value = 1,
     GestureEnd = 2,
-    NoteOn = 3,
-    NoteOff = 4,
 };
 
 struct UiParamEvent
@@ -112,15 +110,13 @@ struct DesktopPlugin
     std::atomic<uint32_t> pendingRescanFlags { 0 };
     std::atomic<bool> pendingStateDirty { false };
     bool inInternalPresetLoad = false;
-    bool inScreenInput = false;
     clap_id openGestureParamId = CLAP_INVALID_ID;
 
     const clap_plugin_t* inner = nullptr;
     const clap_plugin_params_t* innerParams = nullptr;
     const clap_plugin_state_t* innerState = nullptr;
     const clap_plugin_preset_load_t* innerPresetLoad = nullptr;
-    const melodee_screen_t* innerScreen = nullptr;
-    const clap_plugin_hdslave_tiles_t* innerTiles = nullptr;
+    const tbmpc::PatternReader* patternReader = nullptr;
 
     // The real host's extensions, always called with realHost.
     const clap_host_params_t* hostParams = nullptr;
@@ -131,7 +127,6 @@ struct DesktopPlugin
     bool hostExtsResolved = false;
     void resolveHostExtensions();
 
-    PluginTheme theme {};
     std::string pluginId;
     std::string pluginName;
     std::string pluginVersion;
@@ -146,7 +141,6 @@ struct DesktopPlugin
     std::atomic<uint32_t> ccMap[128];
     static constexpr uint32_t kLearnArmedNoParam = 0xFFFFFFFEu;
     std::atomic<uint32_t> midiLearnTarget { CLAP_INVALID_ID };
-    std::atomic<int> lastMidiCc { -1 };
 
     SpscQueue<2048> uiToAudio;
 
@@ -154,20 +148,8 @@ struct DesktopPlugin
     std::vector<double> uiValue;
     std::vector<uint64_t> uiHoldUntil;
 
-    // The live MPC pages (single active page + all multi-screen tiles).
-    std::vector<uint32_t> screenPixels;
-    uint32_t tileCount = 0;
-    int tileCols = 3;
-    int tileRows = 2;
-    int tileScreenH = MELODEE_SCREEN_PAGE_HEIGHT;
-    std::vector<std::vector<uint32_t>> tilePixels;
-    clap_id tileKnobIds[16][3] {};
-    bool screenWholeNeeded = true;
     std::atomic<bool> screenRequested { true };
     std::atomic<bool> transportPlaying { false };
-    clap_id screenKnobIds[3] { CLAP_INVALID_ID, CLAP_INVALID_ID, CLAP_INVALID_ID };
-    bool screenShift = false;
-
     PanelUI* ui = nullptr;
     PlatformGui* platformGui = nullptr;
     uint32_t guiWidth = kDefaultGuiWidth;
@@ -188,12 +170,6 @@ struct DesktopPlugin
     int findCcForParam (clap_id id) const;
     void clearCcForParam (clap_id id);
     void clearAllCc();
-    int countMappedCc() const;
-    void sendScreenInput (uint32_t kind, int32_t value);
-    void sendNote (int midiNote, bool on, double velocity = 0.85);
-    bool paintScreen (uint64_t now); // true when the page changed
-    bool paintTiles (uint64_t now, int zoomedTile);
-    void refreshScreenKnobs();
     void markAllDirty();
 
 private:

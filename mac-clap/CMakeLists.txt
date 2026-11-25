@@ -40,16 +40,26 @@ else()
     target_compile_options(${SLUG}_inner PRIVATE -O3 -ffp-contract=fast -fno-math-errno -fno-trapping-math -fvisibility=hidden)
 endif()
 
-# Desktop multi-screen UI shell
+# Native desktop editor
 set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
+    "${DESKTOP_DIR}/thorn_art.cpp"
 )
+set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/thorn/panel.bank")
 if(APPLE)
+    enable_language(ASM)
+    set(BANK_SRC "${CMAKE_BINARY_DIR}/thorn_bank.S")
+    configure_file("${DESKTOP_DIR}/thorn_bank.S.in" "${BANK_SRC}" @ONLY)
     list(APPEND SHELL_SRCS "${DESKTOP_DIR}/gui_macos.mm")
 elseif(WIN32)
+    enable_language(RC)
+    set(BANK_SRC "${CMAKE_BINARY_DIR}/thorn_bank.rc")
+    configure_file("${DESKTOP_DIR}/thorn_bank.rc.in" "${BANK_SRC}" @ONLY)
     list(APPEND SHELL_SRCS "${DESKTOP_DIR}/gui_win32.cpp" "${DESKTOP_DIR}/win32/clap.def")
 endif()
+set_source_files_properties("${BANK_SRC}" PROPERTIES OBJECT_DEPENDS "${THORN_BANK}")
+list(APPEND SHELL_SRCS "${BANK_SRC}")
 
 add_library(${TARGET_NAME} MODULE
     $<TARGET_OBJECTS:${SLUG}_inner>
@@ -61,6 +71,11 @@ target_include_directories(${TARGET_NAME} PRIVATE
 )
 
 if(APPLE)
+    # The bundle and the CLAP descriptor advertise the same desktop version.
+    set(VERSION_HEADER "${CMAKE_SOURCE_DIR}/src/params.h")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${VERSION_HEADER}")
+    file(STRINGS "${VERSION_HEADER}" VERSION_LINE REGEX "^#define TBMPC_VERSION")
+    string(REGEX MATCH "[0-9]+[.][0-9]+[.][0-9]+" DESKTOP_VERSION "${VERSION_LINE}")
     set(BUNDLE_NAME "${TARGET_NAME}")
     set(BUNDLE_SLUG "${SLUG}")
     set(PLIST_OUT "${CMAKE_BINARY_DIR}/plists/${TARGET_NAME}-Info.plist")
@@ -90,6 +105,7 @@ elseif(WIN32)
         _UNICODE
     )
     if(MSVC)
+        target_include_directories(${TARGET_NAME} PRIVATE "${DESKTOP_DIR}/win32/compat")
         target_compile_options(${TARGET_NAME} PRIVATE /O2 /EHsc /W3 /wd4244 /wd4996)
     else()
         target_compile_options(${TARGET_NAME} PRIVATE -O3)

@@ -22,16 +22,9 @@ struct MergedInputEvents
     static constexpr uint32_t kMaxInjected = 1024;
     static constexpr uint32_t kMaxTotal = 8192;
 
-    union InjectedEvent
-    {
-        clap_event_header_t header;
-        clap_event_param_value_t param;
-        clap_event_note_t note;
-    };
-
     const clap_input_events_t* hostIn = nullptr;
     uint32_t hostCount = 0;
-    InjectedEvent injected[kMaxInjected] {};
+    clap_event_param_value_t injected[kMaxInjected] {};
     uint32_t injectedCount = 0;
     const clap_event_header_t* order[kMaxTotal] {};
     uint32_t orderCount = 0;
@@ -49,7 +42,7 @@ struct MergedInputEvents
     void addInjected (uint32_t time, clap_id paramId, double value)
     {
         if (injectedCount >= kMaxInjected) return;
-        auto& ev = injected[injectedCount++].param;
+        auto& ev = injected[injectedCount++];
         ev = {};
         ev.header.size = sizeof (clap_event_param_value_t);
         ev.header.time = time;
@@ -63,23 +56,6 @@ struct MergedInputEvents
         ev.channel = -1;
         ev.key = -1;
         ev.value = value;
-    }
-
-    void addInjectedNote (uint32_t time, bool on, int16_t key, double velocity)
-    {
-        if (injectedCount >= kMaxInjected) return;
-        auto& ev = injected[injectedCount++].note;
-        ev = {};
-        ev.header.size = sizeof (clap_event_note_t);
-        ev.header.time = time;
-        ev.header.space_id = CLAP_CORE_EVENT_SPACE_ID;
-        ev.header.type = on ? CLAP_EVENT_NOTE_ON : CLAP_EVENT_NOTE_OFF;
-        ev.header.flags = CLAP_EVENT_IS_LIVE;
-        ev.note_id = key;
-        ev.port_index = 0;
-        ev.channel = 0;
-        ev.key = key;
-        ev.velocity = velocity;
     }
 
     // Merge by time: injected events go just after host events of the same time (a CC lands after its own MIDI
@@ -164,10 +140,6 @@ void CLAP_ABI tParamsRescan (const clap_host_t* h, clap_param_rescan_flags flags
     auto* dp = fromHost (h);
     if (!dp) return;
     dp->markAllDirty();
-    // During live screen input, the inner plug-in also queues p.outgoing for out_events; skip redundant main-thread
-    // rescan(VALUES) here so it never races against the audio thread's out_events in FL Studio.
-    if (dp->inScreenInput && flags == CLAP_PARAM_RESCAN_VALUES)
-        return;
     dp->pendingRescanFlags.fetch_or (flags, std::memory_order_acq_rel);
     scheduleMainThreadFlush (dp);
 }
@@ -473,10 +445,6 @@ void drainUiAndMidiEvents (DesktopPlugin& dp, MergedInputEvents& merged, const c
             out.pushGesture (0, uev.paramId, true);
         else if (uev.kind == UiEventKind::GestureEnd)
             out.pushGesture (0, uev.paramId, false);
-        else if (uev.kind == UiEventKind::NoteOn)
-            merged.addInjectedNote (0, true, (int16_t) uev.paramId, uev.value);
-        else if (uev.kind == UiEventKind::NoteOff)
-            merged.addInjectedNote (0, false, (int16_t) uev.paramId, uev.value);
         else
         {
             merged.addInjected (0, uev.paramId, uev.value);
@@ -494,7 +462,6 @@ void drainUiAndMidiEvents (DesktopPlugin& dp, MergedInputEvents& merged, const c
 
         const uint8_t cc = m->data[1] & 0x7Fu;
         const uint8_t val = m->data[2] & 0x7Fu;
-        dp.lastMidiCc.store (int (cc), std::memory_order_relaxed);
 
         const uint32_t target = dp.midiLearnTarget.load (std::memory_order_acquire);
         if (target != CLAP_INVALID_ID && target != DesktopPlugin::kLearnArmedNoParam)
@@ -503,6 +470,7 @@ void drainUiAndMidiEvents (DesktopPlugin& dp, MergedInputEvents& merged, const c
                 if (dp.ccMap[c].load (std::memory_order_relaxed) == target) dp.ccMap[c].store (CLAP_INVALID_ID, std::memory_order_relaxed);
             dp.ccMap[cc].store (target, std::memory_order_release);
             dp.midiLearnTarget.store (CLAP_INVALID_ID, std::memory_order_release);
+            dp.screenRequested.store (true, std::memory_order_release);
         }
 
         const clap_id mappedId = dp.ccMap[cc].load (std::memory_order_acquire);
@@ -678,6 +646,7 @@ bool CLAP_ABI wrapStateLoad (const clap_plugin_t* p, const clap_istream_t* strea
                 for (int i = 0; i < 128; ++i)
                     dp.ccMap[i].store (ccTable[i], std::memory_order_release);
             }
+            dp.currentPresetIndex = -1;
             dp.markAllDirty();
             return true;
         }
@@ -688,7 +657,10 @@ bool CLAP_ABI wrapStateLoad (const clap_plugin_t* p, const clap_istream_t* strea
     clap_istream_t memIn { &innerIn, MemIStream::readCb };
     bool ok = dp.innerState->load (dp.inner, &memIn);
     if (ok)
+    {
+        dp.currentPresetIndex = -1;
         dp.markAllDirty();
+    }
     return ok;
 }
 
@@ -701,7 +673,12 @@ bool CLAP_ABI wrapPresetLoadFromLocation (const clap_plugin_t* p, uint32_t locat
     if (!dp.innerPresetLoad) return false;
     bool ok = dp.innerPresetLoad->from_location (dp.inner, locationKind, location, loadKey);
     if (ok)
+    {
+        dp.currentPresetIndex = -1;
+        for (size_t i = 0; loadKey && i < dp.presets.size(); ++i)
+            if (dp.presets[i].loadKey == loadKey) { dp.currentPresetIndex = int (i); break; }
         dp.markAllDirty();
+    }
     return ok;
 }
 
@@ -877,8 +854,8 @@ bool CLAP_ABI wrapInit (const clap_plugin_t* p)
     dp.innerPresetLoad = static_cast<const clap_plugin_preset_load_t*> (dp.inner->get_extension (dp.inner, CLAP_EXT_PRESET_LOAD));
     if (!dp.innerPresetLoad)
         dp.innerPresetLoad = static_cast<const clap_plugin_preset_load_t*> (dp.inner->get_extension (dp.inner, CLAP_EXT_PRESET_LOAD_COMPAT));
-    dp.innerScreen = static_cast<const melodee_screen_t*> (dp.inner->get_extension (dp.inner, MELODEE_SCREEN_CLAP));
-    dp.innerTiles = static_cast<const clap_plugin_hdslave_tiles_t*> (dp.inner->get_extension (dp.inner, CLAP_EXT_HDSLAVE_TILES));
+    dp.patternReader = static_cast<const tbmpc::PatternReader*> (dp.inner->get_extension (dp.inner, tbmpc::patternViewId));
+    if (!dp.patternReader) return false;
 
     dp.resolveHostExtensions();
 
@@ -913,35 +890,6 @@ bool CLAP_ABI wrapInit (const clap_plugin_t* p)
 
     discoverFactoryPresets (dp);
 
-    if (dp.innerScreen)
-    {
-        dp.screenPixels.assign (size_t (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT), 0xFF0A0C10u);
-        dp.refreshScreenKnobs();
-    }
-    if (dp.innerTiles && dp.innerTiles->count)
-    {
-        dp.tileCount = dp.innerTiles->count (dp.inner, &dp.tileCols, &dp.tileRows);
-        dp.tileScreenH = (dp.innerTiles->content_h >= 120 && dp.innerTiles->content_h <= MELODEE_SCREEN_PAGE_HEIGHT)
-                             ? (int) dp.innerTiles->content_h
-                             : MELODEE_SCREEN_PAGE_HEIGHT;
-        dp.tilePixels.resize (dp.tileCount);
-        for (uint32_t t = 0; t < dp.tileCount; ++t)
-        {
-            dp.tilePixels[t].assign (size_t (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT), 0xFF0A0C10u);
-            for (int k = 0; k < 3; ++k)
-                dp.tileKnobIds[t][k] = CLAP_INVALID_ID;
-        }
-        const int cols = std::max (1, dp.tileCols);
-        const int rows = std::max (1, dp.tileRows);
-        int sw = 448; // 1.4x for 3x2
-        if (cols >= 4 && rows >= 3)      sw = 352; // 4x3 (12 screens)
-        else if (cols >= 4)              sw = 432; // 4x2 (7-8 screens)
-        else if (rows >= 3)              sw = 400; // 3x3 (9 screens)
-        const int sh = sw * dp.tileScreenH / MELODEE_SCREEN_WIDTH;
-        dp.guiWidth  = std::clamp (uint32_t (cols * (sw + 8) + (cols - 1) * 8 + 16), uint32_t (1000), kMaxGuiWidth);
-        dp.guiHeight = std::clamp (uint32_t (rows * (sh + 8) + (rows - 1) * 8 + 62), uint32_t (640), kMaxGuiHeight);
-    }
-
     return true;
 }
 
@@ -969,6 +917,7 @@ bool CLAP_ABI wrapActivate (const clap_plugin_t* p, double sr, uint32_t minF, ui
 void CLAP_ABI wrapDeactivate (const clap_plugin_t* p)
 {
     auto& dp = of (p);
+    dp.transportPlaying.store (false, std::memory_order_relaxed);
     dp.processing.store (false, std::memory_order_release);
     dp.active.store (false, std::memory_order_release);
     dp.openGestureParamId = CLAP_INVALID_ID;
@@ -986,6 +935,7 @@ bool CLAP_ABI wrapStartProcessing (const clap_plugin_t* p)
 void CLAP_ABI wrapStopProcessing (const clap_plugin_t* p)
 {
     auto& dp = of (p);
+    dp.transportPlaying.store (false, std::memory_order_relaxed);
     dp.processing.store (false, std::memory_order_release);
     if (dp.inner) dp.inner->stop_processing (dp.inner);
 }
@@ -1004,8 +954,7 @@ clap_process_status CLAP_ABI wrapProcess (const clap_plugin_t* p, const clap_pro
     dp.inAudioCall.store (true, std::memory_order_release);
     dp.lastProcessMs.store (nowMs(), std::memory_order_relaxed);
 
-    if (proc->transport)
-        dp.transportPlaying.store ((proc->transport->flags & CLAP_TRANSPORT_IS_PLAYING) != 0, std::memory_order_relaxed);
+    dp.transportPlaying.store (proc->transport && (proc->transport->flags & CLAP_TRANSPORT_IS_PLAYING), std::memory_order_relaxed);
 
     const uint32_t maxTime = proc->frames_count > 0 ? proc->frames_count - 1 : 0;
     SafeOutputEvents safeOut { &dp, proc->out_events, maxTime, 0 };
@@ -1169,7 +1118,6 @@ const clap_plugin_t* CLAP_ABI wrapFactoryCreate (const clap_plugin_factory_t*, c
         return nullptr;
     }
 
-    dp->theme = themeForPluginId (desc->id);
     dp->pluginId = desc->id ? desc->id : "";
     dp->pluginName = desc->name ? desc->name : "hdslave";
     dp->pluginVersion = desc->version ? desc->version : "1.0.0";
@@ -1350,7 +1298,6 @@ bool DesktopPlugin::loadPresetByIndex (int idx)
     {
         currentPresetIndex = idx;
         markAllDirty();
-        refreshScreenKnobs();
         pendingRescanFlags.fetch_or (CLAP_PARAM_RESCAN_VALUES, std::memory_order_acq_rel);
         pendingStateDirty.store (true, std::memory_order_release);
         scheduleMainThreadFlush (this);
@@ -1383,151 +1330,9 @@ void DesktopPlugin::clearAllCc()
         ccMap[c].store (CLAP_INVALID_ID, std::memory_order_release);
 }
 
-int DesktopPlugin::countMappedCc() const
-{
-    int n = 0;
-    for (int c = 0; c < 128; ++c)
-    {
-        if (ccMap[c].load (std::memory_order_relaxed) != CLAP_INVALID_ID)
-            ++n;
-    }
-    return n;
-}
-
-void DesktopPlugin::refreshScreenKnobs()
-{
-    if (!innerScreen || !innerScreen->controls)
-        return;
-    uint32_t ids[3] { MELODEE_SCREEN_NO_CONTROL, MELODEE_SCREEN_NO_CONTROL, MELODEE_SCREEN_NO_CONTROL };
-    innerScreen->controls (inner, ids);
-    for (int i = 0; i < 3; ++i)
-        screenKnobIds[i] = ids[i] == MELODEE_SCREEN_NO_CONTROL ? CLAP_INVALID_ID : ids[i];
-}
-
-void DesktopPlugin::sendScreenInput (uint32_t kind, int32_t value)
-{
-    if (!innerScreen || !innerScreen->input) return;
-    melodee_screen_input_t inp { kind, value, screenShift ? 1u : 0u };
-    inScreenInput = true;
-    innerScreen->input (inner, &inp);
-    inScreenInput = false;
-    refreshScreenKnobs();
-    screenRequested.store (true, std::memory_order_release);
-}
-
-void DesktopPlugin::sendNote (int midiNote, bool on, double velocity)
-{
-    const int clamped = std::clamp (midiNote, 0, 127);
-    uiToAudio.push ({ on ? UiEventKind::NoteOn : UiEventKind::NoteOff, (clap_id) clamped, velocity });
-    if (realHost && realHost->request_process)
-        realHost->request_process (realHost);
-    screenRequested.store (true, std::memory_order_release);
-}
-
-bool DesktopPlugin::paintTiles (uint64_t now, int zoomedTile)
-{
-    if (!innerTiles || !innerTiles->paint || tileCount == 0)
-        return paintScreen (now);
-
-    if (tilePixels.size() != tileCount)
-    {
-        tilePixels.resize (tileCount);
-        for (uint32_t t = 0; t < tileCount; ++t)
-            tilePixels[t].assign (size_t (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT), 0xFF0A0C10u);
-    }
-
-    bool anyDrew = false;
-    for (uint32_t t = 0; t < tileCount && t < 16; ++t)
-    {
-        if (zoomedTile >= 0 && int (t) != zoomedTile) continue;
-        melodee_screen_frame_t frame {};
-        frame.pixels = tilePixels[t].data();
-        frame.width = MELODEE_SCREEN_WIDTH;
-        frame.height = MELODEE_SCREEN_PAGE_HEIGHT;
-        frame.stride = MELODEE_SCREEN_WIDTH;
-        frame.area = MELODEE_SCREEN_PAGE;
-        frame.redraw_all = 1;
-        frame.colour = theme.accent & 0x00FFFFFFu;
-        frame.time_ms = now;
-        frame.playing = transportPlaying.load (std::memory_order_relaxed) ? 1 : 0;
-        frame.shift = screenShift ? 1 : 0;
-        for (int i = 0; i < 3; ++i)
-        {
-            const int idx = (tileKnobIds[t][i] != CLAP_INVALID_ID) ? findParamIndex (tileKnobIds[t][i]) : -1;
-            if (idx >= 0)
-            {
-                const auto& p = params[size_t (idx)];
-                const double r = p.range();
-                const double n = r > 0.0 ? std::clamp ((displayValue (idx) - p.minVal) / r, 0.0, 1.0) : 0.0;
-                frame.pots[i] = int16_t (std::round (n * 127.0));
-                frame.pots_live[i] = 1;
-            }
-            else
-            {
-                frame.pots[i] = -1;
-                frame.pots_live[i] = 0;
-            }
-        }
-
-        const auto paint = zoomedTile < 0 ? innerTiles->paint_overview : innerTiles->paint;
-        anyDrew |= paint (inner, t, &frame, tileKnobIds[t]);
-    }
-    screenWholeNeeded = false;
-    screenRequested.store (false, std::memory_order_release);
-    return anyDrew;
-}
-
-bool DesktopPlugin::paintScreen (uint64_t now)
-{
-    if (!innerScreen || !innerScreen->draw) return false;
-    if (screenPixels.size() != size_t (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT))
-    {
-        screenPixels.assign (size_t (MELODEE_SCREEN_WIDTH * MELODEE_SCREEN_PAGE_HEIGHT), 0xFF0A0C10u);
-        screenWholeNeeded = true;
-    }
-
-    refreshScreenKnobs();
-
-    melodee_screen_frame_t frame {};
-    frame.pixels = screenPixels.data();
-    frame.width = MELODEE_SCREEN_WIDTH;
-    frame.height = MELODEE_SCREEN_PAGE_HEIGHT;
-    frame.stride = MELODEE_SCREEN_WIDTH;
-    frame.area = MELODEE_SCREEN_PAGE;
-    frame.redraw_all = screenWholeNeeded ? 1u : 0u;
-    frame.colour = theme.accent & 0x00FFFFFFu;
-    frame.time_ms = now;
-    frame.playing = transportPlaying.load (std::memory_order_relaxed) ? 1 : 0;
-    frame.shift = screenShift ? 1 : 0;
-    for (int i = 0; i < 3; ++i)
-    {
-        const int idx = (screenKnobIds[i] != CLAP_INVALID_ID) ? findParamIndex (screenKnobIds[i]) : -1;
-        if (idx >= 0)
-        {
-            const auto& p = params[size_t (idx)];
-            const double r = p.range();
-            const double n = r > 0.0 ? std::clamp ((displayValue (idx) - p.minVal) / r, 0.0, 1.0) : 0.0;
-            frame.pots[i] = int16_t (std::round (n * 127.0));
-            frame.pots_live[i] = 1;
-        }
-        else
-        {
-            frame.pots[i] = -1;
-            frame.pots_live[i] = 0;
-        }
-    }
-
-    const bool drew = innerScreen->draw (inner, &frame);
-    screenWholeNeeded = false;
-    screenRequested.store (false, std::memory_order_release);
-    refreshScreenKnobs();
-    return drew;
-}
-
 void DesktopPlugin::markAllDirty()
 {
     std::fill (uiHoldUntil.begin(), uiHoldUntil.end(), 0);
-    screenWholeNeeded = true;
     screenRequested.store (true, std::memory_order_release);
     if (ui) ui->invalidateAll();
 }
