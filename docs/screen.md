@@ -4,7 +4,7 @@ On hdslaveOS 0.8.2, open **Stage → Panel**. Edit shows the host’s parameter 
 
 Each new plug-in instance opens in **Press Plate**. To audition **Blacklight Transfer**, use Plus to reach **CLOCK**, turn the wheel to **THEME** and press the encoder. Another press switches back. The choice follows this instance across all five pages and between Edit and Stage for the session. Project and preset files contain the instrument settings only.
 
-The freesp16 edition opens on the **Thorn Crown** Pattern page. Its original display lettering uses flared terminals, curved stems and a smaller raised sharp. The native renderer draws the current score with coverage masks baked from the same letter outlines as the browser study. The crest uses a twenty-second baked camera move. The smiley and the narrow whip strip animate separately. [SP-16 controls](../README.md#freesp16-on-sp-16)
+The freesp16 edition opens on the **Thorn Crown** Pattern page. Its original display lettering uses straight stems, diagonal cuts and level crossbars. The step numbers use fixed-width digits, and sharps sit high beside the pitch letter. The native renderer draws the current score with coverage masks baked from the same letter outlines as the browser study. The crest uses a twenty-second baked camera move. The smiley and the narrow whip strip animate separately. [SP-16 controls](../README.md#freesp16-on-sp-16)
 
 Build the offline browser study with `python3 tools/sp16_thorn/build.py` and open `build/slink-thorn-crown.html`. Its editable example runs on a silent local clock. The native plug-in displays the engine's generated pattern and auditions touched steps. [Source lettering](../tools/sp16_thorn/lettering.js) · [Native artwork baker](../tools/sp16_thorn/bake_native.py)
 

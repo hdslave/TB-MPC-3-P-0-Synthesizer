@@ -10,7 +10,7 @@
   </tr>
   <tr>
     <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink 0.6.1 playing a 16-step pattern on the silver MPC panel, with its chrome wordmark and three rotary controls"></a></td>
-    <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16-thorn.png" alt="Slink’s freesp16 Pattern page with its chrome crest and sixteen-step acid-lettered score"></a></td>
+    <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16-thorn.png" alt="Slink’s freesp16 Pattern page with its chrome crest and sixteen-step score with angular lettering"></a></td>
     <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
   </tr>
 </table>
@@ -280,7 +280,7 @@ nothing until it is hit (then a step's pitch, or a pattern made again once when 
 
 The ARMv7 build is version **0.6.0**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
 
-The Thorn Crown build on this branch opens on **Pattern**. Sixteen columns show the step number, pitch, gate, accent and outgoing slide. The cobalt column follows playback. The note row, step numbers, row labels and buttons use original curved lettering with a raised sharp beside the pitch. Tap a column to audition its step. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
+The Thorn Crown build on this branch opens on **Pattern**. Sixteen columns show the step number, pitch, gate, accent and outgoing slide. The cobalt column follows playback. The note row, step numbers, row labels and buttons use upright lettering with stepped corners, fixed-width digits and a raised sharp beside the pitch. Tap a column to audition its step. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
 
 **Play** auditions the sequence locally at the host tempo while the transport is stopped. **Stop** ends that preview. Starting freesp16’s transport takes over and the button reads **Sync**. Tap the thorn crest to pause or resume its camera independently. **Regen** regenerates the pattern, and tapping the seed plate recalls the previous seed.
 
