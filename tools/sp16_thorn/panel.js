@@ -36,6 +36,7 @@
  const motionPref=matchMedia('(prefers-reduced-motion: reduce)');
  const options={motion:!motionPref.matches,speed:1};
  let seq=pattern.map(v=>v.slice()),step=2,rotation=0,seed=0x4d35,playing=false,beat=-100,clock=0;
+ let lastAccentTime=-Infinity;
  let cameraOverride=null,globalMotion=options.motion,lastCameraRender=-1;
  const cameraRuns=()=>cameraOverride??options.motion;
  let time=0,camTime=0,frameId=0,lastTime=null,visible=true,needsPaint=true;
@@ -82,14 +83,24 @@
  function stripe(x,y,w,h,colors){
    return gradient(x,y,x+w*.09,y+h,colors.map(([t,c])=>[t,c]));
  }
- function bracket(x,y,w,h,color){for(const [xx,yy,sx,sy] of [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]]){
-   line(xx,yy,xx+sx*5,yy,color,.75);line(xx,yy,xx,yy+sy*3,color,.75);}}
  const silver=[[0,'#faf9ff'],[.05,'#c3cadf'],[.37,'#dbe0ec'],[.47,'#c9cdda'],[.50,'#9fa8bf'],[.58,'#b8bfd3'],[1,'#858fae']];
  const cobalt=[[0,'#9bd0ff'],[.07,'#639cff'],[.43,'#466bdf'],[.50,'#415ac6'],[1,'#273d9c']];
  const shell=[[0,'#69728b'],[.19,'#d3dcf2'],[.41,'#7892c0'],[.5,'#333950'],[.88,'#80739d'],[1,'#b4afd3']];
  const purple=[[0,'#302041'],[.28,'#251737'],[1,'#110d21']];
- function seedCode(x,y,w,h){const bits=w/40;for(let i=0;i<20;i++){
-   const v=(seed>>(i%16))&1;rect(x+i*bits*2,y,bits*(v?1.52:.60),h,i%6===0?'#ced7ff':'#919fbe');}}
+ function seedCode(x,y,w,h){
+   // Four groups read the four hex digits, high bit first. All bars pass through
+   // one oblique crease, where the foil changes from cobalt to polished silver.
+   const groupGap=3,cell=(w-3*groupGap)/16;
+   const topInk=gradient(x,y,x+w,y+h*.35,[[0,'#6274b1'],[.4,'#dbe7ff'],[.68,'#8782b8'],[1,'#a8bce8']]);
+   const bottomInk=gradient(x,y+h,x+w,y+h*.5,[[0,'#78769c'],[.45,'#455891'],[.84,'#d0d6f4'],[1,'#707caa']]);
+   for(let i=0;i<16;i++){
+     const bit=(seed>>>(15-i))&1;
+     const xx=x+i*cell+Math.floor(i/4)*groupGap,bar=cell*(bit ? .83 : .35);
+     const fold=y+h*(.76-.49*i/15);
+     path([[xx+2,y],[xx+2+bar,y],[xx+bar,fold],[xx,fold]],topInk);
+     path([[xx,fold+.85],[xx+bar,fold+.85],[xx+bar+1,y+h],[xx+1,y+h]],bottomInk);
+   }
+ }
  function actionButton(x,y,w,h,label,main){
    const fill=main?stripe(x,y,w,h,cobalt):stripe(x,y,w,h,purple);
    chamfer(x,y,w,h,fill,main?'#9cb6fc':'#7b7299',4);
@@ -110,6 +121,22 @@
    Object.assign(b.style,{left:x/780*100+'%',top:y/285*100+'%',width:w/780*100+'%',height:h/285*100+'%'});
    b.setAttribute('aria-label',aria);b.addEventListener('click',fn);keys.append(b);bounds.set(id,b);return b;
  }
+ // A sliver of cold foil crosses the margins of the selected step as a single cut.
+ // Draw its margins only, so pitch names and the three articulation marks sit in clear ink.
+ function printPlayhead(x,y,w,h,row){
+   g.save();g.translate(x,y);
+   const foil=gradient(0,0,w,h,[[0,'#d5e8ff'],[.18,'#658ef9'],[.48,'#2c4fa6'],[.73,'#5632a5'],[1,'#b195f1']]);
+   const edge=w-2, drift=[.2,2.5,5.1,5.8,6.4][row];
+   path([[edge-drift-3,1],[edge,1],[edge,h-1],[edge-drift,h-1]],foil);
+   line(1.4,1,1.4,h-1,'#8498fa',.75);
+   if(row===0){
+     path([[2,2],[10,2],[2,10]],'#eef6ff');
+     line(2,12,12,2,'#849dfa',.85);
+   }else if(row===4){
+     path([[edge-1,h-8],[edge-1,h-2],[edge-8,h-2]],'#dfdbff');
+   }
+   g.restore();
+ }
  function matrix(makeKeys){
    const gutter=5, label=58,x=7,y=103,w=766,h=142,cw=(w-label-gutter*3)/16;
    const hh=[22,41,27,26,26];let yy=y;
@@ -120,12 +147,12 @@
      for(let i=0;i<16;i++){
        const bank=Math.floor(i/4),xx=x+label+i*cw+bank*gutter, ww=cw-1.1,sel=i===step;
        if(i%4===0&&i>0){line(xx-3.5,yy+2,xx-1,yy+.4,'#76778f',.7);}
-       const bg=sel?stripe(xx,yy,ww,rh,cobalt):r===1?stripe(xx,yy,ww,rh,silver):
+       const bg=sel?gradient(xx,yy,xx+ww,yy+rh,[[0,'#556cca'],[.34,'#3659c4'],[.53,'#303f9d'],[.55,'#292f81'],[1,'#43287c']]):r===1?stripe(xx,yy,ww,rh,silver):
           gradient(xx,yy,xx,yy+rh,[[0,bank%2?'#30213f':'#262139'],[1,bank%2?'#1a112c':'#141224']]);
        rect(xx,yy,ww,rh-1,bg);line(xx+.5,yy+.6,xx+ww-.5,yy+.6,sel?'#a4bfff':r===1?'#fcf9ff':'#52465f',.75);
        if(r===1&&!sel){line(xx+.7,yy+2,xx+.7,yy+rh-3,'#eff0fa',.65);line(xx+ww-1,yy+3,xx+ww-1,yy+rh-2,'#72778e',.8);}
        if(!sel&&r===0&&i%4===0)rect(xx+2,yy+2,7,1,'#aba9c0');
-       if(sel&&r===0)path([[xx+2,yy+2],[xx+8,yy+2],[xx+2,yy+8]],'#f2f4ff');
+       if(sel)printPlayhead(xx,yy,ww,rh-1,r);
        const cx=xx+ww/2,cy=yy+rh/2,fg=sel?'#fff':r===1?'#13172c':'#d6d9ea';
        if(r===0)mono(two(i+1),cx,cy+.4,13,fg,'center');
        else if(r===1)letters(noteAt(i),cx,cy+.6,noteAt(i).length>2?19:25,fg,'SlinkPitch','center');
@@ -155,8 +182,12 @@
    matrix(first);
    chamfer(7,253,185,25,'#201730','#7b758e',4);mono('C / CHROMATIC',15,266,11,'#ddd6eb');
    for(let i=0;i<17;i++)line(129+i*3.1,271,136+i*3.1,260,'#77678c',.9);
-   line(201,252,369,252,'#525b79',.7);line(201,278,369,278,'#4c4860',.7);
-   bracket(376,254,165,23,'#7380a1');miniPitch(382,256,154,16);
+   chamfer(200,249,343,32,'#111025',edge,6);
+   // The slash is the edge of the storm window and the first rule of the score.
+   line(456.5,250,444.5,280,'#8798ce',.8);
+   line(459,250,447,280,'#533c87',.65);
+   for(let bank=0;bank<4;bank++)rect(460+bank*19,276,bank===Math.floor(step/4)?15:4,1,bank===Math.floor(step/4)?'#abbaff':'#525174');
+   miniPitch(461,252,75,21);
    line(552,265,771,265,'#454359',.8);
    for(let i=0;i<16;i++){const x=558+13.6*i,hi=i===step;rect(x,hi?258:262,hi?6:(i%4===0?2:1),hi?14:(i%4===0?9:6),hi?'#8facff':i%4===0?'#cacbdd':'#938ca9');}
    g=out;
@@ -169,7 +200,7 @@
      const b=bounds.get(r+'-'+i);b.setAttribute('aria-pressed',String(r<2?i===step:!!seq[r-2][i]));
      if(r===1)b.setAttribute('aria-label','Select step '+(i+1)+', '+noteAt(i));
    }
-   if(globalMotion!==options.motion){globalMotion=options.motion;cameraOverride=null;}
+   if(globalMotion!==options.motion){globalMotion=options.motion;cameraOverride=null;lastAccentTime=-Infinity;}
    const cameraOn=cameraRuns(),transportLabel=playing?'Stop sequence preview':'Play sequence preview';
    bounds.get('camera').setAttribute('aria-label',cameraOn?'Pause 3D viewer':'Play 3D viewer');
    bounds.get('transport').setAttribute('aria-label',transportLabel);
@@ -180,14 +211,18 @@
    root.querySelector('[data-detail]').textContent=two(step+1)+' / 16 · '+noteAt(step);panel.dataset.step=String(step+1);panel.dataset.motion=String(options.motion);
  }
  function update(){bedDraw();syncUI();needsPaint=true;schedule();}
- function hit(r,i){step=(i+16)%16;if(r>=2)seq[r-2][step]^=1;beat=time;
+ function strikeAccent(){
+   if(options.motion&&seq[0][step]&&seq[1][step])lastAccentTime=time;
+ }
+ function hit(r,i){step=(i+16)%16;if(r>=2)seq[r-2][step]^=1;beat=time;strikeAccent();
    root.querySelector('.sr').textContent='Step '+(step+1)+', '+(r<2?noteAt(step):speech[r]+(seq[r-2][step]?' on':' off'));update();}
  function regen(){seed=(25173*seed+13849)&65535;rotation=(rotation+5+(seed%7))%16;seq=pattern.map(arr=>arr.map((_,i)=>arr[(i+rotation)%16]));beat=time;update();}
- function tick(){step=(step+1)%16;if(step%4===0||seq[0][step]&&seq[1][step])beat=time;update();}
- function transport(){playing=!playing;if(playing){beat=time;clock=setInterval(tick,125);}else{clearInterval(clock);clock=0;}update();}
+ function tick(){step=(step+1)%16;if(step%4===0||seq[0][step]&&seq[1][step])beat=time;strikeAccent();update();}
+ function transport(){playing=!playing;if(playing){beat=time;strikeAccent();clock=setInterval(tick,125);}else{clearInterval(clock);clock=0;}update();}
  function toggleMotion(){options.motion=!options.motion;cameraOverride=null;lastTime=null;update();}
  function toggleCamera(){cameraOverride=!cameraRuns();lastTime=null;update();}
- const paintStorm=makeWhipStorm(out);
+ const drawStorm=makeWhipStorm(out);
+ function paintStorm(at){drawStorm(at,seq[0],seq[1],seq[2],at-lastAccentTime);}
  const paintCounter=makeStepCounter();
  let counterBeat=-100;
  function paint(){
@@ -210,8 +245,7 @@
    const pose=drawFace();
    const shine=.5+.5*Math.cos(time*.52);
    line(724,58,769,58,gradient(724,58,769,58,[[0,'#242235'],[.25+.45*shine,'#9baac9'],[1,'#332541']]),.8);
-   paintStorm(time,seq[0],seq[1],seq[2]);const xx=382+((time*.065)%1)*151;
-   const sweep=gradient(xx-8,0,xx+8,0,[[0,'rgba(131,158,252,0)'],[.5,'rgba(157,180,255,.28)'],[1,'rgba(131,158,252,0)']]);rect(xx-8,256,16,18,sweep);
+   paintStorm(time);
    panel.dataset.pose=String(pose);panel.dataset.shot=shotNames[cameraLabel()];needsPaint=false;
  }
  function schedule(){if(!frameId&&visible&&!document.hidden)frameId=requestAnimationFrame(frame);}
@@ -220,7 +254,7 @@
    const moving=options.motion||cameraRuns();
    if(lastTime!==null && !needsPaint && moving && now-lastTime<1000/30-.5){
      // The footer can move on each display refresh while the crest keeps its own cadence.
-     if(options.motion)paintStorm(time+(now-lastTime)/1000,seq[0],seq[1],seq[2]);
+     if(options.motion)paintStorm(time+(now-lastTime)/1000);
      schedule();return;
    }
    const dt=lastTime===null?0:Math.max(0,Math.min((now-lastTime)/1000,.15));lastTime=now;

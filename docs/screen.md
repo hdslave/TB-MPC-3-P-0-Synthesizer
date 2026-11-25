@@ -6,8 +6,7 @@ Each new plug-in instance opens in **Press Plate**. To audition **Blacklight Tra
 
 The freesp16 edition uses the blue titanium Slink wordmark, an orbiting frame around the pulsing smiley, and a touch-playable pitch ribbon. See the [SP-16 controls](../README.md#freesp16-on-sp-16).
 
-The **Thorn Crown** SP-16 design study has an editable sixteen-step score and a tap-to-hold crest viewer. Build the offline browser mockup from the repository root with `python3 tools/sp16_thorn/build.py`, then open `build/slink-thorn-crown.html`. The study previews the interface with a silent local clock.
-
+The **Thorn Crown** SP-16 design study has an editable sixteen-step score and a tap-to-hold crest viewer. Build the offline browser mockup from the repository root with `python3 tools/sp16_thorn/build.py`, then open `build/slink-thorn-crown.html`. The study previews the interface with a silent local clock. A gated accent sends a reflection down the chrome whips. Tap the crest to hold its camera while the score keeps running.
 
 The blue-chrome Slink wordmark starts seven pixels from the left edge and spans 216 pixels of the brushed silver header on all five Press Plate pages. The lettering has three pixels of brushed silver above it and two below it before the dark edge. The brushed face grades from a soft upper-left highlight into a deeper silver at the lower right. The page name sits in the angled tab to its right. The lime melting smiley sits at the right end of the cobalt panel below. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
 

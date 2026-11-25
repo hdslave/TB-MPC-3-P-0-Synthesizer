@@ -1,6 +1,10 @@
 // Two flexible metal ribbons crossing a bank of forked lightning.
 function makeWhipStorm(ctx){
-  const left=201.5,top=253.5,width=167,height=24,tau=2*Math.PI;
+  const width=167,height=24,tau=2*Math.PI;
+  // The right cut meets the pitch trace in the same aperture.
+  const aperture=new Path2D();
+  aperture.moveTo(201,250);aperture.lineTo(456,250);aperture.lineTo(444,280);
+  aperture.lineTo(206,280);aperture.lineTo(201,275);aperture.closePath();
   const cosine=Math.cos,sine=Math.sin,clip=(n,lo,hi)=>Math.min(hi,Math.max(lo,n));
   const pack=(r,g,b)=>(255<<24)|(clip(b,0,255)<<16)|(clip(g,0,255)<<8)|clip(r,0,255);
   const gradient=[
@@ -36,7 +40,7 @@ function makeWhipStorm(ctx){
   let scale=0,W,H,pixels,colour,depth;
   const stations=93;
   const projected=new Float32Array(stations*2*5);
-  function triangle(ia,ib,ic,map){
+  function triangle(ia,ib,ic,map,charge){
     const v=projected;
     const ax=v[ia],ay=v[ia+1],bx=v[ib],by=v[ib+1],cx=v[ic],cy=v[ic+1];
     const abx=bx-ax,aby=by-ay,acx=cx-ax,acy=cy-ay,det=abx*acy-aby*acx;
@@ -53,7 +57,9 @@ function makeWhipStorm(ctx){
         if(b<0||c<0||b+c>1)continue;
         const z=za+zb*b+zc*c;if(z<=depth[i])continue;
         depth[i]=z;
-        colour[i]=map[((ya+yb*b+yc*c+.5)|0)*lutSize+((xa+xb*b+xc*c+.5)|0)];
+        const sample=map[((ya+yb*b+yc*c+.5)|0)*lutSize+((xa+xb*b+xc*c+.5)|0)];
+        colour[i]=charge ? pack((sample&255)+charge,((sample>>>8)&255)+charge*.92,
+                                ((sample>>>16)&255)+charge*1.31) : sample;
       }
     }
   }
@@ -76,7 +82,8 @@ function makeWhipStorm(ctx){
       r.rest.push([0,1].map(i=>cat(path[Math.max(0,k-1)][i],path[k][i],path[k+1][i],path[Math.min(n,k+2)][i],u)));
     }
   }
-  function renderLash(r,phase,gates,accents,slides){
+  function renderLash(r,phase,gates,accents,slides,pulseAge){
+    const pulseStation=(pulseAge/.48*1.3-.15)*(stations-1);
     const spine=r.spine,mesh=r.mesh,hand=r.hand,offset=hand===1?0:2.51;
     for(let j=0;j<stations;j++){
       const u=j/(stations-1),k=j*4,p=phase+offset-3.9*u;
@@ -127,12 +134,19 @@ function makeWhipStorm(ctx){
           projected[v+3]=half+normalX*inv;projected[v+4]=half-normalY*inv;
         }
       }
-      const map=finishes[cross[l][2]];
+      const material=cross[l][2], base=finishes[material];
       for(let j=0;j<stations-1;j++){
         const i=j*10;
         // A slit milled into each belly reveals the other lash or a lightning fork beneath.
         if((l===2||l===3||l===10)&&j>25&&j<39)continue;
-        triangle(i,i+15,i+10,map);triangle(i,i+5,i+15,map);
+        // Each silver bevel and the violet reverse can catch the same travelling
+        // light. The depth buffer still cuts it off where the whips cross.
+        let charge=0;
+        if((l===2||l===4||l===5||material===polish||material===inlay) && pulseAge>=0 && pulseAge<.48){
+          const distance=(j-pulseStation)/11;
+          charge=155*Math.max(0,1-distance*distance)**2;
+        }
+        triangle(i,i+15,i+10,base,charge);triangle(i,i+5,i+15,base,charge);
       }
     }
   }
@@ -220,22 +234,43 @@ function makeWhipStorm(ctx){
     }
     ink.restore();
   }
-  // A very dark warped checker runs below the two polished surfaces like ink on a rave flyer.
+  // A two-ink checker wraps over a turning belt. The cross-section goes edge-on
+  // twice per turn, pinching a broad printed tile down to a single engraved line.
+  const columns=36, rows=4, stride=rows+1;
+  const printX=new Float32Array((columns+1)*stride);
+  const printY=new Float32Array(printX.length);
   function printedField(phase){
-    ink.fillStyle='#070516';ink.fillRect(0,0,width,height);
-    for(let band=0;band<3;band++){
-      const offset=band===0?10:band===1?56:133;
-      ink.fillStyle=['#22113e','#151437','#1b1236'][band];
-      const tile=new Path2D();
-      const loc=(i,j)=>{
-        const x=offset+i*3.0+j*1.12+2.2*sine(.40*i+phase+band);
-        return [x,18+j*1.68-3.5*sine(.25*i+phase+band)-.32*i];
-      };
-      for(let i=0;i<12;i++)for(let j=0;j<5;j++){
-        if((i+j)%2||i+j<3||i+j>13)continue;
-        tile.moveTo(...loc(i,j));tile.lineTo(...loc(i+1,j));tile.lineTo(...loc(i+1,j+1));tile.lineTo(...loc(i,j+1));tile.closePath();
+    ink.fillStyle='#070617';ink.fillRect(0,0,width,height);
+    for(let i=0;i<=columns;i++){
+      const u=i/columns;
+      const twist=tau*(1.16*u-.13)+.69*sine(phase-.8)+.19*sine(phase*2+tau*u);
+      const centre=14+5.6*sine(tau*(1.5*u-.09)+phase);
+      const radius=6+2.5*cosine(tau*u-phase);
+      const x=-11+(width+22)*u+2.4*sine(twist*2+phase);
+      for(let j=0;j<=rows;j++){
+        const v=j*2/rows-1, at=i*stride+j;
+        printX[at]=x+v*(3.7+1.9*sine(twist));
+        printY[at]=centre+radius*v*cosine(twist)+1.7*(1-v*v)*sine(twist);
       }
-      ink.fill(tile);
+    }
+    for(let colour=0;colour<2;colour++){
+      ink.beginPath();
+      for(let i=0;i<columns;i++)for(let j=0;j<rows;j++){
+        if((i+j)%2!==colour)continue;
+        const a=i*stride+j,b=a+stride;
+        ink.moveTo(printX[a],printY[a]);ink.lineTo(printX[b],printY[b]);
+        ink.lineTo(printX[b+1],printY[b+1]);ink.lineTo(printX[a+1],printY[a+1]);ink.closePath();
+      }
+      ink.fillStyle=colour?'#49328a':'#17112d';ink.fill();
+    }
+    // A misregistered pair of lines detaches at the folds like ink on foil.
+    for(const side of [0,rows]){
+      ink.beginPath();
+      for(let i=0;i<=columns;i++){
+        const k=i*stride+side,y=printY[k]+(side?1:-1)*1.3;
+        if(i===0)ink.moveTo(printX[k],y);else ink.lineTo(printX[k],y);
+      }
+      ink.lineWidth=.37;ink.strokeStyle=side?'#7272c0':'#6f429d';ink.stroke();
     }
   }
   function tipLight(r,phase,power){
@@ -262,7 +297,7 @@ function makeWhipStorm(ctx){
     ink.lineTo(.24,.20);ink.lineTo(2.0*size,0);ink.lineTo(.24,-.2);ink.lineTo(0,-size);ink.lineTo(-.30,-.2);ink.closePath();
     ink.fillStyle='#e3ebff';ink.fill();ink.restore();
   }
-  return function render(seconds,gates,accents,slides){
+  return function render(seconds,gates,accents,slides,pulseAge=Infinity){
     const res=clip(Math.ceil(ctx.getTransform().a*1.5),3,8);
     if(scale!==res){
       scale=res;W=metal.width=scene.width=width*res;H=metal.height=scene.height=height*res;
@@ -274,11 +309,13 @@ function makeWhipStorm(ctx){
     const active=storms[index%6],previous=storms[(index+5)%6],acc=accents[(index%6)*3],priorAcc=accents[((index+5)%6)*3];
     drawStorm(previous,age+1,priorAcc,false);drawStorm(active,age,acc,false);
     colour.fill(0);depth.fill(-1e5);
-    for(const r of ribbons)renderLash(r,phase,gates,accents,slides);
+    for(const r of ribbons)renderLash(r,phase,gates,accents,slides,pulseAge);
     metalCtx.putImageData(pixels,0,0);ink.setTransform(1,0,0,1,0,0);ink.drawImage(metal,0,0);
     ink.setTransform(scale,0,0,scale,0,0);drawStorm(active,age,acc,true);
     tipLight(ribbons[0],phase,(.5+.5*cosine(phase*3-.6))**3);
     tipLight(ribbons[1],phase,(.5+.5*cosine(phase*3+2.2))**4);
-    ctx.drawImage(scene,left,top,width,height);
+    ctx.save();ctx.clip(aperture);
+    ctx.drawImage(scene,201,250,255,30);
+    ctx.restore();
   };
 }
