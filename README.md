@@ -9,17 +9,19 @@
     <th width="48%">macOS and Windows · CLAP</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink 0.6.1 playing a 16-step pattern on the silver MPC panel, with its chrome wordmark and three rotary controls"></a></td>
+    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
     <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16.gif" alt="Slink pitch ribbon and animated smiley"></a></td>
     <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
   </tr>
 </table>
 
+[See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View the Blacklight Transfer theme](docs/slink-mpc-blacklight.png)
+
 [Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
 
 The [desktop CLAP build](mac-clap/) brings the sequencer and voice controls together on one interactive panel.
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.1).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.3).
 
 On hdslaveOS 0.8.2, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
@@ -225,8 +227,8 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 ## The screen
 
 Slink’s MPC panel opens in **Press Plate**: a stamped cobalt and aluminium panel with a lime melting smiley, whose drips jump on a
-four-step downbeat or an accented gate. A wide blue-chrome Slink wordmark fills the silver header. The three satin-chrome dials have a white pointer and a cobalt value arc. The second theme, **Blacklight Transfer** (the smiley on a blue ticket, the
-pattern as a pitch roll), is under CLOCK: select THEME and Push; Push again goes back. The theme holds for this
+four-step downbeat or an accented gate. A wide blue-chrome Slink wordmark fills the header. The silver surfaces have a fine horizontal grain, with antialiased labels and readouts. The three satin-chrome dials have a white pointer and a cobalt value arc. **Blacklight Transfer** pairs the chrome title with a navy header, a glossy lime smiley ticket and a recessed pitch roll. Antialiased type and shaded control panels carry through all five dark pages.
+On CLOCK, select THEME and Push to switch. Push again to go back. The theme holds for this
 instance on every page, in Edit and Stage, until Melodee restarts; projects and presets keep only the sound.
 
 - **PATTERN**, TB-3PO's own screen: the seed (locked or random), the transport and the step in the dark window; then
@@ -236,7 +238,7 @@ instance on every page, in Edit and Stage, until Melodee restarts; projects and 
   plays from the next clock (until then the window reads PENDING over the pattern still playing); Push is Regen;
   Shift + Push is Seed Back. K1-K3: Cutoff, Resonance, Env Mod. [docs/screen.md](docs/screen.md) has the details.
 - **VOICE** and **TONE**: the voice's knobs, beside the filter's response (Cutoff's reading marked). VOICE ends with the cutoff LFO. TONE ends with the pitch LFO.
-- **SEQUENCER** and **CLOCK**: the sequencer's settings beside a small score; CLOCK also holds THEME.
+- **SEQUENCER** and **CLOCK**: SEQUENCER pairs its settings with the score. On the silver CLOCK page, Clock Div, Swing, Reset and Theme sit above a full-width score.
 
 On a list the controls are hdslave Machine's: the wheel moves a row; Push edits it (the wheel then changes it: a
 choice a step, a knob 1/128, 1/1024 with Shift; Push again leaves), or presses a button; Minus / Plus change group
@@ -377,9 +379,9 @@ every fingerprint scenario too: a report stops it.
 - The quantizer and its scales: Emilie Gillet (Mutable Instruments Braids), re-implemented by Bryan Head; the
   Hemisphere framework: Jason Justian. MIT license; see `licenses/MIT-oc-firmware.txt`.
 - The diode ladder's linear model and the zero-delay ladders: Vadim Zavalishin, *The Art of VA Filter Design*.
-- The screen's type: Departure Mono (copyright 2022–2024 Helena Zhang), Barlow Condensed Bold Italic (copyright 2017
+- The screen's type: Departure Mono (copyright 2022–2024 Helena Zhang), Barlow SemiBold and Barlow Condensed Bold Italic (copyright 2017
   The Barlow Project Authors) and Michroma (copyright 2011 The Michroma Project Authors), each SIL Open Font License
-  1.1 (`licenses/OFL-*.txt`); `tools/ui_preview/assets.py` rasterizes their glyphs into the headers in `src/ui/`.
+  1.1 (`licenses/OFL-*.txt`). The glyph bakers are in `tools/ui_preview/`.
   The artwork's origins are listed in
   [THIRD_PARTY.md](THIRD_PARTY.md). The screen extension's header, `src/melodee_screen.h`, is Melodee's (`melodee.screen/1`), MIT.
 - CLAP headers: MIT license, `third_party/clap/LICENSE`.

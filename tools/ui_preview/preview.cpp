@@ -205,6 +205,32 @@ void guardedFrame (Rig& r)
     }
 }
 
+void silverText()
+{
+    using namespace hdui;
+    std::array<Ink, 40*12> pixels {};
+    Raster r { pixels.data(), 40, 12, true };
+    pixels.fill (ink::metal);
+    r.text (0, 0, "535 Hz", ink::bg);
+    check (std::any_of (pixels.begin(), pixels.end(), [](Ink c) { return c != ink::metal && c != ink::bg; }),
+           "silver labels retain edge coverage");
+    for (int pitch : { -32768, -4000, -128, 128, 32767 })
+        for (bool compact : { false, true })
+        {
+            pixels.fill (ink::metal);
+            tbmpc::plots::pitchLabel (r, 20, 0, pitch, 16, compact);
+            bool drawn = false;
+            for (int y = 0; y < r.h; ++y)
+                for (int x = 0; x < r.w; ++x)
+                    if (pixels[y*r.w+x] != ink::metal)
+                    {
+                        check (x >= 12 && x < 28, "note stays inside its matrix cell");
+                        drawn = true;
+                    }
+            check (drawn, "signed note has a label");
+        }
+}
+
 void bindings (Rig& r, uint32_t a, uint32_t b, uint32_t c)
 {
     uint32_t ids[3];
@@ -545,6 +571,7 @@ int main (int argc, char** argv)
     const bool render = !std::strcmp (mode, "--render"), test = !std::strcmp (mode, "--test");
     check (render || test || !std::strcmp (mode, "--hashes"), "expected --render, --test, --bench or --hashes");
     FILE* ref = test ? std::fopen (blacklight ? "tools/ui_preview/blacklight-hashes.txt" : "tools/ui_preview/hashes.txt", "r") : nullptr;
+    if (test && !blacklight) silverText();
     if (test) { check (ref, "golden hash file"); controls(); themeSwitch(); damage (blacklight); motion (blacklight); }
     for (unsigned i = 0; i < std::size (names); ++i)
     {

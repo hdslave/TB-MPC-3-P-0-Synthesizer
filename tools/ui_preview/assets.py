@@ -1,7 +1,8 @@
 """Build the native display glyphs and indexed screen artwork."""
+from foil import inlay
 from math import cos, radians, sin
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
 ART = ROOT / 'assets/art'
@@ -73,12 +74,31 @@ def native_plate(source, height):
     return output
 
 
-source = Image.open(EXPLORE/'press-plate/master.png').convert('RGB')
-hero, editor = (native_plate(source, h) for h in (64,42))
-atlas = Image.new('RGB', (320,106))
-atlas.paste(hero)
-atlas.paste(editor,(0,64))
-atlas = atlas.quantize(colors=128, dither=Image.Dither.NONE)
+def press_atlas(filename):
+    source = Image.open(EXPLORE/'press-plate'/filename).convert('RGB')
+    plates = Image.new('RGB', (320,106))
+    plates.paste(native_plate(source, 64))
+    plates.paste(native_plate(source, 42), (0,64))
+    return plates.quantize(colors=128, dither=Image.Dither.NONE)
+
+
+def glaze(base, finish, usable_light):
+    base_palette = bytes(base.getpalette())
+    offset = len(base_palette) // 3
+    # Keep the expression, outlines and their antialiased edges in the original ink.
+    fill = {i for (r, g, b), i in base.palette.colors.items()
+            if r >= 180 and g >= 230 and b < 32}
+    lit = {i for color, i in finish.palette.colors.items() if usable_light(*color)}
+    indices = bytes(offset + light if ink in fill and light in lit else ink
+                    for ink, light in zip(base.tobytes(), finish.tobytes()))
+    result = Image.frombytes('P', base.size, indices)
+    result.putpalette(base_palette + bytes(finish.getpalette()))
+    return result
+
+
+atlas = glaze(press_atlas('master.png'), press_atlas('jelly-finish.png'),
+              lambda r, g, b: r > 120 and g > 170 and g >= r - 12 and g > b)
+atlas = inlay(atlas)
 palette = bytes(atlas.getpalette())
 inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
 contents = header + ['namespace hdui::art {', 'inline constexpr uint32_t palette[] = {' + ','.join(inks) + '};']
@@ -88,8 +108,6 @@ for name, start, stop in [('hero',0,64),('editor',64,106)]:
     data = im.tobytes()
     contents += table(name, [data[i:i+320] for i in range(0,len(data),320)])
 
-wordmark = Image.open(ART/'slink.png').convert('L').point(lambda v: 255 if v > 26 else 0)
-contents += table('logo', bits(wordmark.resize((76,11), Image.Resampling.LANCZOS).point(lambda v: 255 if v >= 95 else 0)))
 bold = ImageFont.truetype(str(FONTS/'BarlowCondensed-BoldItalic.ttf'), 72)
 digits = []
 for ch in '0123456789ABCDEF':
@@ -116,6 +134,12 @@ put(UI/'identity.h', contents + ['}'])
 
 source = Image.open(EXPLORE/'blacklight/master.png').convert('RGB')
 sticker = source.resize((77,96), Image.Resampling.LANCZOS).quantize(colors=128,dither=Image.Dither.NONE)
+# The corner marks belong to the printed ticket, outside the domed face.
+finish = Image.open(EXPLORE/'blacklight/jelly-finish.png').convert('RGB').resize(sticker.size, Image.Resampling.LANCZOS)
+for corner in [(0, 0, 18, 19), (59, 0, 77, 11)]:
+    finish.paste(sticker.crop(corner).convert('RGB'), corner)
+sticker = glaze(sticker, finish.quantize(colors=128, dither=Image.Dither.NONE),
+                lambda r, g, b: max(r, g) > 125 and min(r, g) > 60)
 sticker.save(ART/'blacklight-pass.png', optimize=True)
 palette = bytes(sticker.getpalette())
 inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
@@ -123,11 +147,31 @@ ticket = header + ['namespace hdui::blacklightArt {', 'inline constexpr uint32_t
 data = sticker.tobytes()
 ticket += table('sticker', [data[i:i+77] for i in range(0,len(data),77)])
 
-digits = []
-for ch in '0123456789ABCDEF':
-    canvas = Image.new('L',(18,23))
-    width = 13 if ch == '1' else 17
-    canvas.paste(outline(bold,ch,(width,23)),((18-width)//2,0))
-    digits.extend(bits(canvas))
-ticket += table('digits', digits)
+# Set the five original letterforms separately so the L, I and N keep a
+# native-pixel gap. Lift the midtones and put the reflections on the panel ink.
+wordmark = Image.open(ART/'slink.png').convert('RGB')
+navy = (9, 10, 35)
+curve = [min(1, 1.2*max(0, (v-5)/250)**0.68) for v in range(256)]
+wordmark = wordmark.point([round(bg + (255-bg)*v) for bg in navy for v in curve])
+# Split between letters in the master so the L, I and N
+# keep distinct stems after sampling to the 17-pixel-high header.
+edges = (0, 332, 530, 575, 829, wordmark.width)
+letters = []
+for left, right in zip(edges, edges[1:]):
+    letter = wordmark.crop((left, 0, right, wordmark.height))
+    letters.append(letter.resize((round(letter.width*120/wordmark.width), 17), Image.Resampling.LANCZOS))
+gap = 2
+title = Image.new('RGB', (sum(letter.width for letter in letters) + gap*(len(letters)-1), 17), navy)
+x = 0
+for letter in letters:
+    title.paste(letter, (x, 0))
+    x += letter.width + gap
+title = title.filter(ImageFilter.UnsharpMask(radius=0.75, percent=65, threshold=3))
+title = title.quantize(colors=64, dither=Image.Dither.NONE)
+palette = bytes(title.getpalette())
+inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
+ticket += ['inline constexpr uint32_t titlePalette[] = {' + ','.join(inks) + '};']
+data = title.tobytes()
+ticket += table('title', [data[i:i+title.width] for i in range(0,len(data),title.width)])
+
 put(UI/'blacklight_art.h', ticket + ['}'])
