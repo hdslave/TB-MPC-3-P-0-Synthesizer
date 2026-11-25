@@ -94,7 +94,7 @@
  function actionButton(x,y,w,h,label,main){
    const fill=main?stripe(x,y,w,h,cobalt):stripe(x,y,w,h,purple);
    chamfer(x,y,w,h,fill,main?'#9cb6fc':'#7b7299',4);
-   machineText(g,label,x+w/2,y+h/2,main?15:12,w-9,'#faf9ff');
+   scoreText(g,label,x+w/2,y+h/2,main?15:12,w-9,'#faf9ff');
  }
  function symbol(row,i,cx,cy,ink,sel){
    const on=seq[row-2][i];
@@ -117,7 +117,7 @@
    for(let r=0;r<5;r++){
      const rh=hh[r],ink=r===1?'#151629':'#e9eaf6';
      const lab=r===1?stripe(x,yy,label,rh,silver):stripe(x,yy,label,rh,[[0,'#332840'],[.55,'#251c34'],[1,'#19132a']]);
-     chamfer(x,yy,label-3,rh-1,lab,'#71738c',3);machineText(g,names[r],x+5,yy+rh/2,r===1?17:13,label-10,ink,'left');
+     chamfer(x,yy,label-3,rh-1,lab,'#71738c',3);scoreText(g,names[r],x+5,yy+rh/2,r===1?17:13,label-10,ink,'left');
      for(let i=0;i<16;i++){
        const bank=Math.floor(i/4),xx=x+label+i*cw+bank*gutter, ww=cw-1.1,sel=i===selected;
        if(i%4===0&&i>0){line(xx-3.5,yy+2,xx-1,yy+.4,'#76778f',.7);}
@@ -129,8 +129,8 @@
        if(sel&&r===0)path([[xx+2,yy+2],[xx+8,yy+2],[xx+2,yy+8]],'#f2f4ff');
        if(plate)continue;
        const cx=xx+ww/2,cy=yy+rh/2,fg=sel?'#fff':r===1?'#13172c':'#d6d9ea';
-       if(r===0)machineText(g,two(i+1),cx,cy,12,ww-8,fg);
-       else if(r===1)machineText(g,noteAt(i),cx,cy,23,ww-5,fg);
+       if(r===0)scoreText(g,two(i+1),cx,cy,12,ww-8,fg);
+       else if(r===1)scorePitch(g,noteAt(i),cx,cy,23,ww-5,fg);
        else symbol(r,i,cx,cy,fg,sel);
        if(makeKeys)key(r+'-'+i,xx,yy,ww,rh,(r<=1?'Select step '+(i+1):speech[r]+' on step '+(i+1)),()=>hit(r,i));
      }yy+=rh;
@@ -247,7 +247,7 @@
  motionPref.addEventListener('change',()=>{options.motion=!motionPref.matches;lastTime=null;update();});
  fallback.addEventListener('loadeddata',()=>{needsPaint=true;schedule();});fallback.addEventListener('seeked',()=>{needsPaint=true;schedule();});
  if(globalThis.captureThornPlates){
-   globalThis.captureThornPlates({bed,bedDraw,paintCounter,machineText,drawStorm:paintStorm,
+   globalThis.captureThornPlates({bed,bedDraw,paintCounter,scoreText,scorePitch,drawStorm:paintStorm,
      drawButton:label=>actionButton(622,55,81,29,label,true),
      drawPose:i=>{rect(717,0,61,58,"#080812");facePose=i;drawFace();}});
  }

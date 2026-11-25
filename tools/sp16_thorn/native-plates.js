@@ -1,7 +1,7 @@
 // Offline plate extraction. The selected column, numbers and pitches remain
 // independent, so any generated pattern can use the same small set of cuts.
 function nativePlate(kind,i){
-  const {bed,bedDraw,paintCounter,machineText,drawStorm}=window.plates;
+  const {bed,bedDraw,paintCounter,scoreText,scorePitch,drawStorm}=window.plates;
   const cv=document.createElement('canvas'),ctx=cv.getContext('2d');
   const panel=document.querySelector('#thorn-crown-metal canvas');
   function from(source,x,y,w,h){
@@ -21,8 +21,8 @@ function nativePlate(kind,i){
     const pitch=i-256+36;
     const note=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'][(pitch%12+12)%12]+(Math.floor(pitch/12)-1);
     const w=42,h=kind==='pitch'?37:20;cv.width=w*4;cv.height=h*4;ctx.scale(4,4);
-    machineText(ctx,kind==='pitch'?note:String(i+1).padStart(2,'0'),w/2,h/2,
-             kind==='pitch'?23:12,kind==='pitch'?37:34,'white');
+    if(kind==='pitch')scorePitch(ctx,note,w/2,h/2,23,37,'white');
+    else scoreText(ctx,String(i+1).padStart(2,'0'),w/2,h/2,12,34,'white');
   }else if(kind==='face'){
     window.plates.drawPose(i);from(panel,717,0,61,58);
   }else if(kind==='storm'){
