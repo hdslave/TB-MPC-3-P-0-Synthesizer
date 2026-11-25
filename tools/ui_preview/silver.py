@@ -17,8 +17,9 @@ def nameplate(height=30, wide_logo=False):
     draw = ImageDraw.Draw(plate)
     if wide_logo:
         grain = brush_tile()
-        for y in range(height - 2):
-            v = y / (height - 3)
+        face_height = height - 1  # The last row is the dark edge.
+        for y in range(face_height):
+            v = y / (face_height - 1)
             for x in range(width):
                 u = x / (width - 1)
                 # A wide diagonal reflection rolls into a cooler lower-right edge.
@@ -29,7 +30,7 @@ def nameplate(height=30, wide_logo=False):
         for y in range(height):
             level = round(216 - 13 * y / height) + (0, 1, -1, 0)[y % 4]
             draw.line((0, y, width - 1, y), fill=(level, level + 2, level + 8))
-    draw.line((0, height - 2, width - 1, height - 2), fill='#edf0fa')
+        draw.line((0, height - 2, width - 1, height - 2), fill='#edf0fa')
     draw.line((0, height - 1, width - 1, height - 1), fill='#273661')
 
     logo = Image.open(ART / 'slink.png').convert('RGB')
@@ -40,8 +41,7 @@ def nameplate(height=30, wide_logo=False):
     if wide_logo:
         # Fit the MPC's short, sloping plate directly from the full-resolution lettering.
         top_margin = 3
-        bottom_margin = 2
-        face_height = height - 2  # Exclude the bevel.
+        bottom_margin = 3
         logo = logo.resize((216, face_height - top_margin - bottom_margin), Image.Resampling.LANCZOS)
         origin = (7, top_margin)
     else:
