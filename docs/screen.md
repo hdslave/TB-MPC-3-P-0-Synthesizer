@@ -26,7 +26,7 @@ On all five pages in both themes, two narrow slices through the smiley’s lower
 
 These images show Slink 0.6.3 in the hdslaveOS Stage host at twice the native resolution. A faint horizontal grain runs through the silver title plate, step cells, parameter rows and knob panels. On Pattern, K1–K3 control Cutoff, Resonance and Env Mod. On Voice, they follow the selected row and the two below it.
 
-Voice and Tone draw the filter response in lime over a six-petal spiral etched into the glass. The 1 kHz mark sits on the lower scale. Sequencer and Clock use the same glass behind the score. Sequencer pairs the settings with a taller note display. Clock arranges its four settings in one row above a full-width score and swing indicator. [Clock in Stage](slink-mpc-clock.png)
+Voice and Tone draw the filter response in lime on a plain charcoal field. The 1 kHz mark sits on the lower scale. Sequencer and Clock use the same charcoal behind the notes. Sequencer pairs the settings with a taller note display. Clock arranges its four settings in one row above a full-width score and swing indicator. [Clock in Stage](slink-mpc-clock.png)
 
 ## Controls
 
@@ -91,15 +91,15 @@ Measured for MPC Slink 0.6.3 on 2026-11-25. Each entry is the mean elapsed time 
 
 | Operation | Press Plate Mac, ms | Press Plate Linux, ms | Blacklight Mac, ms | Blacklight Linux, ms |
 |---|---:|---:|---:|---:|
-| Full PATTERN, 16 steps | 0.052064 | 0.057456 | 0.030283 | 0.034921 |
-| Idle | 0.000027 | 0.000048 | 0.000023 | 0.000049 |
-| Partial step, 16 steps | 0.036496 | 0.039586 | 0.022877 | 0.023487 |
-| Full PATTERN, 32 steps | 0.055290 | 0.060437 | 0.034243 | 0.038455 |
-| Partial step, 32 steps | 0.037313 | 0.039208 | 0.023444 | 0.024477 |
-| Full VOICE, Twin Peak | 0.059332 | 0.067346 | 0.043960 | 0.048177 |
-| Partial VOICE cursor move | 0.032523 | 0.035986 | 0.020038 | 0.021597 |
-| Full VOICE while Resonance changes | 0.063586 | 0.073301 | 0.047573 | 0.054231 |
-| Partial VOICE while Resonance changes | 0.061318 | 0.066962 | 0.042610 | 0.045340 |
+| Full PATTERN, 16 steps | 0.050735 | 0.052244 | 0.030283 | 0.034921 |
+| Idle | 0.000026 | 0.000047 | 0.000023 | 0.000049 |
+| Partial step, 16 steps | 0.036348 | 0.035498 | 0.022877 | 0.023487 |
+| Full PATTERN, 32 steps | 0.054544 | 0.056071 | 0.034243 | 0.038455 |
+| Partial step, 32 steps | 0.037065 | 0.036767 | 0.023444 | 0.024477 |
+| Full VOICE, Twin Peak | 0.056668 | 0.060258 | 0.043960 | 0.048177 |
+| Partial VOICE cursor move | 0.031398 | 0.032566 | 0.020038 | 0.021597 |
+| Full VOICE while Resonance changes | 0.059769 | 0.066098 | 0.047573 | 0.054231 |
+| Partial VOICE while Resonance changes | 0.056819 | 0.060552 | 0.042610 | 0.045340 |
 
 Peak changed pixels per paint, counted across a full clock cycle or a traversal of every editor row. Both targets produced the same counts.
 

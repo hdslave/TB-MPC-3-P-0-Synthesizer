@@ -1,6 +1,6 @@
-"""Original engraved foil and rose-engine linework for the silver MPC panel."""
-from math import cos, sin, tau
-from PIL import Image, ImageDraw
+"""Original engraved foil for the silver MPC readout."""
+from math import cos, sin
+from PIL import Image
 
 # Reflections move from violet through coral and sea-glass back to blue.
 SPECTRUM = ((110, 87, 249), (228, 102, 223), (255, 173, 136),
@@ -55,32 +55,3 @@ def inlay(atlas):
     result = Image.frombytes('P', atlas.size, bytes(indices))
     result.putpalette(inks + strip.getpalette())
     return result
-
-
-def scope_glass(width, height):
-    """An offset six-petal spiral with widely spaced rings around a quiet centre."""
-    aa = 3
-    image = Image.new('RGB', (width*aa, height*aa))
-    bg = ImageDraw.Draw(image)
-    for y in range(height*aa):
-        t = y/(height*aa)
-        bg.line((0,y,image.width,y),fill=(round(16+10*t),round(17+2*t),round(29+8*t)))
-    cx, cy = width*.74, height*.51
-    # Project nested petals obliquely, giving the outer rings a different axis from the core.
-    for i in range(22):
-        size = 6.8 * 1.178**i
-        phase = .48*i
-        points = []
-        for j in range(361):
-            a = tau*j/360
-            radius = size*(1+.22*cos(6*a-phase)+.026*cos(12*a-2*phase))
-            x = cx + radius*(1.21*cos(a)+.23*sin(a)) + .085*size
-            y = cy + radius*(.66*sin(a)-.16*cos(a))
-            points.append((round(x*aa), round(y*aa)))
-        for k in range(12):
-            mid = tau*(k+.5)/12
-            tint = spectrum(.76+.065*i+.27*cos(mid+phase*.16))
-            strength = (.31+.16*cos(mid+phase*.13)) * (.62+.38*min(1,size/20))
-            ink = tuple(round(base+(v-base)*strength) for base,v in zip((22,19,36),tint))
-            bg.line(points[k*30:k*30+31], fill=ink, width=aa if i%4 else aa+1)
-    return image.resize((width,height),Image.Resampling.LANCZOS)
