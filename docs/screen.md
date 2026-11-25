@@ -14,6 +14,18 @@ Blacklight Transfer uses the original lime smiley on a perforated blue ticket. P
 
 On all five pages in both themes, two narrow slices through the smiley’s lower drips move sideways on a four-step downbeat or a gated accent. The offset grows from one native pixel to two, returns to one, and settles after 144 ms. Closely spaced hits share the current pulse. Stop clears it immediately. The motion uses Melodee’s display clock and the published sequencer position.
 
+## Silver panel on MPC
+
+<table>
+  <tr><th>Pattern</th><th>Voice</th></tr>
+  <tr>
+    <td><a href="slink-mpc-pattern.png"><img src="slink-mpc-pattern.png" alt="Pattern playing on the silver panel, with Cutoff, Resonance and Env Mod below the step grid" width="320"></a></td>
+    <td><a href="slink-mpc-voice.png"><img src="slink-mpc-voice.png" alt="Voice page with the selected cutoff, filter response and three satin-chrome knobs" width="320"></a></td>
+  </tr>
+</table>
+
+Both images show Slink 0.6.1 in the hdslaveOS Stage host at twice the MPC screen resolution. On Pattern, K1–K3 control Cutoff, Resonance and Env Mod. On Voice, they follow the selected row and the two below it.
+
 ## Controls
 
 | Group | Rows or performance controls |

@@ -9,13 +9,15 @@
     <th width="48%">macOS and Windows · CLAP</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink Press Plate screen running in hdslaveOS"></a></td>
+    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink 0.6.1 playing a 16-step pattern on the silver MPC panel, with its chrome wordmark and three rotary controls"></a></td>
     <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16.gif" alt="Slink pitch ribbon and animated smiley"></a></td>
     <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
   </tr>
 </table>
 
-> **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Platform downloads are listed in the [Slink 0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0).
+[Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
+
+The [desktop CLAP build](mac-clap/) brings the sequencer and voice controls together on one interactive panel.
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.1).
 
