@@ -6,7 +6,7 @@ Each new plug-in instance opens in **Press Plate**. To audition **Blacklight Tra
 
 The freesp16 edition uses the blue titanium Slink wordmark, an orbiting frame around the pulsing smiley, and a touch-playable pitch ribbon. See the [SP-16 controls](../README.md#freesp16-on-sp-16).
 
-A blue-chrome Slink wordmark spans the brushed silver header on all five Press Plate pages. The page name sits in the angled tab to its right. The lime melting smiley sits at the right end of the cobalt panel below. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
+The blue-chrome Slink wordmark starts seven pixels from the left edge and spans 216 pixels of the brushed silver header on all five Press Plate pages. The page name sits in the angled tab to its right. The lime melting smiley sits at the right end of the cobalt panel below. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
 
 Each column of the punched-metal matrix shows one step's number, nearest note, gate, accent and outgoing slide. A filled rectangle opens the gate, a diamond marks an accent, and an arrow marks a slide. A small cobalt dot under a note indicates fractional-semitone CV. Zero CV is C2. The lime column follows playback. Patterns up to 16 steps use one bank. Longer patterns stack two banks so all 32 steps stay visible. The dark strip above the matrix lists scale, root, octave, density and clock division.
 
@@ -91,15 +91,15 @@ Measured for MPC Slink 0.6.3 on 2026-11-24. Each entry is the mean elapsed time 
 
 | Operation | Press Plate Mac, ms | Press Plate Linux, ms | Blacklight Mac, ms | Blacklight Linux, ms |
 |---|---:|---:|---:|---:|
-| Full PATTERN, 16 steps | 0.054873 | 0.058139 | 0.027374 | 0.031574 |
-| Idle | 0.000027 | 0.000053 | 0.000028 | 0.000052 |
-| Partial step, 16 steps | 0.037603 | 0.037798 | 0.021812 | 0.021795 |
-| Full PATTERN, 32 steps | 0.058328 | 0.061098 | 0.030475 | 0.033595 |
-| Partial step, 32 steps | 0.038260 | 0.039591 | 0.020375 | 0.021901 |
-| Full VOICE, Twin Peak | 0.059693 | 0.064147 | 0.040992 | 0.044503 |
-| Partial VOICE cursor move | 0.032536 | 0.035072 | 0.016889 | 0.018124 |
-| Full VOICE while Resonance changes | 0.063374 | 0.069993 | 0.046544 | 0.050378 |
-| Partial VOICE while Resonance changes | 0.059153 | 0.062778 | 0.040969 | 0.042520 |
+| Full PATTERN, 16 steps | 0.050630 | 0.052431 | 0.024340 | 0.027097 |
+| Idle | 0.000023 | 0.000041 | 0.000023 | 0.000047 |
+| Partial step, 16 steps | 0.033319 | 0.032905 | 0.019177 | 0.018811 |
+| Full PATTERN, 32 steps | 0.054148 | 0.055033 | 0.026381 | 0.028023 |
+| Partial step, 32 steps | 0.034632 | 0.034234 | 0.018166 | 0.017538 |
+| Full VOICE, Twin Peak | 0.055354 | 0.056996 | 0.037056 | 0.036755 |
+| Partial VOICE cursor move | 0.030193 | 0.029923 | 0.014571 | 0.014990 |
+| Full VOICE while Resonance changes | 0.058578 | 0.061384 | 0.040815 | 0.042176 |
+| Partial VOICE while Resonance changes | 0.053363 | 0.054458 | 0.035047 | 0.035518 |
 
 Peak changed pixels per paint, counted across a full clock cycle or a traversal of every editor row. Both targets produced the same counts.
 
@@ -112,9 +112,9 @@ Peak changed pixels per paint, counted across a full clock cycle or a traversal 
 | TB-3PO miniature advance | 1,855 | 1,578 |
 | CLOCK miniature advance | 1,865 | 1,230 |
 | Dense microtonal 32-step advance | 1,754 | 1,798 |
-| VOICE cursor | 7,312 | 7,098 |
-| TONE cursor | 7,028 | 6,646 |
-| SEQUENCER cursor | 7,649 | 6,904 |
+| VOICE cursor | 7,314 | 7,098 |
+| TONE cursor | 7,029 | 6,646 |
+| SEQUENCER cursor | 7,646 | 6,904 |
 | CLOCK cursor | 7,983 | 8,906 |
 | Drip motion on PATTERN | 170 | 287 |
 | Drip motion on VOICE | 71 | 287 |

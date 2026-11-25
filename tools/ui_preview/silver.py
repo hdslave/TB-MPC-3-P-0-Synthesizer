@@ -11,23 +11,29 @@ AA = 8
 METAL = '#cdcfd6'
 
 
-def nameplate():
-    width, height = 224, 30
+def nameplate(height=30, wide_logo=False):
+    width = 224
     plate = Image.new('RGB', (width, height))
     draw = ImageDraw.Draw(plate)
     for y in range(height):
         level = round(216 - 13 * y / height) + (0, 1, -1, 0)[y % 4]
         draw.line((0, y, width - 1, y), fill=(level, level + 2, level + 8))
-    draw.line((0, 28, width - 1, 28), fill='#edf0fa')
-    draw.line((0, 29, width - 1, 29), fill='#273661')
+    draw.line((0, height - 2, width - 1, height - 2), fill='#edf0fa')
+    draw.line((0, height - 1, width - 1, height - 1), fill='#273661')
 
     logo = Image.open(ART / 'slink.png').convert('RGB')
     red, green, blue = logo.split()
     alpha = ImageChops.lighter(ImageChops.lighter(red, green), blue)
     logo.putalpha(alpha.point(lambda v: max(0, min(255, (v - 5) * 255 / 13))))
     logo = logo.crop(logo.getbbox())
-    logo.thumbnail((180, 26), Image.Resampling.LANCZOS)
-    plate.paste(logo, (118 - logo.width // 2, 2), logo)
+    if wide_logo:
+        # Fit the MPC's short, sloping plate directly from the full-resolution lettering.
+        logo = logo.resize((216, height - 3), Image.Resampling.LANCZOS)
+        origin = (7, 1)
+    else:
+        logo.thumbnail((180, 26), Image.Resampling.LANCZOS)
+        origin = (118 - logo.width // 2, 2)
+    plate.paste(logo, origin, logo)
     return plate
 
 
@@ -110,5 +116,12 @@ header += dial_tables('dial', desktop)
 # The MPC cards have room for a larger face. Both sizes use the same chrome palette.
 mpc = (dial.quantize(palette=atlas, dither=Image.Dither.NONE) for dial in dial_frames(27))
 header += dial_tables('mpcDial', mpc)
-header += table('brush', brush_tile(), 'int8_t') + ['}']
+header += table('brush', brush_tile(), 'int8_t')
+
+mpc_plate = nameplate(34, wide_logo=True).quantize(colors=256, dither=Image.Dither.NONE)
+plate_palette = bytes(mpc_plate.getpalette())
+plate_inks = ['0xff'+plate_palette[i:i+3].hex() for i in range(0, len(plate_palette), 3)]
+header.append('inline constexpr uint32_t mpcPlatePalette[] = {' + ','.join(plate_inks) + '};')
+header += table('mpcPlate', [mpc_plate.crop((0, y, mpc_plate.width, y+1)).tobytes()
+                             for y in range(mpc_plate.height)]) + ['}']
 (ROOT / 'src/ui/silver_art.h').write_text('\n'.join(header) + '\n')

@@ -278,15 +278,17 @@ private:
         return 0;
     }
 
+    static constexpr int titleHeight = int (std::size (hdui::silver::mpcPlate));
+
     bool paintPressPlate (uint32_t* pixels, int stride, bool whole, const Host& h, int slip, const Changes& d)
     {
         bool drew = false;
         if (d.page || (d.parameters & bit (ParamId::mode)))
-            drew |= picture.region<320,30> (pixels, stride, whole, 0, 0, [&](Raster& r) { title (r); });
+            drew |= picture.region<320,titleHeight> (pixels, stride, whole, 0, 0, [&](Raster& r) { title (r); });
         if (group == 0)
         {
             if (d.position || slip != lastSlip || (d.parameters & (bit (ParamId::seed) | bit (ParamId::seedMode) | bit (ParamId::steps))))
-                drew |= picture.region<320,52> (pixels, stride, whole, 0, 30, [&](Raster& r) { patternPlate (r, h, slip); });
+                drew |= picture.region<320,82-titleHeight> (pixels, stride, whole, 0, titleHeight, [&](Raster& r) { patternPlate (r, h, slip); });
             if (d.page || (d.parameters & (bit (ParamId::root) | bit (ParamId::scale) | bit (ParamId::clockDiv)
                                     | bit (ParamId::octave) | bit (ParamId::density))))
                 drew |= picture.region<320,16> (pixels, stride, whole, 0, 82, [&](Raster& r) { metadata (r); });
@@ -298,7 +300,7 @@ private:
         else
         {
             if (d.selection || slip != lastSlip || (!themeRow() && (d.parameters & bit (fields().fields[row].id))))
-                drew |= picture.region<320,30> (pixels, stride, whole, 0, 30, [&](Raster& r) { editorPlate (r, slip); });
+                drew |= picture.region<320,60-titleHeight> (pixels, stride, whole, 0, titleHeight, [&](Raster& r) { editorPlate (r, slip); });
             if (group == 4)
             {
                 if (d.selection || d.parameters)
@@ -333,24 +335,25 @@ private:
         if (group == 0) r.stamp (0, 18, art::hero, art::palette);
         else r.stamp (0, 18, art::editor, art::palette);
         r.box (0, 0, 320, 18, ink::bg);
-        r.stamp (0, 0, silver::plate, silver::palette);
-        constexpr int width = int (sizeof silver::plate[0]);
+        r.stamp (0, 0, silver::mpcPlate, silver::mpcPlatePalette);
+        constexpr int width = int (sizeof silver::mpcPlate[0]);
         for (int y = 0; y < r.h; ++y)
         {
             const int edge = 246 - 2*y/3;
-            const Ink base = silver::palette[silver::plate[y][width-1]];
+            const Ink base = silver::mpcPlatePalette[silver::mpcPlate[y][0]];
             r.box (width, y, edge-width, 1, base);
-            if (y < 28)
+            if (y < titleHeight-2)
                 for (int x = 0; x < edge; ++x)
                     if (r.px[y*r.w+x] == base) r.px[y*r.w+x] = r.brushed (x, y, base);
             r.box (edge, y, 3, 1, ink::cobalt);
         }
         if (!group && val (ParamId::mode) >= .5f)
         {
-            for (int y = 0; y < 18; ++y)
-                r.box (223-y/2, y, 97+y/2, 1, ink::bg);
-            r.text (273, 2, fields().name, ink::paper, true);
-            r.text (222, 10, "MIDI / SEQ MUTED", ink::paper, true);
+            const auto& face = pressType::compact;
+            constexpr int end = 316;
+            const char* status = "MIDI / SEQ MUTED";
+            r.faceText (end-r.faceWidth (fields().name, face), 1, end, fields().name, ink::paper, face);
+            r.faceText (end-r.faceWidth (status, face), 10, end, status, ink::paper, face);
         }
         else r.right (315, 5, fields().name, ink::paper);
     }
@@ -358,33 +361,33 @@ private:
     void patternPlate (const Raster& r, const Host& h, int slip) const
     {
         using namespace hdui;
-        r.stamp (0, -12, art::hero, art::palette);
+        r.stamp (0, 18-titleHeight, art::hero, art::palette);
         if (slip)
         {
-            r.slip (254, 35, 41, 3, slip);
-            r.slip (254, 41, 41, 2, -slip);
+            r.slip (254, 65-titleHeight, 41, 3, slip);
+            r.slip (254, 71-titleHeight, 41, 2, -slip);
         }
         const int n = plots::stepCount (view);
         const unsigned seed = unsigned (val (ParamId::seed));
         const bool pending = pendingSeed();
         for (int i = 0; i < 4; ++i)
-            r.coverageGlyph (22+i*20, 6, r.w, pressType::seed[(seed >> (12-4*i)) & 15], 27, ink::paper);
-        r.text (108, pending ? 4 : 6, pending ? "PENDING" : "SEED", pending ? ink::violet : ink::steel);
-        r.text (108, pending ? 14 : 20, val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM", ink::live);
+            r.coverageGlyph (22+i*20, 36-titleHeight, r.w, pressType::seed[(seed >> (12-4*i)) & 15], 27, ink::paper);
+        r.text (108, pending ? 1 : 3, pending ? "PENDING" : "SEED", pending ? ink::violet : ink::steel);
+        r.text (108, pending ? 11 : 17, val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM", ink::live);
         constexpr int transportX = 184;
         if (h.playing)
-            for (int i = 0; i < 5; ++i) r.box (transportX+1+i, 4+i/2, 1, 8-i, ink::live);
-        else r.box (transportX, 5, 6, 6, ink::steel);
-        r.text (transportX+10, 4, h.playing ? "RUN" : "STOP", h.playing ? ink::live : ink::steel);
+            for (int i = 0; i < 5; ++i) r.box (transportX+1+i, 2+i/2, 1, 8-i, ink::live);
+        else r.box (transportX, 3, 6, 6, ink::steel);
+        r.text (transportX+10, 2, h.playing ? "RUN" : "STOP", h.playing ? ink::live : ink::steel);
         char s[24];
         if (view.current >= 0 && view.current < n)
             std::snprintf (s, sizeof (s), "%02d/%02d", view.current+1, n);
         else std::snprintf (s, sizeof (s), "--/%02d", n ? n : int (val (ParamId::steps)));
-        r.reading (transportX, 12, 241, s, ink::paper, true);
+        r.reading (transportX, 10, 241, s, ink::paper, true);
         if (pending)
         {
             std::snprintf (s, sizeof (s), "SCORE %04X", unsigned (view.seed) & 65535);
-            r.text (108, 25, s, ink::paper);
+            r.text (108, 21, s, ink::paper);
         }
     }
 
@@ -408,29 +411,29 @@ private:
     void editorPlate (const Raster& r, int slip) const
     {
         using namespace hdui;
-        r.stamp (0, -12, art::editor, art::palette);
+        r.stamp (0, 18-titleHeight, art::editor, art::palette);
         if (slip)
         {
-            r.slip (276, 19, 27, 2, slip);
-            r.slip (276, 23, 27, 1, -slip);
+            r.slip (276, 49-titleHeight, 27, 2, slip);
+            r.slip (276, 53-titleHeight, 27, 1, -slip);
         }
         const auto& f = fields().fields[row];
         char value[32];
         formatted (f.id, value);
         constexpr int left = 16, end = 257;
-        const int labelEnd = r.text (left, 5, f.label, ink::live);
+        const int labelEnd = r.text (left, 3, f.label, ink::live);
         const bool large = r.readingWidth (value, true) <= end-labelEnd-10;
         const int valueX = end - r.readingWidth (value, large);
-        r.reading (valueX, large ? 0 : 1, end, value, ink::paper, large);
-        if (editing) r.box (left, 15, labelEnd-left-1, 1, ink::violet);
+        r.reading (valueX, large ? -1 : 0, end, value, ink::paper, large);
+        if (editing) r.box (left, 12, labelEnd-left-1, 1, ink::violet);
         if (f.id == noParam) return;
         const auto& p = paramTable[paramIndex (f.id)];
         const int rail = labelEnd + 12, width = valueX - 12 - rail;
         if (p.kind == Kind::button || width < 24) return;
         const int at = int (std::lround ((width-1)*(val (f.id)-p.min)/(p.max-p.min)));
-        r.box (rail, 9, width, 2, ink::card);
-        r.box (rail, 9, at+1, 2, ink::violet);
-        r.box (rail+at-1, 7, 3, 6, ink::paper);
+        r.box (rail, 7, width, 2, ink::card);
+        r.box (rail, 7, at+1, 2, ink::violet);
+        r.box (rail+at-1, 5, 3, 6, ink::paper);
     }
 
     static constexpr int visible = 8, rowH = 15;
