@@ -96,8 +96,10 @@ struct Raster
     template<size_t Rows, size_t W>
     void stamp (int x, int y, const uint8_t (&data)[Rows][W], const Ink* palette) const
     {
-        if (x < 0 || y < 0 || x + int (W) > w || y + int (Rows) > h) return;
-        for (size_t j = 0; j < Rows; ++j)
+        if (x < 0 || x + int (W) > w) return;
+        // Adjacent damage regions can share a plate while painting only their own scanlines.
+        const int first = std::max (0, -y), end = std::min (int (Rows), h-y);
+        for (int j = first; j < end; ++j)
             for (size_t i = 0; i < W; ++i)
                 px[(y + j) * w + x + i] = palette[data[j][i]];
     }

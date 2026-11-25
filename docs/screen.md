@@ -6,7 +6,7 @@ Each new plug-in instance opens in **Press Plate**. To audition **Blacklight Tra
 
 The freesp16 edition uses the blue titanium Slink wordmark, an orbiting frame around the pulsing smiley, and a touch-playable pitch ribbon. See the [SP-16 controls](../README.md#freesp16-on-sp-16).
 
-The MPC Press Plate screen puts a lime melting smiley on the right end of a stamped cobalt and aluminium panel. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
+A blue-chrome Slink wordmark spans the brushed silver header on all five Press Plate pages. The page name sits in the angled tab to its right. The lime melting smiley sits at the right end of the cobalt panel below. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
 
 Each column of the punched-metal matrix shows one step's number, nearest note, gate, accent and outgoing slide. A filled rectangle opens the gate, a diamond marks an accent, and an arrow marks a slide. A small cobalt dot under a note indicates fractional-semitone CV. Zero CV is C2. The lime column follows playback. Patterns up to 16 steps use one bank. Longer patterns stack two banks so all 32 steps stay visible. The dark strip above the matrix lists scale, root, octave, density and clock division.
 
@@ -26,7 +26,7 @@ On all five pages in both themes, two narrow slices through the smiley’s lower
 
 On a list the wheel moves one row per detent and stops at the ends. Push enters or leaves editing. On Regen and Seed Back it presses the button. On Theme it switches the display immediately. While editing, a detent moves a choice or integer by one, or a continuous value by 1/128 of its range. Shift gives 1/1024 for a continuous value. Minus / Plus moves an edited choice or integer by one and a continuous value by 1/16. Outside editing it jumps to the first row of the neighbouring group.
 
-The pots turn the selected row and the two below it. Buttons, Theme and empty rows have no pot binding. Press Plate uses a cobalt arc, ivory pointer and track-colour mark below the dial. Blacklight Transfer uses a track-coloured rail with a white pointer. A hollow square shows a known physical pot position waiting for pickup. Shift replaces the cards with the controls for the current page and edit state. Melodee owns pot takeover, its soft keys, and Shift + wheel when the host uses it to fine-edit the last touched pot.
+The pots turn the selected row and the two below it. Buttons, Theme and empty rows have no pot binding. Press Plate uses a satin-chrome dial with a cobalt arc, a white pointer and a track-colour mark below it. The face catches the light from the upper left as the pointer moves through 49 positions. Blacklight Transfer uses a track-coloured rail with a white pointer. A hollow square shows a known physical pot position waiting for pickup. Shift replaces the cards with the controls for the current page and edit state. Melodee owns pot takeover, its soft keys, and Shift + wheel when the host uses it to fine-edit the last touched pot.
 
 VOICE and TONE plot the selected filter from 20 Hz to 20 kHz on a logarithmic axis. The vertical range is −36 to +24 dB. The curve uses the synth's response equations at the current settings, before envelope, accent, and LFO modulation. The dotted vertical marker and its foot show the frequency reported by Cutoff. Twin Peak marks its lower edge. TB-3PO and CLOCK show the published seed and a small score. CLOCK divides each two-step interval at Swing, with a fixed halfway tick for reference. [Parameter descriptions](../README.md#controls)
 
@@ -45,7 +45,7 @@ tools/ui_preview/run --test
 tools/ui_preview/run --bench
 ```
 
-Rebuild the native-size art and type with `python3 tools/ui_preview/assets.py` in a Pillow environment. The default gallery is written to `assets/previews`. The optional Blacklight gallery is written to `build/ui-preview/blacklight-gallery`. Both test and bench commands exercise both themes. The PNGs and glyph arrays are committed. The gallery and test runner use the same screen class as the plug-in. The hash check reads the checked-in expectations. After an intentional visual change, `--hashes` prints candidate replacements for review.
+Rebuild the native-size art and type with `python3 tools/ui_preview/assets.py` and the silver nameplate and dial frames with `python3 tools/ui_preview/silver.py` in a Pillow environment. The default gallery is written to `assets/previews`. The optional Blacklight gallery is written to `build/ui-preview/blacklight-gallery`. Both test and bench commands exercise both themes. The PNGs and glyph arrays are committed. The gallery and test runner use the same screen class as the plug-in. The hash check reads the checked-in expectations. After an intentional visual change, `--hashes` prints candidate replacements for review.
 
 For Linux use the running Colima profile, Docker context and builder image below. Start the profile with `colima start melodee` if needed.
 
@@ -73,19 +73,19 @@ All fourteen host reports selected `screen=1`. [Host log](../assets/previews/mel
 
 ## Bench and changed pixels
 
-Measured 2026-11-21. Each entry is the mean elapsed time for 2,000 calls to `update` plus `paint`. Event preparation and the pixel comparison used for reporting are outside the timer. The M4 Max runs native Apple Clang at `-O3`. The arm64 Colima VM runs GCC 12 at `-O3 -mcpu=cortex-a55` on the same Mac.
+Measured for MPC Slink 0.6.1 on 2026-11-24. Each entry is the mean elapsed time for 2,000 calls to `update` plus `paint`. Event preparation and the pixel comparison used for reporting are outside the timer. The M4 Max runs native Apple Clang at `-O3`. The arm64 Colima VM runs GCC 12 at `-O3 -mcpu=cortex-a55` on the same Mac.
 
 | Operation | Press Plate Mac, ms | Press Plate Linux, ms | Blacklight Mac, ms | Blacklight Linux, ms |
 |---|---:|---:|---:|---:|
-| Full PATTERN, 16 steps | 0.035195 | 0.038992 | 0.026419 | 0.031614 |
-| Idle | 0.000026 | 0.000051 | 0.000042 | 0.000051 |
-| Partial step, 16 steps | 0.027522 | 0.029392 | 0.021330 | 0.022223 |
-| Full PATTERN, 32 steps | 0.038190 | 0.042147 | 0.029085 | 0.034053 |
-| Partial step, 32 steps | 0.028019 | 0.031053 | 0.020226 | 0.020428 |
-| Full VOICE, Twin Peak | 0.042605 | 0.045082 | 0.041408 | 0.045237 |
-| Partial VOICE cursor move | 0.023173 | 0.024064 | 0.016451 | 0.018500 |
-| Full VOICE while Resonance changes | 0.045787 | 0.051723 | 0.044574 | 0.051110 |
-| Partial VOICE while Resonance changes | 0.038792 | 0.041578 | 0.039344 | 0.041389 |
+| Full PATTERN, 16 steps | 0.034574 | 0.039071 | 0.026297 | 0.029317 |
+| Idle | 0.000026 | 0.000046 | 0.000026 | 0.000048 |
+| Partial step, 16 steps | 0.025643 | 0.027500 | 0.021060 | 0.021108 |
+| Full PATTERN, 32 steps | 0.037773 | 0.042248 | 0.028773 | 0.031824 |
+| Partial step, 32 steps | 0.025641 | 0.028440 | 0.019900 | 0.019651 |
+| Full VOICE, Twin Peak | 0.042077 | 0.045630 | 0.040809 | 0.042188 |
+| Partial VOICE cursor move | 0.019567 | 0.021130 | 0.015831 | 0.017495 |
+| Full VOICE while Resonance changes | 0.045448 | 0.050638 | 0.044289 | 0.047854 |
+| Partial VOICE while Resonance changes | 0.043189 | 0.044963 | 0.039037 | 0.040693 |
 
 Peak changed pixels per paint, counted across a full clock cycle or a traversal of every editor row. Both targets produced the same counts.
 
@@ -98,16 +98,16 @@ Peak changed pixels per paint, counted across a full clock cycle or a traversal 
 | TB-3PO miniature advance | 1,078 | 1,578 |
 | CLOCK miniature advance | 1,059 | 1,230 |
 | Dense microtonal 32-step advance | 1,312 | 1,798 |
-| VOICE cursor | 5,910 | 6,545 |
-| TONE cursor | 6,228 | 6,785 |
-| TB-3PO cursor | 6,375 | 6,901 |
-| CLOCK cursor | 5,892 | 8,906 |
+| VOICE cursor | 6,339 | 7,098 |
+| TONE cursor | 5,991 | 6,646 |
+| SEQUENCER cursor | 6,548 | 6,904 |
+| CLOCK cursor | 6,121 | 8,906 |
 | Drip motion on PATTERN | 170 | 287 |
 | Drip motion on VOICE | 71 | 287 |
 
 Paint retains the last plug-in pixels independently of host overlays. Only invalidated regions are rendered. It compares their scanlines against the retained image before writing to the host. A whole paint covers all 320 × 218 pixels and respects the supplied stride.
 
-The Linux ARM build passed 732,233 host checks, 512 sequencer reference checks and all 74 sound fingerprints. The two themes share a framebuffer and one set of input and playback state. The CLAP measures 330,304 bytes. Both targets passed 20 image hashes per theme, all sixteen hex digits in all four positions, controls, bindings, allocation checks, lengths 0–32, full/partial redraw comparisons and stride guards. The switch test checks independent instances, parameter edits, pot bindings, return to the default image and allocation counts. Motion checks exercise both themes, including ordinary gates, off-beat gated accents, intermediate offsets, settling and stopping mid-pulse.
+The Linux ARM build passed 1,246,348 host checks, 512 sequencer reference checks and all 77 sound fingerprints. The two themes share a framebuffer and one set of input and playback state. The CLAP measures 330,304 bytes. Both targets passed 20 image hashes per theme, all sixteen hex digits in all four positions, controls, bindings, allocation checks, lengths 0–32, full/partial redraw comparisons and stride guards. The switch test checks independent instances, parameter edits, pot bindings, return to the default image and allocation counts. Motion checks exercise both themes, including ordinary gates, off-beat gated accents, intermediate offsets, settling and stopping mid-pulse.
 
 ## Engine handoff and hardware status
 

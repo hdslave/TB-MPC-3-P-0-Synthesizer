@@ -17,7 +17,7 @@
 
 > **Desktop CLAP version (macOS & Windows):** A separate desktop CLAP build with all MPC screens on one interactive panel lives in [**`mac-clap/`**](mac-clap/) (`cd mac-clap && ./install-macos.sh`). Platform downloads are listed in the [Slink 0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0).
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.0).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list it as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.1).
 
 On hdslaveOS 0.8.2, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
@@ -223,7 +223,7 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 ## The screen
 
 Slink’s MPC panel opens in **Press Plate**: a stamped cobalt and aluminium panel with a lime melting smiley, whose drips jump on a
-four-step downbeat or an accented gate. The second theme, **Blacklight Transfer** (the smiley on a blue ticket, the
+four-step downbeat or an accented gate. A wide blue-chrome Slink wordmark fills the silver header. The three satin-chrome dials have a white pointer and a cobalt value arc. The second theme, **Blacklight Transfer** (the smiley on a blue ticket, the
 pattern as a pitch roll), is under CLOCK: select THEME and Push; Push again goes back. The theme holds for this
 instance on every page, in Edit and Stage, until Melodee restarts; projects and presets keep only the sound.
 
