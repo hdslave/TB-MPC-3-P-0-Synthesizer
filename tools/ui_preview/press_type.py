@@ -1,4 +1,4 @@
-"""Bake Press Plate's native-size type. Each pixel retains eight levels of coverage."""
+"""Bake Slink's native-size MPC type. Each pixel retains eight levels of coverage."""
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -36,6 +36,7 @@ def face(name, size, height, baseline):
 face('label', 11, 12, 8)
 face('caption', 10, 11, 8)
 face('compact', 9, 9, 7)
+face('fieldValue', 13, 14, 10)
 face('value', 16, 19, 13)
 face('lead', 20, 23, 16)
 
@@ -51,14 +52,20 @@ out.extend(['inline constexpr uint64_t notes[][8] = {', ',\n'.join(notes), '};']
 
 # Retain the four fixed seed cells and the original italic numeral silhouettes.
 seed_font = ImageFont.truetype(str(FONTS / 'BarlowCondensed-BoldItalic.ttf'), 72)
-seed = []
-for ch in '0123456789ABCDEF':
-    l, t, r, b = seed_font.getbbox(ch)
-    source = Image.new('L', (r-l, b-t))
-    ImageDraw.Draw(source).text((-l, -t), ch, font=seed_font, fill=255)
-    w = 14 if ch == '1' else 19
-    cell = Image.new('L', (20, 27))
-    cell.paste(source.resize((w, 27), Image.Resampling.LANCZOS), ((20-w)//2, 0))
-    seed.append('{' + ','.join(scanlines(cell)) + '}')
-out.extend(['inline constexpr uint64_t seed[][27] = {', ',\n'.join(seed), '};', '}'])
+def seed_cells(name, cell_width, height, one_width):
+    digits = []
+    for ch in '0123456789ABCDEF':
+        l, t, r, b = seed_font.getbbox(ch)
+        source = Image.new('L', (r-l, b-t))
+        ImageDraw.Draw(source).text((-l, -t), ch, font=seed_font, fill=255)
+        width = one_width if ch == '1' else cell_width-1
+        cell = Image.new('L', (cell_width, height))
+        cell.paste(source.resize((width, height), Image.Resampling.LANCZOS), ((cell_width-width)//2, 0))
+        digits.append('{' + ','.join(scanlines(cell)) + '}')
+    out.extend([f'inline constexpr uint64_t {name}[][{height}] = {{', ',\n'.join(digits), '};'])
+
+
+seed_cells('seed', 20, 27, 14)
+seed_cells('ticketSeed', 18, 23, 13)
+out.append('}')
 (ROOT / 'src/ui/press_type.h').write_text('\n'.join(out) + '\n')

@@ -81,22 +81,23 @@ def press_atlas(filename):
     return plates.quantize(colors=128, dither=Image.Dither.NONE)
 
 
-atlas = press_atlas('master.png')
-finish = press_atlas('jelly-finish.png')
-base_palette = bytes(atlas.getpalette())
-finish_palette = bytes(finish.getpalette())
-# Only transfer lighting inside the original lime fill. Keep the eyes, mouth,
-# outline and plate at their original palette indices, including their edge pixels.
-fill = {i for (r, g, b), i in atlas.palette.colors.items()
-        if r >= 180 and g >= 230 and b < 32}
-lit = {i for (r, g, b), i in finish.palette.colors.items()
-       if r > 120 and g > 170 and g >= r - 12 and g > b}
-offset = len(base_palette) // 3
-indices = bytes(offset + light if base in fill and light in lit else base
-                for base, light in zip(atlas.tobytes(), finish.tobytes()))
-atlas = Image.frombytes('P', atlas.size, indices)
-palette = base_palette + finish_palette
-atlas.putpalette(palette)
+def glaze(base, finish, usable_light):
+    base_palette = bytes(base.getpalette())
+    offset = len(base_palette) // 3
+    # Keep the expression, outlines and their antialiased edges in the original ink.
+    fill = {i for (r, g, b), i in base.palette.colors.items()
+            if r >= 180 and g >= 230 and b < 32}
+    lit = {i for color, i in finish.palette.colors.items() if usable_light(*color)}
+    indices = bytes(offset + light if ink in fill and light in lit else ink
+                    for ink, light in zip(base.tobytes(), finish.tobytes()))
+    result = Image.frombytes('P', base.size, indices)
+    result.putpalette(base_palette + bytes(finish.getpalette()))
+    return result
+
+
+atlas = glaze(press_atlas('master.png'), press_atlas('jelly-finish.png'),
+              lambda r, g, b: r > 120 and g > 170 and g >= r - 12 and g > b)
+palette = bytes(atlas.getpalette())
 inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
 contents = header + ['namespace hdui::art {', 'inline constexpr uint32_t palette[] = {' + ','.join(inks) + '};']
 for name, start, stop in [('hero',0,64),('editor',64,106)]:
@@ -131,6 +132,12 @@ put(UI/'identity.h', contents + ['}'])
 
 source = Image.open(EXPLORE/'blacklight/master.png').convert('RGB')
 sticker = source.resize((77,96), Image.Resampling.LANCZOS).quantize(colors=128,dither=Image.Dither.NONE)
+# The corner marks belong to the printed ticket, outside the domed face.
+finish = Image.open(EXPLORE/'blacklight/jelly-finish.png').convert('RGB').resize(sticker.size, Image.Resampling.LANCZOS)
+for corner in [(0, 0, 18, 19), (59, 0, 77, 11)]:
+    finish.paste(sticker.crop(corner).convert('RGB'), corner)
+sticker = glaze(sticker, finish.quantize(colors=128, dither=Image.Dither.NONE),
+                lambda r, g, b: max(r, g) > 125 and min(r, g) > 60)
 sticker.save(ART/'blacklight-pass.png', optimize=True)
 palette = bytes(sticker.getpalette())
 inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
@@ -165,11 +172,4 @@ ticket += ['inline constexpr uint32_t titlePalette[] = {' + ','.join(inks) + '};
 data = title.tobytes()
 ticket += table('title', [data[i:i+title.width] for i in range(0,len(data),title.width)])
 
-digits = []
-for ch in '0123456789ABCDEF':
-    canvas = Image.new('L',(18,23))
-    width = 13 if ch == '1' else 17
-    canvas.paste(outline(bold,ch,(width,23)),((18-width)//2,0))
-    digits.extend(bits(canvas))
-ticket += table('digits', digits)
 put(UI/'blacklight_art.h', ticket + ['}'])

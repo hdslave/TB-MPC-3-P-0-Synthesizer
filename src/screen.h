@@ -152,7 +152,7 @@ public:
     {
         whole |= lastGroup < 0 || theme != paintedTheme;
         picture.background = theme == Theme::blacklight ? hdui::ticketInk.bg : hdui::pressInk.bg;
-        picture.smoothType = theme == Theme::pressPlate;
+        picture.smoothType = true;
         const bool page = whole || group != lastGroup;
         const bool selection = page || row != lastRow || editing != lastEditing;
         const bool patternChanged = !(lastView == view);
@@ -182,6 +182,7 @@ public:
                                                : paintPressPlate (pixels, stride, whole, h, slip, changed);
         if (selection || parameters || pots || h.shift != lastHost.shift || h.accent != lastHost.accent)
             drew |= picture.region<320,33> (pixels, stride, whole, 0, 185, [&](Raster& r) {
+                if (theme == Theme::blacklight) ticketCardBase (r);
                 if (h.shift) legend (r);
                 else if (themeRow()) themeHint (r);
                 else if (theme == Theme::blacklight) ticketCards (r, h);
@@ -603,6 +604,7 @@ private:
     void transportRow (const Raster& r, const Host& h) const;
     void ticketList (const Raster& r) const;
     void ticketMini (const Raster& r, const Host& h) const;
+    static void ticketCardBase (const Raster& r);
     void ticketCards (const Raster& r, const Host& h) const;
 };
 } // namespace tbmpc

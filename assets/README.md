@@ -1,4 +1,4 @@
-# MPC silver panel artwork
+# MPC panel artwork
 
 The nameplate uses the original blue-chrome Slink wordmark in `art/slink.png`. The master face in `art/satin-knob.png` comes from the approved satin knob study.
 
@@ -9,3 +9,5 @@ Run `python3 tools/ui_preview/silver.py` with Pillow to rebuild `src/ui/silver_a
 The melting smiley uses the original Press Plate artwork. The lighting reference in `explore/press-plate/jelly-finish.png` was generated from that master with the direction “very shallow domed jelly sticker” and a soft upper-left reflection. `tools/ui_preview/assets.py` bakes this lighting into the lime fill at both MPC sizes. The original artwork supplies the face, outline and drips.
 
 Run `python3 tools/ui_preview/press_type.py` to rebuild the antialiased MPC labels, values and seed numerals from the Barlow fonts in `assets/fonts/`.
+
+The Blacklight smiley uses its own original ticket master. The lighting study in `explore/blacklight/jelly-finish.png` was generated from it with an upper-left softbox reflection, a dark lime lower cheek and a violet-pink rim. The artwork baker transfers that lighting into the existing lime fill at the ticket’s 77 × 96 display size.

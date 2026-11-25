@@ -1,8 +1,56 @@
 // Blacklight Transfer drawing for the shared instrument screen.
 #pragma once
 
+#include <array>
+
 namespace tbmpc
 {
+namespace ticket
+{
+using hdui::Ink;
+using hdui::Raster;
+
+// Short ramps stay precomputed so the playing screen only copies scanlines.
+template<int N> constexpr auto ramp (Ink top, Ink bottom)
+{
+    std::array<Ink, N> colors {};
+    for (int i = 0; i < N; ++i)
+    {
+        colors[i] = 0xff000000u;
+        for (int shift : { 0, 8, 16 })
+        {
+            const int a = int ((top >> shift) & 255), b = int ((bottom >> shift) & 255);
+            colors[i] |= Ink ((a*(N-1-i) + b*i) / (N-1)) << shift;
+        }
+    }
+    return colors;
+}
+
+constexpr auto tab = ramp<15> (0xffd4ceff, 0xff9d95e9);
+constexpr auto focus = ramp<22> (0xffc9c2fe, 0xffa49ae9);
+constexpr auto stub = ramp<77> (0xff272367, 0xff110f38);
+constexpr auto card = ramp<31> (0xff20203e, 0xff0d0e24);
+
+template<size_t N> void fill (const Raster& r, int x, int y, int width, const std::array<Ink, N>& colors)
+{
+    for (size_t i = 0; i < N; ++i) r.box (x, y+int (i), width, 1, colors[i]);
+}
+
+inline void scope (const Raster& r)
+{
+    r.box (2, 0, r.w-4, r.h-1, 0xff0e102b);
+    r.box (2, 0, r.w-4, 1, 0xff04051a);
+    r.box (2, 1, 1, r.h-2, 0xff07081d);
+    r.box (3, r.h-1, r.w-5, 1, 0xff373557);
+}
+
+inline void seed (const Raster& r, unsigned number, Ink color)
+{
+    for (int i = 0; i < 4; ++i)
+        r.coverageGlyph (4+i*18, 16, 80, hdui::pressType::ticketSeed[(number >> (12-i*4)) & 15], 23, color);
+}
+} // namespace ticket
+
 inline bool Screen::paintBlacklight (uint32_t* pixels, int stride, bool whole, const Host& h, int slip, const Changes& d)
 {
     bool drew = false;
@@ -18,6 +66,7 @@ inline bool Screen::paintBlacklight (uint32_t* pixels, int stride, bool whole, c
             drew |= picture.region<236,22> (pixels, stride, whole, 84, 21, [&](Raster& r) { transportRow (r, h); });
         if (d.score)
             drew |= picture.region<236,142> (pixels, stride, whole, 84, 43, [&](Raster& r) {
+                ticket::scope (r);
                 plots::pitchRoll (r, view, h.playing);
             });
     }
@@ -25,6 +74,7 @@ inline bool Screen::paintBlacklight (uint32_t* pixels, int stride, bool whole, c
     {
         if (d.page || d.panel)
             drew |= picture.region<236,64> (pixels, stride, whole, 84, 21, [&](Raster& r) {
+                ticket::scope (r);
                 if (group < 3) plots::response (r, context(), val (ParamId::cutoff), nullptr);
                 else ticketMini (r, h);
             });
@@ -41,8 +91,9 @@ inline void Screen::ticketTitle (const Raster& r) const
     for (int y = 2; y < 17; ++y)
     {
         const int x = 162 - (y-2)/2;
-        r.box (x, y, 233-x, 1, ticketInk.violet);
+        r.box (x, y, 233-x, 1, ticket::tab[y-2]);
     }
+    r.box (163, 2, 69, 1, 0xffe2ddff);
     r.right (228, 5, fields().name, ticketInk.bg);
     r.box (4, 19, 229, 1, ticketInk.grid);
 }
@@ -70,33 +121,31 @@ inline void Screen::passArt (const Raster& r, int slip)
 inline void Screen::passData (const Raster& r) const
 {
     using namespace hdui;
-    r.box (0, 0, 83, 77, ticketInk.field);
+    ticket::fill (r, 0, 0, 83, ticket::stub);
+    r.box (1, 0, 1, 77, 0xff39356f);
+    r.box (3, 76, 78, 1, 0xff0b0928);
     r.box (82, 0, 1, 77, ticketInk.violet);
     char s[48];
     if (!group)
     {
         r.text (4, 3, pendingSeed() ? "NEXT" : "SEED", pendingSeed() ? ticketInk.pink : ticketInk.muted);
         r.right (79, 3, val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM", ticketInk.live);
-        r.hex (4, 16, unsigned (val (ParamId::seed)), ticketInk.paper, blacklightArt::digits, 18);
-        std::snprintf (s, sizeof (s), "%s / %s", scaleNames[int (val (ParamId::scale))], rootChoices[int (val (ParamId::root))]);
-        if (std::strlen (s) <= 13)
+        ticket::seed (r, unsigned (val (ParamId::seed)), ticketInk.paper);
+        const auto* scale = scaleNames[int (val (ParamId::scale))];
+        const auto* root = rootChoices[int (val (ParamId::root))];
+        std::snprintf (s, sizeof (s), "%s / %s", scale, root);
+        if (r.faceWidth (s, pressType::label) <= 77)
         {
-            r.text (4, 43, s, ticketInk.muted);
+            r.text (4, 42, s, ticketInk.muted);
             std::snprintf (s, sizeof (s), "OCT %+d", int (val (ParamId::octave)));
-            r.text (4, 57, s, ticketInk.muted);
         }
         else
         {
-            const char* scale = scaleNames[int (val (ParamId::scale))];
-            char first[14];
-            std::snprintf (first, sizeof (first), "%.13s", scale);
-            r.text (4, 41, first, ticketInk.muted);
-            const size_t used = std::strlen (first);
-            std::snprintf (s, sizeof (s), "%s / %s", scale+used, rootChoices[int (val (ParamId::root))]);
-            r.text (4, 50, s, ticketInk.muted);
-            std::snprintf (s, sizeof (s), "OCT %+d", int (val (ParamId::octave)));
-            r.text (4, 59, s, ticketInk.muted);
+            const auto& face = r.faceWidth (scale, pressType::caption) <= 77 ? pressType::caption : pressType::compact;
+            r.faceText (4, 42, 81, scale, ticketInk.muted, face);
+            std::snprintf (s, sizeof (s), "%s / OCT %+d", root, int (val (ParamId::octave)));
         }
+        r.text (4, 55, s, ticketInk.muted);
         std::snprintf (s, sizeof (s), "DEN %+d", int (val (ParamId::density)));
         r.text (4, 68, s, ticketInk.muted);
         return;
@@ -104,31 +153,20 @@ inline void Screen::passData (const Raster& r) const
     if (group < 3)
     {
         r.text (4, 4, "FILTER", ticketInk.muted);
-        r.reading (3, 15, 80, filterChoices[int (val (ParamId::filter))], ticketInk.live, true);
+        const auto* filter = filterChoices[int (val (ParamId::filter))];
+        const auto& face = r.faceWidth (filter, pressType::lead) <= 77 ? pressType::lead : pressType::value;
+        r.faceText (3, 15, 80, filter, ticketInk.live, face);
     }
     else
     {
         r.text (4, 4, "SCORE", ticketInk.muted);
-        if (plots::stepCount (view)) r.hex (4, 16, unsigned (view.seed), ticketInk.live, blacklightArt::digits, 18);
+        if (plots::stepCount (view)) ticket::seed (r, unsigned (view.seed), ticketInk.live);
         else r.reading (4, 15, 80, "----", ticketInk.live, true);
     }
     const auto& f = fields().fields[row];
     r.text (4, 45, f.label, editing ? ticketInk.pink : ticketInk.muted);
     formatted (f.id, s);
-    if (r.readingWidth (s) <= 77) r.reading (3, 55, 81, s, ticketInk.paper);
-    else
-    {
-        char first[14];
-        std::snprintf (first, sizeof (first), "%.13s", s);
-        const char* rest = s+std::strlen (first);
-        if (char* gap = std::strrchr (first, ' '))
-        {
-            *gap = 0;
-            rest = s+(gap-first)+1;
-        }
-        r.text (4, 56, first, ticketInk.paper);
-        r.text (4, 66, rest, ticketInk.paper);
-    }
+    r.fittedValue (3, 54, 81, s, ticketInk.paper);
 }
 
 inline void Screen::transportRow (const Raster& r, const Host& h) const
@@ -169,16 +207,24 @@ inline void Screen::ticketList (const Raster& r) const
         const auto& f = fields().fields[i];
         const bool focus = i == row;
         const int width = f.id == noParam ? r.w-x-4 : 112;
-        r.box (x, y, width, focus ? 22 : 1, focus ? ticketInk.violet : ticketInk.grid);
-        r.text (x+3, y+2, f.label, focus ? ticketInk.bg : ticketInk.muted);
+        if (focus)
+        {
+            ticket::fill (r, x, y, width, ticket::focus);
+            r.box (x, y, width, 1, 0xffdedaff);
+        }
+        else
+        {
+            r.box (x, y, width, 22, 0xff14142e);
+            r.box (x, y, width, 1, ticketInk.grid);
+        }
+        r.faceText (x+4, y+1, x+width-2, f.label, focus ? ticketInk.bg : ticketInk.muted, pressType::caption);
         char value[32];
         formatted (f.id, value);
-        if (focus && editing)
-        {
-            r.box (x+2, y+11, 108, 10, ticketInk.bg);
-            r.text (x+4, y+12, value, ticketInk.live);
-        }
-        else r.text (x+3, y+12, value, focus ? ticketInk.bg : ticketInk.paper);
+        const bool edit = focus && editing;
+        if (edit) r.box (x+2, y+10, width-4, 11, ticketInk.bg);
+        const auto& face = r.faceWidth (value, pressType::fieldValue) <= width-7
+                         ? pressType::fieldValue : pressType::caption;
+        r.faceText (x+4, y+10, x+width-2, value, edit ? ticketInk.live : focus ? ticketInk.bg : ticketInk.paper, face);
     }
 }
 
@@ -204,6 +250,15 @@ inline void Screen::ticketMini (const Raster& r, const Host& h) const
     }
 }
 
+inline void Screen::ticketCardBase (const Raster& r)
+{
+    for (int k = 0; k < 3; ++k)
+    {
+        const int x = 320*k/3, end = 320*(k+1)/3;
+        ticket::fill (r, x+2, 1, end-x-4, ticket::card);
+    }
+}
+
 inline void Screen::ticketCards (const Raster& r, const Host& h) const
 {
     using namespace hdui;
@@ -211,10 +266,10 @@ inline void Screen::ticketCards (const Raster& r, const Host& h) const
     for (int k = 0; k < 3; ++k)
     {
         const int x = 320*k/3, end = 320*(k+1)/3;
-        r.box (x+2, 0, end-x-4, 1, ticketInk.violet);
+        r.box (x+2, 0, end-x-4, 1, ticketInk.rule);
         r.box (x+3, 4, 14, 10, ticketInk.muted);
         const char tag[] = { 'K', char ('1'+k), 0 };
-        r.text (x+4, 5, tag, ticketInk.bg);
+        r.faceText (x+4, 5, x+17, tag, ticketInk.bg, pressType::compact);
         const uint32_t id = cardField (k);
         if (id == noParam) continue;
         const auto& p = paramTable[paramIndex (id)];
@@ -229,12 +284,13 @@ inline void Screen::ticketCards (const Raster& r, const Host& h) const
         formatted (id, value);
         const int width = r.readingWidth (value);
         if (width <= end-x-6) r.reading (x+3, 15, end-2, value, ticketInk.paper);
-        else r.text (x+3, 18, value, ticketInk.paper);
+        else r.fittedValue (x+3, 12, end-3, value, ticketInk.paper);
         const int begin = x+std::max (49, width+8);
         // A long value uses the full card, with its rail below the baseline.
         const bool stacked = begin > end-23;
         const int left = stacked ? x+4 : begin, y = stacked ? 29 : 24, length = end-6-left;
         const int at = left + int (std::lround ((length-1)*(val (id)-p.min)/(p.max-p.min)));
+        r.box (left-1, y-1, length+2, 4, 0xff060718);
         r.box (left, y, length, 2, ticketInk.grid);
         r.box (left, y, at-left+1, 2, track);
         r.box (at, y-2, 2, 5, ticketInk.paper);

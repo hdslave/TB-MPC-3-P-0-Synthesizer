@@ -10,7 +10,7 @@ The blue-chrome Slink wordmark starts seven pixels from the left edge and spans 
 
 Each column of the punched-metal matrix shows one step's number, nearest note, gate, accent and outgoing slide. A filled rectangle opens the gate, a diamond marks an accent, and an arrow marks a slide. A small cobalt dot under a note indicates fractional-semitone CV. Zero CV is C2. The lime column follows playback. Patterns up to 16 steps use one bank. Longer patterns stack two banks so all 32 steps stay visible. The dark strip above the matrix lists scale, root, octave, density and clock division.
 
-On all five Blacklight Transfer pages, the blue-chrome Slink title sits directly on the navy panel between the smiley ticket and the lavender page tab. Its lettering is spaced for the native MPC display. PATTERN plots notes on a pitch roll. Filled notes indicate gates, hollow notes are rests, and pink connectors mark slides. VOICE and TONE place the filter trace above two columns of controls. [Blacklight Pattern in Stage](slink-mpc-blacklight.png) · [Smiley ticket](../assets/art/blacklight-pass.png)
+On all five Blacklight Transfer pages, the blue-chrome Slink title sits directly on the navy panel between the smiley ticket and the lavender page tab. A curved highlight and a reflected pink edge give the dripping lime face a jelly finish. The graph sits in a shallow recess, with shaded focus rows and pot rails below. PATTERN plots notes on a pitch roll. Filled notes indicate gates, hollow notes are rests, and pink connectors mark slides. VOICE and TONE place the filter trace above two columns of controls. [Blacklight Pattern in Stage](slink-mpc-blacklight.png) · [Smiley ticket](../assets/art/blacklight-pass.png)
 
 On all five pages in both themes, two narrow slices through the smiley’s lower drips move sideways on a four-step downbeat or a gated accent. The offset grows from one native pixel to two, returns to one, and settles after 144 ms. Closely spaced hits share the current pulse. Stop clears it immediately. The motion uses Melodee’s display clock and the published sequencer position.
 
@@ -46,7 +46,7 @@ VOICE and TONE plot the selected filter from 20 Hz to 20 kHz on a logarithmic ax
 
 ## Art and previews
 
-The approved master supplies the 320 × 64 PATTERN plate and the 320 × 42 editor plate. The asset generator extends a straight section of rail to fill the panel and preserves the smiley’s proportions at both heights. Both plates share a 128-colour palette. Press Plate uses Barlow SemiBold for labels and values, with eight levels of pixel coverage for smoother edges at native size. Its seed retains the bold italic Barlow Condensed numerals. Blacklight Transfer uses Departure Mono for labels. [Master](../assets/explore/press-plate/master.png) · [Pattern plate](../assets/art/press-hero.png) · [Editor plate](../assets/art/press-editor.png) · [Credits](../THIRD_PARTY.md)
+The approved master supplies the 320 × 64 PATTERN plate and the 320 × 42 editor plate. The asset generator extends a straight section of rail to fill the panel and preserves the smiley’s proportions at both heights. Both plates share an indexed palette. Both MPC themes use Barlow SemiBold for labels, note names and values, with eight levels of pixel coverage at native size. Each theme has its own size of bold italic Barlow Condensed seed numerals. [Master](../assets/explore/press-plate/master.png) · [Pattern plate](../assets/art/press-hero.png) · [Editor plate](../assets/art/press-editor.png) · [Credits](../THIRD_PARTY.md)
 
 The contact sheet covers 20 fixture states, including a dense 32-step phrase, a pending seed in MIDI Notes mode, and the screen before the first clock. Each state has native RGB, nearest-neighbour 3×, RGB565 and a 320 × 240 Edit composite. The strip follows steps 4–7. The 2× GIF follows one complete cycle sampled every 30 ms, including the frames between steps. [Contact sheet](../assets/previews/contact-sheet-2x.png) · [Step strip](../assets/previews/step-advance-strip.png) · [16-step loop](../assets/previews/step-advance.gif)
 
@@ -59,7 +59,7 @@ tools/ui_preview/run --test
 tools/ui_preview/run --bench
 ```
 
-In a Pillow environment, run `python3 tools/ui_preview/assets.py` for the original art and bitmap fonts, `python3 tools/ui_preview/press_type.py` for the silver panel lettering and `python3 tools/ui_preview/silver.py` for its nameplate, brushed finish and dial frames. The default gallery is written to `assets/previews`. The optional Blacklight gallery is written to `build/ui-preview/blacklight-gallery`. Both test and bench commands exercise both themes. The PNGs and glyph arrays are committed. The gallery and test runner use the same screen class as the plug-in. The hash check reads the checked-in expectations. After an intentional visual change, `--hashes` prints candidate replacements for review.
+In a Pillow environment, run `python3 tools/ui_preview/assets.py` for the original art and bitmap fonts, `python3 tools/ui_preview/press_type.py` for both MPC themes’ lettering and `python3 tools/ui_preview/silver.py` for its nameplate, brushed finish and dial frames. The default gallery is written to `assets/previews`. The optional Blacklight gallery is written to `build/ui-preview/blacklight-gallery`. Both test and bench commands exercise both themes. The PNGs and glyph arrays are committed. The gallery and test runner use the same screen class as the plug-in. The hash check reads the checked-in expectations. After an intentional visual change, `--hashes` prints candidate replacements for review.
 
 For Linux use the running Colima profile, Docker context and builder image below. Start the profile with `colima start melodee` if needed.
 
@@ -87,41 +87,41 @@ All fourteen host reports selected `screen=1`. [Host log](../assets/previews/mel
 
 ## Bench and changed pixels
 
-Measured for MPC Slink 0.6.3 on 2026-11-24. Each entry is the mean elapsed time for 2,000 calls to `update` plus `paint`. Event preparation and the pixel comparison used for reporting are outside the timer. The M4 Max runs native Apple Clang at `-O3`. The arm64 Colima VM runs GCC 12 at `-O3 -mcpu=cortex-a55` on the same Mac.
+Measured for MPC Slink 0.6.3 on 2026-11-25. Each entry is the mean elapsed time for 2,000 calls to `update` plus `paint`. Event preparation and the pixel comparison used for reporting are outside the timer. The M4 Max runs native Apple Clang at `-O3`. The arm64 Colima VM runs GCC 12 at `-O3 -mcpu=cortex-a55` on the same Mac.
 
 | Operation | Press Plate Mac, ms | Press Plate Linux, ms | Blacklight Mac, ms | Blacklight Linux, ms |
 |---|---:|---:|---:|---:|
-| Full PATTERN, 16 steps | 0.050672 | 0.054419 | 0.026921 | 0.029806 |
-| Idle | 0.000028 | 0.000054 | 0.000027 | 0.000048 |
-| Partial step, 16 steps | 0.036355 | 0.036803 | 0.021486 | 0.021022 |
-| Full PATTERN, 32 steps | 0.054458 | 0.057698 | 0.029426 | 0.032330 |
-| Partial step, 32 steps | 0.036856 | 0.039585 | 0.020138 | 0.019782 |
-| Full VOICE, Twin Peak | 0.057126 | 0.060165 | 0.040883 | 0.044625 |
-| Partial VOICE cursor move | 0.031890 | 0.031783 | 0.016957 | 0.018642 |
-| Full VOICE while Resonance changes | 0.060353 | 0.064985 | 0.044431 | 0.050058 |
-| Partial VOICE while Resonance changes | 0.057791 | 0.062514 | 0.040088 | 0.041060 |
+| Full PATTERN, 16 steps | 0.048744 | 0.054307 | 0.030283 | 0.034921 |
+| Idle | 0.000029 | 0.000045 | 0.000023 | 0.000049 |
+| Partial step, 16 steps | 0.035157 | 0.037156 | 0.022877 | 0.023487 |
+| Full PATTERN, 32 steps | 0.052440 | 0.058177 | 0.034243 | 0.038455 |
+| Partial step, 32 steps | 0.035570 | 0.037750 | 0.023444 | 0.024477 |
+| Full VOICE, Twin Peak | 0.054167 | 0.064432 | 0.043960 | 0.048177 |
+| Partial VOICE cursor move | 0.031175 | 0.033327 | 0.020038 | 0.021597 |
+| Full VOICE while Resonance changes | 0.057872 | 0.071068 | 0.047573 | 0.054231 |
+| Partial VOICE while Resonance changes | 0.055223 | 0.063012 | 0.042610 | 0.045340 |
 
 Peak changed pixels per paint, counted across a full clock cycle or a traversal of every editor row. Both targets produced the same counts.
 
 | Change | Press Plate | Blacklight Transfer |
 |---|---:|---:|
 | Idle | 0 | 0 |
-| 16-step advance | 2,754 | 2,810 |
-| 32-step advance | 1,767 | 1,783 |
-| 16-step advance, Notes mode | 2,754 | 2,469 |
-| TB-3PO miniature advance | 1,855 | 1,578 |
-| CLOCK miniature advance | 1,865 | 1,230 |
-| Dense microtonal 32-step advance | 1,754 | 1,798 |
-| VOICE cursor | 7,314 | 7,098 |
-| TONE cursor | 7,029 | 6,646 |
-| SEQUENCER cursor | 7,646 | 6,904 |
-| CLOCK cursor | 7,983 | 8,906 |
-| Drip motion on PATTERN | 170 | 287 |
-| Drip motion on VOICE | 71 | 287 |
+| 16-step advance | 2,761 | 2,963 |
+| 32-step advance | 1,774 | 1,953 |
+| 16-step advance, Notes mode | 2,761 | 2,622 |
+| TB-3PO miniature advance | 1,855 | 1,599 |
+| CLOCK miniature advance | 1,865 | 1,253 |
+| Dense microtonal 32-step advance | 1,761 | 1,977 |
+| VOICE cursor | 7,314 | 10,257 |
+| TONE cursor | 7,029 | 7,795 |
+| SEQUENCER cursor | 7,646 | 9,310 |
+| CLOCK cursor | 7,983 | 10,033 |
+| Drip motion on PATTERN | 177 | 282 |
+| Drip motion on VOICE | 71 | 282 |
 
 Paint retains the last plug-in pixels independently of host overlays. Only invalidated regions are rendered. It compares their scanlines against the retained image before writing to the host. A whole paint covers all 320 × 218 pixels and respects the supplied stride.
 
-The Linux ARM build passed 1,246,348 host checks, 512 sequencer reference checks and all 77 sound fingerprints. The two themes share a framebuffer and one set of input and playback state. The CLAP measures 395,872 bytes. Both targets passed 20 image hashes per theme, all sixteen hex digits in all four positions, controls, bindings, allocation checks, lengths 0–32, full/partial redraw comparisons and stride guards. The switch test checks independent instances, parameter edits, pot bindings, return to the default image and allocation counts. Motion checks exercise both themes, including ordinary gates, off-beat gated accents, intermediate offsets, settling and stopping mid-pulse.
+The Linux ARM build passed 1,246,348 host checks, 512 sequencer reference checks and all 77 sound fingerprints. The two themes share a framebuffer and one set of input and playback state. The CLAP measures 461,408 bytes. Both targets passed 20 image hashes per theme, all sixteen hex digits in all four positions, controls, bindings, allocation checks, lengths 0–32, full/partial redraw comparisons and stride guards. The switch test checks independent instances, parameter edits, pot bindings, return to the default image and allocation counts. Motion checks exercise both themes, including ordinary gates, off-beat gated accents, intermediate offsets, settling and stopping mid-pulse.
 
 ## Engine handoff and hardware status
 

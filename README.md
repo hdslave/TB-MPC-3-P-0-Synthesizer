@@ -225,7 +225,7 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 ## The screen
 
 Slink’s MPC panel opens in **Press Plate**: a stamped cobalt and aluminium panel with a lime melting smiley, whose drips jump on a
-four-step downbeat or an accented gate. A wide blue-chrome Slink wordmark fills the header. The silver surfaces have a fine horizontal grain, with antialiased labels and readouts. The three satin-chrome dials have a white pointer and a cobalt value arc. **Blacklight Transfer** pairs the chrome title with a navy header, the smiley ticket and a pitch roll.
+four-step downbeat or an accented gate. A wide blue-chrome Slink wordmark fills the header. The silver surfaces have a fine horizontal grain, with antialiased labels and readouts. The three satin-chrome dials have a white pointer and a cobalt value arc. **Blacklight Transfer** pairs the chrome title with a navy header, a glossy lime smiley ticket and a recessed pitch roll. Antialiased type and shaded control panels carry through all five dark pages.
 On CLOCK, select THEME and Push to switch. Push again to go back. The theme holds for this
 instance on every page, in Edit and Stage, until Melodee restarts; projects and presets keep only the sound.
 

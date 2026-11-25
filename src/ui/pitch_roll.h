@@ -7,6 +7,13 @@ using hdui::ticketInk;
 
 inline void pitchLabel (const Raster& r, int mid, int y, const char* name, hdui::Ink ink)
 {
+    const auto& face = hdui::pressType::compact;
+    const int width = r.faceWidth (name, face);
+    if (width <= 22)
+    {
+        r.faceText (std::clamp (mid-width/2, 0, r.w-width), y, r.w, name, ink, face);
+        return;
+    }
     const int length = int (std::strlen (name));
     const int advance = length <= 4 ? 5 : 4;
     int x = mid - (length*advance-1)/2;
@@ -14,10 +21,8 @@ inline void pitchLabel (const Raster& r, int mid, int y, const char* name, hdui:
     {
         const char* at = std::strchr (hdui::font::noteChars, *ch);
         if (!at) continue;
-        const auto& glyph = hdui::font::notes[at-hdui::font::noteChars];
-        for (int j = 0; j < 8; ++j)
-            for (int k = 0; k < 4; ++k)
-                if ((glyph[j] >> k) & 1) r.dot (x+k, y+j, ink);
+        const auto& glyph = hdui::pressType::notes[at-hdui::font::noteChars];
+        r.coverageGlyph (x, y, r.w, glyph, 8, ink);
     }
 }
 
