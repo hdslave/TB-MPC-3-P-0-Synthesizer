@@ -1,7 +1,7 @@
 """Build the native display glyphs and indexed screen artwork."""
 from math import cos, radians, sin
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
 ART = ROOT / 'assets/art'
@@ -88,8 +88,6 @@ for name, start, stop in [('hero',0,64),('editor',64,106)]:
     data = im.tobytes()
     contents += table(name, [data[i:i+320] for i in range(0,len(data),320)])
 
-wordmark = Image.open(ART/'slink.png').convert('L').point(lambda v: 255 if v > 26 else 0)
-contents += table('logo', bits(wordmark.resize((76,11), Image.Resampling.LANCZOS).point(lambda v: 255 if v >= 95 else 0)))
 bold = ImageFont.truetype(str(FONTS/'BarlowCondensed-BoldItalic.ttf'), 72)
 digits = []
 for ch in '0123456789ABCDEF':
@@ -122,6 +120,33 @@ inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
 ticket = header + ['namespace hdui::blacklightArt {', 'inline constexpr uint32_t palette[] = {' + ','.join(inks) + '};']
 data = sticker.tobytes()
 ticket += table('sticker', [data[i:i+77] for i in range(0,len(data),77)])
+
+# Set the five original letterforms separately so the L, I and N keep a
+# native-pixel gap. Lift the midtones and put the reflections on the panel ink.
+wordmark = Image.open(ART/'slink.png').convert('RGB')
+navy = (9, 10, 35)
+curve = [min(1, 1.2*max(0, (v-5)/250)**0.68) for v in range(256)]
+wordmark = wordmark.point([round(bg + (255-bg)*v) for bg in navy for v in curve])
+# Split between letters in the master so the L, I and N
+# keep distinct stems after sampling to the 17-pixel-high header.
+edges = (0, 332, 530, 575, 829, wordmark.width)
+letters = []
+for left, right in zip(edges, edges[1:]):
+    letter = wordmark.crop((left, 0, right, wordmark.height))
+    letters.append(letter.resize((round(letter.width*120/wordmark.width), 17), Image.Resampling.LANCZOS))
+gap = 2
+title = Image.new('RGB', (sum(letter.width for letter in letters) + gap*(len(letters)-1), 17), navy)
+x = 0
+for letter in letters:
+    title.paste(letter, (x, 0))
+    x += letter.width + gap
+title = title.filter(ImageFilter.UnsharpMask(radius=0.75, percent=65, threshold=3))
+title = title.quantize(colors=64, dither=Image.Dither.NONE)
+palette = bytes(title.getpalette())
+inks = ['0xff'+palette[i:i+3].hex() for i in range(0,len(palette),3)]
+ticket += ['inline constexpr uint32_t titlePalette[] = {' + ','.join(inks) + '};']
+data = title.tobytes()
+ticket += table('title', [data[i:i+title.width] for i in range(0,len(data),title.width)])
 
 digits = []
 for ch in '0123456789ABCDEF':

@@ -37,7 +37,7 @@ inline bool Screen::paintBlacklight (uint32_t* pixels, int stride, bool whole, c
 inline void Screen::ticketTitle (const Raster& r) const
 {
     using namespace hdui;
-    r.mask (5, 4, art::logo, 11, ticketInk.paper);
+    r.stamp (13, 2, blacklightArt::title, blacklightArt::titlePalette);
     for (int y = 2; y < 17; ++y)
     {
         const int x = 162 - (y-2)/2;
