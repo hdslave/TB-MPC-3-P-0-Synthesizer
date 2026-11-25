@@ -22,8 +22,8 @@ def nameplate(height=30, wide_logo=False):
             for x in range(width):
                 u = x / (width - 1)
                 # A wide diagonal reflection rolls into a cooler lower-right edge.
-                reflection = 12 * exp(-((u + 0.16 * v - 0.32) / 0.29) ** 2)
-                level = round(216 - 16 * v - 9 * u + reflection) + grain[y % 32][x % 128]
+                reflection = 18 * exp(-((u + 0.16 * v - 0.32) / 0.29) ** 2)
+                level = round(216 - 21 * v - 13 * u + reflection) + grain[y % 32][x % 128]
                 plate.putpixel((x, y), (level, level + 2, level + 8))
     else:
         for y in range(height):
@@ -40,7 +40,9 @@ def nameplate(height=30, wide_logo=False):
     if wide_logo:
         # Fit the MPC's short, sloping plate directly from the full-resolution lettering.
         top_margin = 3
-        logo = logo.resize((216, height - top_margin - 2), Image.Resampling.LANCZOS)
+        bottom_margin = 2
+        face_height = height - 2  # Exclude the bevel.
+        logo = logo.resize((216, face_height - top_margin - bottom_margin), Image.Resampling.LANCZOS)
         origin = (7, top_margin)
     else:
         logo.thumbnail((180, 26), Image.Resampling.LANCZOS)
