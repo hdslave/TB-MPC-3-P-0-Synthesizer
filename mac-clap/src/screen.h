@@ -3,6 +3,7 @@
 
 #include "params.h"
 #include "ui/groups.h"
+#include "../../src/ui/silver_art.h"
 
 #include <atomic>
 
@@ -180,6 +181,13 @@ public:
         const Changes changed { page, selection, page || transport || patternChanged, publication, position, panel, parameters };
         bool drew = theme == Theme::blacklight ? paintBlacklight (pixels, stride, whole, h, slip, changed)
                                                : paintPressPlate (pixels, stride, whole, h, slip, changed);
+        if (selection || parameters || pots || h.shift != lastHost.shift || h.accent != lastHost.accent)
+            drew |= picture.region<320,33> (pixels, stride, whole, 0, 185, [&](Raster& r) {
+                if (h.shift) legend (r);
+                else if (themeRow()) themeHint (r);
+                else if (theme == Theme::blacklight) ticketCards (r, h);
+                else cards (r, h);
+            });
         lastSlip = slip;
         paintedTheme = theme;
         lastGroup = group;
@@ -199,6 +207,7 @@ private:
     Host lastHost {};
     Theme theme = Theme::pressPlate, paintedTheme = Theme::pressPlate;
     int group = 0, row = 0, lastGroup = -1, lastRow = 0, pinnedTop = -1;
+    const char* overviewTitle = nullptr;
     int tileRows[6] { 0, 0, 0, 0, 5, 0 };
     bool editing = false, lastEditing = false;
     bool pulse = false;
@@ -229,14 +238,14 @@ private:
         using namespace hdui;
         if (theme == Theme::pressPlate)
         {
-            r.box (0, 2, 320, 31, ink::metal);
-            r.text (8, 12, "PUSH TO SWITCH", ink::bg);
+            r.box (0, 2, 320, 31, hdui::silver::cardMetal);
+            r.text (8, 12, "CLICK TO SWITCH", ink::bg);
             r.right (312, 12, "Blacklight Transfer", ink::bg);
         }
         else
         {
             r.box (4, 0, 312, 1, ticketInk.violet);
-            r.text (8, 11, "PUSH TO SWITCH", ticketInk.muted);
+            r.text (8, 11, "CLICK TO SWITCH", ticketInk.muted);
             r.right (312, 11, "Press Plate", ticketInk.paper);
         }
     }
@@ -276,11 +285,11 @@ private:
     {
         bool drew = false;
         if (d.page || (d.parameters & bit (ParamId::mode)))
-            drew |= picture.region<320,18> (pixels, stride, whole, 0, 0, [&](Raster& r) { title (r); });
+            drew |= picture.region<320,30> (pixels, stride, whole, 0, 0, [&](Raster& r) { title (r); });
         if (group == 0)
         {
             if (d.position || slip != lastSlip || (d.parameters & (bit (ParamId::seed) | bit (ParamId::seedMode) | bit (ParamId::steps))))
-                drew |= picture.region<320,64> (pixels, stride, whole, 0, 18, [&](Raster& r) { patternPlate (r, h, slip); });
+                drew |= picture.region<320,52> (pixels, stride, whole, 0, 30, [&](Raster& r) { patternPlate (r, h, slip); });
             if (d.page || (d.parameters & (bit (ParamId::root) | bit (ParamId::scale) | bit (ParamId::clockDiv)
                                     | bit (ParamId::octave) | bit (ParamId::density))))
                 drew |= picture.region<320,16> (pixels, stride, whole, 0, 82, [&](Raster& r) { metadata (r); });
@@ -292,7 +301,7 @@ private:
         else
         {
             if (d.selection || slip != lastSlip || (!themeRow() && (d.parameters & bit (fields().fields[row].id))))
-                drew |= picture.region<320,42> (pixels, stride, whole, 0, 18, [&](Raster& r) { editorPlate (r, slip); });
+                drew |= picture.region<320,30> (pixels, stride, whole, 0, 30, [&](Raster& r) { editorPlate (r, slip); });
             if (d.selection || d.parameters)
                 drew |= picture.region<160,125> (pixels, stride, whole, 0, 60, [&](Raster& r) { list (r); });
             if (d.page || d.panel)
@@ -312,48 +321,66 @@ private:
     void title (const Raster& r) const
     {
         using namespace hdui;
-        r.box (0, 0, 320, 18, ink::metal);
-        r.mask (6, 3, art::logo, 11, ink::bg);
-        r.box (4, 16, 221, 1, ink::rule);
-        for (int y = 2; y < 16; ++y)
+        // The smiley crosses the title/status boundary on the right of the slanted nameplate.
+        if (group == 0) r.stamp (0, 18, art::hero, art::palette);
+        else r.stamp (0, 18, art::editor, art::palette);
+        r.box (0, 0, 320, 18, ink::bg);
+        // In the desktop grid the shared masthead carries the logo; the six plates name their sections.
+        if (!overviewTitle) r.stamp (0, 0, silver::plate, silver::palette);
+        constexpr int width = int (sizeof silver::plate[0]);
+        const int left = overviewTitle ? 0 : width;
+        for (int y = 0; y < r.h; ++y)
         {
-            const int x = 239 - (y-2)/2;
-            r.box (x, y, 318-x, 1, ink::bg);
+            const int edge = 246 - 2*y/3;
+            r.box (left, y, edge-left, 1, silver::palette[silver::plate[y][width-1]]);
+            r.box (edge, y, 3, 1, ink::cobalt);
         }
-        r.right (311, 5, fields().name, ink::paper);
+        if (overviewTitle)
+        {
+            r.reading (8, 2, 207, overviewTitle, ink::bg, true);
+            if (!group && val (ParamId::mode) >= .5f)
+                r.text (99, 10, "MIDI / SEQ MUTED", ink::bg, true);
+            return;
+        }
         if (!group && val (ParamId::mode) >= .5f)
-            r.text (119, 5, "MIDI / SEQ MUTED", ink::bg);
+        {
+            for (int y = 0; y < 18; ++y)
+                r.box (223-y/2, y, 97+y/2, 1, ink::bg);
+            r.text (273, 2, fields().name, ink::paper, true);
+            r.text (222, 10, "MIDI / SEQ MUTED", ink::paper, true);
+        }
+        else r.right (315, 5, fields().name, ink::paper);
     }
 
     void patternPlate (const Raster& r, const Host& h, int slip) const
     {
         using namespace hdui;
-        r.stamp (0, 0, art::hero, art::palette);
+        r.stamp (0, -12, art::hero, art::palette);
         if (slip)
         {
-            r.slip (254, 47, 41, 3, slip);
-            r.slip (254, 53, 41, 2, -slip);
+            r.slip (254, 35, 41, 3, slip);
+            r.slip (254, 41, 41, 2, -slip);
         }
         const int n = plots::stepCount (view);
         const unsigned seed = unsigned (val (ParamId::seed));
         const bool pending = pendingSeed();
-        r.hex (22, 18, seed, ink::paper, art::digits, 20);
-        r.text (108, pending ? 16 : 18, pending ? "PENDING" : "SEED", pending ? ink::violet : ink::steel);
-        r.text (108, pending ? 26 : 32, val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM", ink::live);
+        r.hex (22, 6, seed, ink::paper, art::digits, 20);
+        r.text (108, pending ? 4 : 6, pending ? "PENDING" : "SEED", pending ? ink::violet : ink::steel);
+        r.text (108, pending ? 14 : 20, val (ParamId::seedMode) >= .5f ? "LOCKED" : "RANDOM", ink::live);
         const int transportX = pending ? 182 : 169;
         if (h.playing)
-            for (int i = 0; i < 5; ++i) r.box (transportX+1+i, 21+i/2, 1, 8-i, ink::live);
-        else r.box (transportX, 22, 6, 6, ink::steel);
-        r.text (transportX+11, 20, h.playing ? "RUN" : "STOP", ink::paper);
+            for (int i = 0; i < 5; ++i) r.box (transportX+1+i, 9+i/2, 1, 8-i, ink::live);
+        else r.box (transportX, 10, 6, 6, ink::steel);
+        r.text (transportX+11, 8, h.playing ? "RUN" : "STOP", ink::paper);
         char s[24];
         if (view.current >= 0 && view.current < n)
             std::snprintf (s, sizeof (s), "%02d/%02d", view.current+1, n);
         else std::snprintf (s, sizeof (s), "--/%02d", n ? n : int (val (ParamId::steps)));
-        r.text (transportX, 34, s, ink::paper);
+        r.text (transportX, 22, s, ink::paper);
         if (pending)
         {
             std::snprintf (s, sizeof (s), "SCORE %04X", unsigned (view.seed) & 65535);
-            r.text (108, 37, s, ink::paper);
+            r.text (108, 25, s, ink::paper);
         }
     }
 
@@ -377,21 +404,21 @@ private:
     void editorPlate (const Raster& r, int slip) const
     {
         using namespace hdui;
-        r.stamp (0, 0, art::editor, art::palette);
+        r.stamp (0, -12, art::editor, art::palette);
         if (slip)
         {
-            r.slip (276, 31, 27, 2, slip);
-            r.slip (276, 35, 27, 1, -slip);
+            r.slip (276, 19, 27, 2, slip);
+            r.slip (276, 23, 27, 1, -slip);
         }
         const auto& f = fields().fields[row];
         char value[32];
         formatted (f.id, value);
         const bool large = r.readingWidth (value, true) <= 156;
         const int wide = r.readingWidth (value, large);
-        r.reading (17, large ? 9 : 12, 179, value, ink::paper, large);
+        r.reading (17, large ? 0 : 1, 179, value, ink::paper, large);
         const int labelX = std::clamp (23 + wide, 90, 180);
-        r.text (labelX, 16, f.label, ink::live);
-        if (editing) r.box (labelX, 26, 6 * int (std::strlen (f.label)) - 1, 1, ink::violet);
+        r.text (labelX, 5, f.label, ink::live);
+        if (editing) r.box (labelX, 15, 6 * int (std::strlen (f.label)) - 1, 1, ink::violet);
     }
 
     static constexpr int visible = 8, rowH = 15;
@@ -415,13 +442,14 @@ private:
             r.box (2, y, 156, height-1, focus ? ink::live : (i-top)%2 ? ink::alternate : ink::metal);
             char value[32];
             formatted (f.id, value);
-            r.text (7, y+3, f.label, ink::bg);
+            const int labelY = y + (compactVoice() ? 1 : 3);
+            r.text (7, labelY, f.label, ink::bg);
             if (focus && editing)
             {
                 const int w = int (std::strlen (value))*6 + 5;
                 r.box (155-w, y+1, w, height-3, ink::bg);
             }
-            r.right (153, y+3, value, focus && editing ? ink::live : ink::bg);
+            r.right (153, labelY, value, focus && editing ? ink::live : ink::bg);
         }
         if (fields().count > rows)
             r.box (159, 2 + top * 120 / fields().count, 1, rows * 120 / fields().count, ink::steel);
@@ -468,7 +496,7 @@ private:
             const int x = 320*k/3, w = 320*(k+1)/3-x;
             const bool ticket = theme == Theme::blacklight;
             if (ticket) r.box (x+2, 0, w-4, 1, ticketInk.violet);
-            else r.box (x+1, 2, w-1, 31, ink::metal);
+            else r.box (x+1, 2, w-1, 31, silver::cardMetal);
             r.text (x+5, 5, top[k], ticket ? ticketInk.muted : ink::bg);
             r.reading (x+4, 14, x+w-2, bottom[k], ticket ? ticketInk.paper : ink::bg);
         }
@@ -495,7 +523,7 @@ private:
         for (int k = 0; k < 3; ++k)
         {
             const int x = 320*k/3, end = 320*(k+1)/3, cx = x+15, cy = 16;
-            r.box (x, 2, end-x, 31, ink::metal);
+            r.box (x, 2, end-x, 31, silver::cardMetal);
             if (k) r.box (x, 2, 1, 31, ink::rule);
             const uint32_t id = cardField (k);
             if (id == noParam) continue;
@@ -521,21 +549,19 @@ private:
                 if (std::strlen (s) > 12) std::memcpy (s+10, "..", 3);
                 r.text (x+30, 18, s, ink::bg);
             }
-            for (int j = -10; j <= 10; ++j)
-                for (int i = -10; i <= 10; ++i)
-                    if (i*i+j*j <= 105) r.dot (cx+i, cy+j, ink::bg);
             const int angle = std::clamp (int (std::lround (48*(val (id)-p.min)/(p.max-p.min))), 0, 48);
-            auto dx = [](int a, int radius) { return int (std::round (art::dial[a][0]*radius/64.f)); };
-            auto dy = [](int a, int radius) { return int (std::round (art::dial[a][1]*radius/64.f)); };
-            for (int i = 0; i <= angle; ++i)
-                r.box (cx+dx (i,9)-1, cy+dy (i,9)-1, 3, 3, ink::cobalt);
-            for (int i = 0; i <= 7; ++i)
-                r.box (cx+dx (angle,i), cy+dy (angle,i), 2, 1, ink::paper);
+            for (int j = 0; j < 23; ++j)
+            {
+                const auto& rowPixels = silver::dialRows[silver::dial[angle][j]];
+                Ink* dest = r.px + (cy-11+j)*r.w + cx-11;
+                for (int i = 0; i < 23; ++i) dest[i] = silver::palette[rowPixels[i]];
+            }
             r.box (cx-3, cy+12, 7, 2, track);
             if (h.pot[k] >= 0 && !h.engaged[k])
             {
                 const int pos = std::clamp (int (h.pot[k]), 0, 127) * 48 / 127;
-                const int mx = cx+dx (pos,9), my = cy+dy (pos,9);
+                const int mx = cx + int (std::lround (art::dial[pos][0]*10 / 64.f));
+                const int my = cy + int (std::lround (art::dial[pos][1]*10 / 64.f));
                 r.box (mx-2, my-2, 5, 5, ink::bg);
                 r.frame (mx-2, my-2, 5, 5, ink::paper);
             }

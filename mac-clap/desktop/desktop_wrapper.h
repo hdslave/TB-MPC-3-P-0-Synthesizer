@@ -192,7 +192,7 @@ struct DesktopPlugin
     void sendScreenInput (uint32_t kind, int32_t value);
     void sendNote (int midiNote, bool on, double velocity = 0.85);
     bool paintScreen (uint64_t now); // true when the page changed
-    bool paintAllTiles (uint64_t now); // paints all MPC screen tiles
+    bool paintTiles (uint64_t now, int zoomedTile);
     void refreshScreenKnobs();
     void markAllDirty();
 

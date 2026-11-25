@@ -50,6 +50,9 @@ typedef struct clap_plugin_hdslave_tiles
     // Executes a custom screen action (when hit_test returned HDSLAVE_HOTSPOT_ACTION), or wheel delta when wheel_delta != 0.
     void (CLAP_ABI* action) (const clap_plugin_t* plugin, uint32_t tile, int32_t custom_id, int32_t wheel_delta, bool shift);
 
-    // Active screen height without the MPC hardware K1-K3 footer panel (defaults to MELODEE_SCREEN_PAGE_HEIGHT = 218 when 0).
+    // Height of the interactive tile, including its controls (defaults to MELODEE_SCREEN_PAGE_HEIGHT = 218 when 0).
     uint32_t content_h;
+
+    // Grid tiles share the desktop masthead and use their nameplate for the section title.
+    bool (CLAP_ABI* paint_overview) (const clap_plugin_t*, uint32_t, const melodee_screen_frame_t*, clap_id[3]);
 } clap_plugin_hdslave_tiles_t;

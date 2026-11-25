@@ -59,7 +59,13 @@ inline PluginTheme themeForPluginId (const char* id)
     else if (std::strstr (id, "psychic"))      set (0xFF5CCBFFu, 0xFFD8F04Au, 0xFF161236u, 0xFF080718u, 0xFF15112Eu, 0xFF201A48u, 0xFF352E70u);
     else if (std::strstr (id, "reverie"))      set (0xFF7FE6E0u, 0xFFFFA24Au, 0xFF0F2238u, 0xFF06101Cu, 0xFF0E1E33u, 0xFF16304Cu, 0xFF2A4C70u);
     else if (std::strstr (id, "tbmpc") || std::strstr (id, "tb-mpc") || std::strstr (id, "3p0") || std::strstr (id, "tb_mpc"))
-                                               set (0xFFD8F03Au, 0xFF3C5CFFu, 0xFF111432u, 0xFF070816u, 0xFF12142Cu, 0xFF1C1F45u, 0xFF2F3570u);
+    {
+        set (0xFFC6FF05u, 0xFF5255EDu, 0xFF232830u, 0xFF101215u, 0xFF171B21u, 0xFF303540u, 0xFF50596Au);
+        t.headerTop = 0xFF242A34u;
+        t.headerBottom = t.panel;
+        t.text = 0xFFECEEF2u;
+        t.muted = 0xFFB8BFCAu;
+    }
     return t;
 }
 

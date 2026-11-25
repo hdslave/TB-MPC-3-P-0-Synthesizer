@@ -4,8 +4,11 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 ![Slink acid bass sequencer and voice controls during playback](assets/desktop-preview.gif)
 
-- **Multi-Screen MPC Dashboard:** displays all of hdslave Slink's native MPC screens simultaneously on one resizable Retina/HiDPI panel (with the hardware `K1`–`K3` footer panels removed) and direct mouse, trackpad, and touch control over every parameter, plot, sequencer, and pad.
-- **Standalone from the MPC Sample build:** this directory is completely separate from the MPC Sample build in the repository root (`../src`, `../build.sh`). The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) lists platform downloads.
+The desktop editor brings the MPC Sample’s silver Press Plate layout into a six-panel grid. The blue-chrome Slink logo sits above the grid, and **Zoom** opens a single panel with the full MPC nameplate. On Pattern, the three satin dials control Cutoff, Resonance and Env Mod. On the other panels they follow the selected row. Drag or scroll a dial to edit its value. Hold Shift while dragging for fine adjustment.
+
+Click **Clock → Theme** to switch the whole editor to Blacklight Transfer. The two Sequencer panels keep all 13 sequencer settings accessible, and Voice and Tone each expose both LFO controls.
+
+Build from this repository to include the shared MPC artwork. The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) has the previous desktop downloads.
 
 Slink 0.6.0 is the new name of TB-MPC-3-P-0. Existing projects use the same CLAP ID and factory preset keys. On upgrade, replace the previous plug-in in place, keeping its installed filename if the host stores paths. Install one copy per host.
 

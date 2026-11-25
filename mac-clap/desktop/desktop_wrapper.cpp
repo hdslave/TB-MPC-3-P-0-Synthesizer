@@ -939,7 +939,7 @@ bool CLAP_ABI wrapInit (const clap_plugin_t* p)
         else if (rows >= 3)              sw = 400; // 3x3 (9 screens)
         const int sh = sw * dp.tileScreenH / MELODEE_SCREEN_WIDTH;
         dp.guiWidth  = std::clamp (uint32_t (cols * (sw + 8) + (cols - 1) * 8 + 16), uint32_t (1000), kMaxGuiWidth);
-        dp.guiHeight = std::clamp (uint32_t (rows * (sh + 25) + (rows - 1) * 8 + 62), uint32_t (640), kMaxGuiHeight);
+        dp.guiHeight = std::clamp (uint32_t (rows * (sh + 8) + (rows - 1) * 8 + 62), uint32_t (640), kMaxGuiHeight);
     }
 
     return true;
@@ -1424,7 +1424,7 @@ void DesktopPlugin::sendNote (int midiNote, bool on, double velocity)
     screenRequested.store (true, std::memory_order_release);
 }
 
-bool DesktopPlugin::paintAllTiles (uint64_t now)
+bool DesktopPlugin::paintTiles (uint64_t now, int zoomedTile)
 {
     if (!innerTiles || !innerTiles->paint || tileCount == 0)
         return paintScreen (now);
@@ -1439,6 +1439,7 @@ bool DesktopPlugin::paintAllTiles (uint64_t now)
     bool anyDrew = false;
     for (uint32_t t = 0; t < tileCount && t < 16; ++t)
     {
+        if (zoomedTile >= 0 && int (t) != zoomedTile) continue;
         melodee_screen_frame_t frame {};
         frame.pixels = tilePixels[t].data();
         frame.width = MELODEE_SCREEN_WIDTH;
@@ -1468,7 +1469,8 @@ bool DesktopPlugin::paintAllTiles (uint64_t now)
             }
         }
 
-        anyDrew |= innerTiles->paint (inner, t, &frame, tileKnobIds[t]);
+        const auto paint = zoomedTile < 0 ? innerTiles->paint_overview : innerTiles->paint;
+        anyDrew |= paint (inner, t, &frame, tileKnobIds[t]);
     }
     screenWholeNeeded = false;
     screenRequested.store (false, std::memory_order_release);

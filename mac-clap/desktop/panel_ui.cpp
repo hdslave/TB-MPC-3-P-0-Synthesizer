@@ -1,6 +1,8 @@
 #include "panel_ui.h"
+#include "../../src/ui/silver_art.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -64,10 +66,11 @@ void PanelUI::layout()
     top_ = { 8, 6, w_ - 16, 42 };
 
     // Top bar items
-    int x = top_.x + 230;
+    int x = top_.x + 236;
+    const int presetWidth = std::clamp (w_ - 850, 128, 236);
     const int by = top_.y + 7, bh = 28;
     items_[(size_t) Item::PresetPrev] = { x, by, 26, bh }; x += 28;
-    items_[(size_t) Item::PresetBox]  = { x, by, 236, bh }; x += 238;
+    items_[(size_t) Item::PresetBox]  = { x, by, presetWidth, bh }; x += presetWidth + 2;
     items_[(size_t) Item::PresetNext] = { x, by, 26, bh }; x += 34;
 
     items_[(size_t) Item::Zoom]    = { x, by, 102, bh }; x += 108;
@@ -75,7 +78,7 @@ void PanelUI::layout()
     items_[(size_t) Item::Learn]   = { x, by, 86, bh };  x += 90;
     items_[(size_t) Item::ClearCc] = { x, by, 68, bh };  x += 76;
 
-    const int readoutW = std::max (160, (top_.x + top_.w - 8) - x);
+    const int readoutW = (top_.x + top_.w - 8) - x;
     items_[(size_t) Item::Readout] = { x, top_.y + 5, readoutW, 32 };
 
     gridArea_ = { 8, 54, w_ - 16, h_ - 62 };
@@ -135,13 +138,13 @@ void PanelUI::layout()
     const int maxCellH = (gridArea_.h - (rows - 1) * gapY) / rows;
     int sw = std::max (64, maxCellW - 8);
     int sh = sw * scrH / MELODEE_SCREEN_WIDTH;
-    if (sh > std::max (44, maxCellH - 25))
+    if (sh > std::max (44, maxCellH - 8))
     {
-        sh = std::max (44, maxCellH - 25);
+        sh = std::max (44, maxCellH - 8);
         sw = sh * MELODEE_SCREEN_WIDTH / scrH;
     }
     const int cellW = sw + 8;
-    const int cellH = sh + 25;
+    const int cellH = sh + 8;
     const int gridTotalH = rows * cellH + (rows - 1) * gapY;
     const int offsetY = (gridArea_.h - gridTotalH) / 2;
 
@@ -164,9 +167,10 @@ void PanelUI::layout()
         auto& tv = tiles_[t];
         tv.tabRect = {};
         tv.cardRect = card;
-        tv.headerRect = { card.x + 2, card.y + 2, card.w - 4, 18 };
-        tv.zoomBtnRect = { card.x + card.w - 52, card.y + 3, 48, 15 };
-        tv.screenRect = { card.x + 4, card.y + 21, sw, sh };
+        tv.screenRect = { card.x + 4, card.y + 4, sw, sh };
+        tv.headerRect = { tv.screenRect.x, tv.screenRect.y, sw, sh * 18 / scrH };
+        const int zoomH = std::min (18, tv.headerRect.h);
+        tv.zoomBtnRect = { tv.screenRect.x + sw - 54, tv.screenRect.y, 52, zoomH };
     }
 }
 
@@ -179,9 +183,9 @@ Rect PanelUI::update (uint64_t now)
     if (layoutDirty_)
         layout();
 
-    // Paint all MPC screen tiles every frame (~60 fps) when open or requested
+    // Paint the visible pages before composing the desktop controls.
     const auto t0 = std::chrono::steady_clock::now();
-    p_->paintAllTiles (now_);
+    p_->paintTiles (now_, zoomedTile_);
     renderAll();
     const auto t1 = std::chrono::steady_clock::now();
     lastRenderMs_ = std::chrono::duration<double, std::milli> (t1 - t0).count();
@@ -224,20 +228,19 @@ void PanelUI::drawHeaderBar()
     const auto& th = p_->theme;
     c_.fillChamfer (top_, 5, th.headerTop);
     c_.frameChamfer (top_, 5, th.border);
-    c_.fill (top_.x + 6, top_.y, 190, 2, th.accent);
 
-    // Plugin brand + name + version
-    std::string shortName = p_->pluginName;
-    if (shortName.rfind ("hdslave ", 0) == 0)
-        shortName = shortName.substr (8);
-    shortName = upper (shortName);
-
-    c_.tag (top_.x + 10, top_.y + 8, "HDSLAVE", th.accent, 0xFF06080Cu, 4);
-    c_.text (top_.x + 74, top_.y + 9, shortName, th.text, 1, 148);
-    char sub[64];
-    std::snprintf (sub, sizeof (sub), "MPC // %u SCREENS // v%s",
-                   std::max<uint32_t> (1, p_->tileCount), p_->pluginVersion.c_str());
-    c_.text (top_.x + 10, top_.y + 25, sub, th.muted, 1, 218);
+    // Use the same baked blue-chrome wordmark as the instrument pages.
+    using namespace hdui::silver;
+    constexpr int plateW = int (std::size (plate[0])), plateH = int (std::size (plate));
+    static const auto nameplate = [] {
+        std::array<uint32_t, plateW * plateH> pixels {};
+        for (int y = 0; y < plateH; ++y)
+            for (int x = 0; x < plateW; ++x)
+                pixels[y * plateW + x] = palette[plate[y][x]];
+        return pixels;
+    }();
+    c_.blitSharp (nameplate.data(), plateW, plateH, { top_.x + 5, top_.y + 1, plateW, plateH });
+    c_.text (top_.x + 10, top_.y + 31, "hdslave  /  v" + p_->pluginVersion, th.muted);
 
     // Preset selector
     drawButtonBox (c_, items_[(size_t) Item::PresetPrev], "<", th, false, hoverItem_ == Item::PresetPrev);
@@ -298,18 +301,6 @@ void PanelUI::drawTile (int tileIdx)
     c_.fillChamfer (tv.cardRect, 4, th.panel);
     c_.frameChamfer (tv.cardRect, 4, isFocused ? th.accent : (isHovered ? mix (th.border, th.accent, 0.45f) : th.border));
 
-    // Tile header strip
-    c_.fill (tv.headerRect.x, tv.headerRect.y, tv.headerRect.w, tv.headerRect.h, th.headerTop);
-    c_.disc (float (tv.headerRect.x + 8), float (tv.headerRect.y + tv.headerRect.h / 2), 3.0f,
-             isFocused ? th.accent : th.muted);
-    c_.text (tv.headerRect.x + 16, tv.headerRect.y + (tv.headerRect.h - 12) / 2,
-             tv.title, isFocused ? 0xFFFFFFFFu : th.text, 1,
-             tv.headerRect.w - tv.zoomBtnRect.w - 24);
-
-    // Tile [ZOOM] / [GRID] mini button
-    const bool zoomHot = (hoverZoomBtnTile_ == tileIdx);
-    drawButtonBox (c_, tv.zoomBtnRect, zoomedTile_ >= 0 ? "GRID" : "ZOOM", th, zoomedTile_ == tileIdx, zoomHot);
-
     // Recessed screen bezel + sharp scaled 320x218 MPC screen blit
     const Rect bezel = tv.screenRect.inset (-2);
     c_.fill (bezel, 0xFF040608u);
@@ -323,6 +314,14 @@ void PanelUI::drawTile (int tileIdx)
 
     if (srcPx)
         c_.blitSharp (srcPx, MELODEE_SCREEN_WIDTH, std::max (120, p_->tileScreenH), tv.screenRect);
+
+    if (zoomedTile_ >= 0)
+    {
+        c_.fill (tv.headerRect, th.headerTop);
+        c_.text (tv.headerRect.x + 8, tv.headerRect.y + 5, tv.title, th.text);
+    }
+    drawButtonBox (c_, tv.zoomBtnRect, zoomedTile_ >= 0 ? "GRID" : "ZOOM",
+                   th, zoomedTile_ >= 0, hoverZoomBtnTile_ == tileIdx);
 
     // Interactive hotspot highlight overlay (hover or active drag)
     const bool draggingHere = (drag_ != Drag::None && dragTile_ == tileIdx && dragSpot_.kind != HDSLAVE_HOTSPOT_NONE);

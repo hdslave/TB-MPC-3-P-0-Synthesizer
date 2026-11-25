@@ -37,13 +37,20 @@ inline bool Screen::paintBlacklight (uint32_t* pixels, int stride, bool whole, c
 inline void Screen::ticketTitle (const Raster& r) const
 {
     using namespace hdui;
-    r.mask (5, 4, art::logo, 11, ticketInk.paper);
+    if (overviewTitle) r.reading (5, -1, 150, overviewTitle, ticketInk.paper);
+    else
+    {
+        // Fit the same silver nameplate into the shorter ticket header.
+        for (int y = 0; y < 18; ++y)
+            for (int x = 0; x < 134; ++x)
+                r.dot (4+x, y, silver::palette[silver::plate[y*30/18][x*224/134]]);
+    }
     for (int y = 2; y < 17; ++y)
     {
         const int x = 162 - (y-2)/2;
         r.box (x, y, 233-x, 1, ticketInk.violet);
     }
-    r.right (228, 5, fields().name, ticketInk.bg);
+    if (!overviewTitle) r.right (228, 5, fields().name, ticketInk.bg);
     r.box (4, 19, 229, 1, ticketInk.grid);
 }
 
@@ -174,7 +181,7 @@ inline void Screen::ticketList (const Raster& r) const
         const bool focus = i == row;
         const int width = f.id == noParam ? r.w-x-4 : 112;
         r.box (x, y, width, focus ? height-2 : 1, focus ? ticketInk.violet : ticketInk.grid);
-        r.text (x+3, y+2, f.label, focus ? ticketInk.bg : ticketInk.muted);
+        r.text (x+3, y+2, f.label, focus ? ticketInk.bg : ticketInk.muted, compactVoice());
         char value[32];
         formatted (f.id, value);
         if (focus && editing)

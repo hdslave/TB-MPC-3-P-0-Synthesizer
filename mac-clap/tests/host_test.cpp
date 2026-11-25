@@ -221,6 +221,52 @@ std::string resolveBinaryPath (const std::string& clapPath, std::string& baseOut
 #endif
 }
 
+// At this size each grid page is exactly 320 x 218 logical pixels. Exercise the
+// painted dials through the same mouse path as the native views, then read host values.
+bool testSlinkDials (const clap_plugin_t* plug, const hdslave_desktop_debug_api_t& ui,
+                     const clap_plugin_params_t& params, clap_process_t& block)
+{
+    int width = 0, height = 0;
+    auto render = [&] { return ui.ui_render (plug, 1016, 540, 2, &width, &height) != nullptr
+                               && width == 2032 && height == 1080; };
+    auto click = [&](int x, int y) {
+        ui.ui_mouse (plug, 0, x, y, 0, 0, 0, 1);
+        ui.ui_mouse (plug, 2, x, y, 0, 0, 0, 1);
+    };
+    auto drag = [&](int x, int y, const char* name) {
+        for (uint32_t i = 0; i < params.count (plug); ++i)
+        {
+            clap_param_info_t info {};
+            if (!params.get_info (plug, i, &info) || std::strcmp (name, info.name) != 0) continue;
+            double before, after;
+            if (!params.get_value (plug, info.id, &before)) return false;
+            ui.ui_mouse (plug, 0, x, y, 0, 0, 0, 1);
+            ui.ui_mouse (plug, 1, x, y-24, 0, 0, 0, 1);
+            ui.ui_mouse (plug, 2, x, y-24, 0, 0, 0, 1);
+            block.steady_time += block.frames_count;
+            plug->process (plug, &block);
+            if (params.get_value (plug, info.id, &after) && after > before) return true;
+            break;
+        }
+        std::fprintf (stderr, "FAIL: Slink dial at %d,%d did not raise %s\n", x, y, name);
+        return false;
+    };
+
+    // Pattern K1–K3. The two one-pixel column boundaries must agree with the MPC drawing.
+    if (!render() || !drag (117, 267, "Cutoff") || !drag (118, 267, "Resonance")
+        || !drag (225, 267, "Env Mod")) return false;
+    click (379, 230); // Voice cutoff LFO amount row: K1 and K2 now follow the two LFO rows.
+    if (!render() || !drag (365, 267, "Cutoff LFO Amt") || !drag (473, 267, "Cutoff LFO Speed")) return false;
+    click (721, 413); // Clock > Theme.
+    // In Blacklight the same LFO is in the right-hand ticket column above its dial.
+    if (!render() || !drag (568, 218, "Cutoff LFO Amt") || !drag (365, 267, "Cutoff LFO Amt")) return false;
+    click (730, 501); // Click the theme hint to switch back.
+    click (303, 72);  // Zoom Pattern.
+    if (!render() || !drag (235, 490, "Cutoff")) return false;
+    click (963, 98);  // Grid.
+    return render();
+}
+
 bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
 {
     std::string baseName;
@@ -432,6 +478,9 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
 
         if (!snapDir.empty())
             writePpm (snapDir + "/" + baseName + ".ppm", px, pw, ph);
+
+        if (std::strcmp (desc->id, "com.hdslave.tb-mpc-3-p-0") == 0
+            && !testSlinkDials (plug, *dbg, *params, proc)) return false;
 
         dbg->ui_close (plug);
     }
