@@ -1,5 +1,5 @@
 """Bake the Press Plate nameplate and smoothly indexed satin dials at MPC resolution."""
-from math import cos, radians, sin
+from math import cos, exp, radians, sin
 from pathlib import Path
 from random import Random
 
@@ -12,12 +12,23 @@ METAL = '#cdcfd6'
 
 
 def nameplate(height=30, wide_logo=False):
-    width = 224
+    width = 246 if wide_logo else 224
     plate = Image.new('RGB', (width, height))
     draw = ImageDraw.Draw(plate)
-    for y in range(height):
-        level = round(216 - 13 * y / height) + (0, 1, -1, 0)[y % 4]
-        draw.line((0, y, width - 1, y), fill=(level, level + 2, level + 8))
+    if wide_logo:
+        grain = brush_tile()
+        for y in range(height - 2):
+            v = y / (height - 3)
+            for x in range(width):
+                u = x / (width - 1)
+                # A wide diagonal reflection rolls into a cooler lower-right edge.
+                reflection = 12 * exp(-((u + 0.16 * v - 0.32) / 0.29) ** 2)
+                level = round(216 - 16 * v - 9 * u + reflection) + grain[y % 32][x % 128]
+                plate.putpixel((x, y), (level, level + 2, level + 8))
+    else:
+        for y in range(height):
+            level = round(216 - 13 * y / height) + (0, 1, -1, 0)[y % 4]
+            draw.line((0, y, width - 1, y), fill=(level, level + 2, level + 8))
     draw.line((0, height - 2, width - 1, height - 2), fill='#edf0fa')
     draw.line((0, height - 1, width - 1, height - 1), fill='#273661')
 
@@ -28,8 +39,9 @@ def nameplate(height=30, wide_logo=False):
     logo = logo.crop(logo.getbbox())
     if wide_logo:
         # Fit the MPC's short, sloping plate directly from the full-resolution lettering.
-        logo = logo.resize((216, height - 3), Image.Resampling.LANCZOS)
-        origin = (7, 1)
+        top_margin = 3
+        logo = logo.resize((216, height - top_margin - 2), Image.Resampling.LANCZOS)
+        origin = (7, top_margin)
     else:
         logo.thumbnail((180, 26), Image.Resampling.LANCZOS)
         origin = (118 - logo.width // 2, 2)

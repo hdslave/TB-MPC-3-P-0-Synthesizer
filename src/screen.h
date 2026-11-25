@@ -335,16 +335,13 @@ private:
         if (group == 0) r.stamp (0, 18, art::hero, art::palette);
         else r.stamp (0, 18, art::editor, art::palette);
         r.box (0, 0, 320, 18, ink::bg);
-        r.stamp (0, 0, silver::mpcPlate, silver::mpcPlatePalette);
         constexpr int width = int (sizeof silver::mpcPlate[0]);
         for (int y = 0; y < r.h; ++y)
         {
-            const int edge = 246 - 2*y/3;
-            const Ink base = silver::mpcPlatePalette[silver::mpcPlate[y][0]];
-            r.box (width, y, edge-width, 1, base);
-            if (y < titleHeight-2)
-                for (int x = 0; x < edge; ++x)
-                    if (r.px[y*r.w+x] == base) r.px[y*r.w+x] = r.brushed (x, y, base);
+            const int edge = width - 2*y/3;
+            const auto& row = silver::mpcPlate[y];
+            for (int x = 0; x < edge; ++x)
+                r.px[y*r.w+x] = silver::mpcPlatePalette[row[x]];
             r.box (edge, y, 3, 1, ink::cobalt);
         }
         if (!group && val (ParamId::mode) >= .5f)
