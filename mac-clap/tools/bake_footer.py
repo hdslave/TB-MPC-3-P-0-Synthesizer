@@ -1,6 +1,7 @@
 """Bake Slink's original three animated prints. Requires NumPy, Pillow and SciPy."""
 
 import argparse
+import hashlib
 import math
 import struct
 import zlib
@@ -8,7 +9,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw
-from scipy.ndimage import distance_transform_edt, gaussian_filter, shift
+from scipy.ndimage import gaussian_filter
 
 WIDTH, HEIGHT = 1088, 56
 CUTS = (458, 776)
@@ -18,6 +19,8 @@ TAU = math.tau
 DEST = Path(__file__).resolve().parents[1] / 'assets' / 'footer-print.bank'
 PAPER = (8, 8, 18)
 RESAMPLE = Image.Resampling.LANCZOS
+ART = Path(__file__).with_name('footer-art')
+STENCIL_DIGEST = 'af4bae3c6f856173fab8606b893c57130b92b7afbb5dc6ce56567ddfc582cf88'
 
 
 def grid(width):
@@ -25,129 +28,176 @@ def grid(width):
     return (x + .5) / SCALE, (y + .5) / SCALE
 
 
-def contour(draw, start, curves, ink):
-    """A closed pen contour, drawn large enough to retain its finest terminals."""
-    points = [np.array(start, dtype=float)]
-    t = np.linspace(0, 1, 31)[1:, None]
-    for x1, y1, x2, y2, x3, y3 in curves:
-        a = points[-1]
-        b, c, d = (x1, y1), (x2, y2), (x3, y3)
-        points.extend((1-t)**3*a + 3*(1-t)**2*t*b + 3*(1-t)*t**2*c + t**3*d)
-    draw.polygon([tuple(p*SCALE) for p in points], fill=ink)
-
-
 def engraved_metal():
-    """Forge the raised faces from the signed distance to the hand-drawn cuts."""
-    width = 458
-    mask = Image.new('L', (width*SCALE, HEIGHT*SCALE))
-    pen = ImageDraw.Draw(mask)
-    # Two unequal hooked castings reach toward a pierced four-point jewel.
-    contour(pen, (5,35), [
-        (55,32,91,26,116,13), (134,4,140,9,155,2),
-        (142,12,128,16,128,23), (128,30,151,20,173,8),
-        (180,5,188,4,197,2), (182,12,183,22,172,29),
-        (160,37,148,33,133,38), (119,42,106,49,96,53),
-        (106,41,114,33,103,32), (80,31,51,36,5,35)], 255)
-    contour(pen, (103,28), [(114,23,121,18,131,15), (119,24,126,27,135,27),
-                            (124,31,110,29,103,28)], 0)
-    contour(pen, (145,30), [(160,26,169,20,177,15), (172,25,163,31,145,30)], 0)
-    contour(pen, (158,34), [
-        (193,28,208,25,217,18), (224,13,228,6,234,0),
-        (231,12,228,18,235,21), (245,25,263,22,286,18),
-        (265,27,247,28,236,34), (229,39,225,48,220,55),
-        (219,39,221,34,212,32), (196,29,181,35,158,34)], 255)
-    contour(pen, (215,28), [(222,26,226,23,230,18), (228,25,231,27,236,27),
-                            (229,30,226,32,222,36), (222,31,220,29,215,28)], 0)
-    contour(pen, (252,45), [
-        (270,32,274,18,281,11), (288,6,298,7,305,3),
-        (293,15,290,22,298,23), (310,27,335,15,346,7),
-        (355,1,363,4,377,1), (362,10,350,17,352,22),
-        (355,30,387,22,408,17), (422,15,436,16,453,13),
-        (425,22,398,25,375,29), (359,32,345,45,335,53),
-        (340,41,344,33,331,33), (316,33,300,36,281,48),
-        (289,38,289,34,283,34), (275,33,264,40,252,45)], 255)
-    contour(pen, (298,30), [(307,29,321,25,333,19), (329,26,333,29,339,29),
-                            (325,32,309,29,298,30)], 0)
-    image = np.asarray(mask) > 127
-    distance = distance_transform_edt(image) / SCALE
-    # A steep polished bevel gives way to flatter facets at the spine of each stroke.
-    height = gaussian_filter((np.sqrt(distance+.12)-math.sqrt(.12))*3.5, 3.6)
-    ny, nx = np.gradient(height, 1/SCALE)
-    length = np.sqrt(1 + nx*nx + ny*ny)
-    nx, ny, nz = -nx/length, -ny/length, 1/length
-    field = np.stack((2*nz*nx, 2*nz*ny, 2*nz*nz-1), axis=-1)
-    return image, field
+    """Prepare the cutout, the local bevel directions and the reflection field once."""
+    with Image.open(ART / 'silver-engraving.png') as master:
+        bounds = master.getchannel('A').point(lambda a: 255 if a > 96 else 0).getbbox()
+        relief = master.crop(bounds).resize((416*SCALE, 50*SCALE), RESAMPLE)
+    plate = Image.new('RGBA', (CUTS[0]*SCALE, HEIGHT*SCALE))
+    plate.paste(relief, (21*SCALE, 3*SCALE))
+    rgba = np.asarray(plate)
+    alpha = np.clip((rgba[..., 3].astype(float)-52) / 184, 0, 1)
+    metal = rgba[..., :3].astype(float)
+    lightness = metal @ np.array([.23, .69, .08]) / 255
+    # The blacks in the aperture and the engraved cuts also turn the reflection.
+    dy, dx = np.gradient(gaussian_filter(lightness*alpha, .85*SCALE), 1/SCALE)
+    across = np.tanh(dx*6)
+    along = np.tanh(dy*6)
+    reflection = .82*lightness + .20*along - .11*across
+    return metal, np.uint8(255*alpha), reflection, along, across
+
+
+def draw_wire(pen, phase, near):
+    # The fine black-nickel bail threads the opening. Its near and far arcs
+    # share their terminals, but only the near wire crosses the polished face.
+    theta = np.linspace(0, np.pi, 151) + (0 if near else np.pi)
+    side, depth = np.cos(theta), np.sin(theta)
+    cant = .43 + .27*np.sin(phase-.45)
+    x = 241 + 77*side + 4.0*depth*np.sin(phase)
+    y = 27 + 8.7*side + 20.0*cant*depth
+    gleam = (.5+.5*np.cos(theta-1.0+.72*np.sin(phase)))**5
+    nickel = np.array([44, 46, 67]) + gleam[:,None]*[116, 118, 123]
+    # One crimp of turned silver fixes the wire at the mouth of the eye.
+    collar = np.exp(-((theta-1.32)/.064)**4)
+    nickel += (collar*(.4+.6*np.cos((theta-1.32)*65)**2))[:,None]*[87, 85, 90]
+    for j in range(len(theta)-1):
+        pen.line((x[j]*SCALE, y[j]*SCALE, x[j+1]*SCALE, y[j+1]*SCALE),
+                 fill=tuple(nickel[j].astype(int)), width=round(2+int(near)+4*collar[j]))
 
 
 def chrome_print(casting, phase):
-    shape, normals = casting
-    x, _ = grid(458)
-    rx, ry, rz = np.moveaxis(normals, -1, 0)
-    # Narrow white strip lights, a cobalt card and a violet reflection move around the casting.
-    angle = .55*np.sin(phase) + .20
-    reflected = ry*np.cos(angle) + rx*np.sin(angle) + .11*rz + .16*np.sin(x/52 - phase)
-    levels = [-1.5,-.92,-.75,-.65,-.55,-.38,-.26,-.15,-.05,.07,.17,.23,.37,.49,.54,.65,.79,1.5]
-    cards = [(53,66,80),(127,149,174),(234,239,236),(117,137,163),(25,30,45),
-             (8,12,25),(69,62,108),(141,129,173),(45,53,75),(11,15,24),
-             (54,68,88),(152,181,200),(243,249,245),(203,224,235),(62,91,127),
-             (25,36,64),(135,146,157),(214,224,218)]
-    rgb = np.stack([np.interp(reflected, levels, [c[i] for c in cards]) for i in range(3)], axis=-1)
-    # A few millimetres of dark turned edge separate the front from the negative space.
-    dy, dx = 1.15 + .65*np.cos(phase), 2*np.sin(phase-.5)
-    edge = shift(shape, (round(dy*SCALE),round(dx*SCALE)), order=0, mode='constant')
-    flank = np.where((rz>.1)[...,None], (48,58,85), (73,67,102))
-    ink = np.where(shape[...,None], rgb, np.where(edge[...,None],flank,PAPER))
-    im = Image.fromarray(ink.astype(np.uint8))
-    # The three linked pieces cant at different points along their shared axis.
-    def extent(at):
-        u = at/im.width
-        stretch = 1 + .10*np.sin(TAU*u-phase)
-        offset = SCALE*1.65*np.sin(TAU*u+phase)*np.sin(np.pi*u)
-        return ((1-stretch)*im.height/2+offset, (1+stretch)*im.height/2+offset)
+    metal, alpha, reflection, along, across = casting
+    width = CUTS[0]
+    x, _ = grid(width)
+    # Relight each rolled face in its own direction. The darker counterstroke
+    # picks up the blue card while the two white cards cross the silver bevels.
+    turn = np.sin(phase) * (.16+.10*along) + .10*np.cos(phase)*across
+    turn += .054*np.sin(phase + 3.5*x/width)
+    bright = np.exp(-((reflection+turn-.66)/.108)**2)
+    base = np.exp(-((reflection-.66)/.108)**2)
+    blue = np.exp(-((reflection-.26-.65*turn)/.10)**2)
+    color = metal + (bright-base)[...,None]*[74, 71, 65]
+    color += (blue-.25)[...,None]*[1, 5, 19]
+    face = Image.fromarray(np.dstack((np.uint8(np.clip(color,0,255)), alpha)))
+    # A shallow roll along the long axis opens and closes the negative space.
+    # Keep the two needle tips seated while the thick part of the casting turns.
+    def ends(at):
+        u = at/face.width
+        weight = np.sin(np.pi*u)
+        height = 1 + weight*.13*np.sin(phase+3.4*u)
+        lift = SCALE*2.0*weight*np.sin(phase-2.8*u)
+        skew = SCALE*3.2*weight*np.cos(phase-.6)
+        middle = face.height*.5
+        return (at-skew, middle*(1-height)+lift, at+skew, middle*(1+height)+lift)
+
     mesh = []
-    for left in range(0,im.width,24*SCALE):
-        right = min(im.width,left+24*SCALE)
-        top0,bottom0 = extent(left)
-        top1,bottom1 = extent(right)
-        mesh.append(((left,0,right,im.height),(left,top0,left,bottom0,right,bottom1,right,top1)))
-    return im.transform(im.size,Image.Transform.MESH,mesh,Image.Resampling.BILINEAR,fillcolor=PAPER)
+    for left in range(0, face.width, 16*SCALE):
+        right = min(face.width, left+16*SCALE)
+        tlx,tly,blx,bly = ends(left)
+        trx,try_,brx,bry = ends(right)
+        mesh.append(((left,0,right,face.height),(tlx,tly,blx,bly,brx,bry,trx,try_)))
+    face = face.transform(face.size,Image.Transform.MESH,mesh,Image.Resampling.BILINEAR)
+    plate = Image.new('RGB', face.size, PAPER)
+    draw_wire(ImageDraw.Draw(plate), phase, False)
+    plate.paste(face, mask=face.getchannel('A'))
+    draw_wire(ImageDraw.Draw(plate), phase, True)
+    return plate
+
+
+def paper_plane(rgb, seam_a, seam_b, columns, disc, phase):
+    """Project one printed quadrilateral; the two UV axes follow its scored edges."""
+    back_a, front_a = seam_a
+    back_b, front_b = seam_b
+    corners = (back_a, back_b, front_b, front_a)
+    # A projective map keeps the runs of squares parallel to the receding paper.
+    equations, target = [], []
+    for (x,y), (u,v) in zip(corners, ((0,0),(1,0),(1,1),(0,1))):
+        equations.extend(((x,y,1,0,0,0,-u*x,-u*y),(0,0,0,x,y,1,-v*x,-v*y)))
+        target.extend((u,v))
+    a,b,c,d,e,f,g,h = np.linalg.solve(equations, target)
+    # Work only inside this leaf's bounds, including its antialiased edge.
+    xs, ys = np.array(corners).T
+    left, right = int(xs.min()*SCALE), int(xs.max()*SCALE)+1
+    top, bottom = int(ys.min()*SCALE), int(ys.max()*SCALE)+1
+    y,x = np.ogrid[top:bottom,left:right]
+    x, y = (x+.5)/SCALE, (y+.5)/SCALE
+    denominator = g*x+h*y+1
+    u = (a*x+b*y+c)/denominator
+    v = (d*x+e*y+f)/denominator
+    inside = (u>=0) & (u<=1) & (v>=0) & (v<=1)
+    u, v = np.clip(u,0,1), np.clip(v,0,1)
+    if columns > 0:
+        # Ivory printed face. Fold shadows belong to the paper, as does the
+        # cast shadow of the solar disc hanging between the two near leaves.
+        check = (np.floor(u*columns).astype(int) + np.floor(3*v).astype(int)) % 2
+        light = .91 + .085*(1-v) - .19*np.exp(-u*9)
+        light += .045*np.sin(phase+.4)*v
+        sun_x, sun_y = disc
+        shadow = np.exp(-(((x-sun_x-15)/20)**2+((y-sun_y-13)/7.8)**2))
+        light -= .38*shadow
+        ivory = np.array([235, 226, 210])*light[...,None]
+        ink = np.array([20, 17, 27]) + (1-v)[...,None]*[16, 11, 14]
+        color = np.where(check[...,None], ivory, ink)
+        # A sliver of the paper's edge shows along the lower cut.
+        rim = np.clip((v-.965)/.035,0,1)
+        color = color*(1-rim[...,None]) + rim[...,None]*[136, 112, 121]
+    else:
+        # Intaglio on the reverse. Lines follow the scored return, with a fine
+        # second edge in the same garnet ink as the disc.
+        lines = -columns
+        key = (.5+.5*np.cos(TAU*(lines*v+.28*np.sin(np.pi*u)-.36*u)))**4
+        roll = .40+.60*(1-u)**.65
+        ink = [109, 111, 134] if lines == 5 else [155, 97, 115]
+        color = np.array([28, 21, 37]) + (key*roll)[...,None]*ink
+        color += (1-v)[...,None]*[33, 9, 15]
+        lip = np.clip((.045-u)/.045,0,1)
+        color = color*(1-lip[...,None])+lip[...,None]*[205, 175, 173]
+    region = rgb[top:bottom,left:right]
+    np.copyto(region, color, where=inside[...,None])
+
+
+def print_disc(rgb, center, phase):
+    # A lacquered solar disc with a crimson belly, wine-coloured cap and a
+    # fine set of curved engraved lines in its dark hemisphere.
+    x,y = grid(CUTS[1]-CUTS[0])
+    sx, sy = (x-center[0])/19.3, (y-center[1])/19.3
+    rr = sx*sx + sy*sy
+    sz = np.sqrt(np.maximum(0,1-rr))
+    tilt = .36 + .19*np.sin(phase-.5)
+    angle = .89*sy + tilt*sx + (.30+.10*np.cos(phase))*sz
+    levels = [-1.45,-.79,-.55,-.18,.12,.36,.66,1.50]
+    inks = [(32,29,61),(92,68,108),(163,40,86),(235,48,64),(219,29,39),
+            (137,19,41),(53,13,32),(16,12,24)]
+    surface = np.stack([np.interp(angle,levels,[i[c] for i in inks]) for c in range(3)],axis=-1)
+    rim = (1-sz)**6 * np.clip(.42-.32*sy-.45*sx,0,1)
+    surface += rim[...,None]*[172,133,131]
+    latitude = np.cos(TAU*(6*angle+.19*sx))
+    etched = np.clip((latitude-.83)*5,0,1)*np.clip((angle-.33)*3,0,1)
+    surface += etched[...,None]*[33,13,23]
+    np.copyto(rgb, surface, where=(rr<1)[...,None])
 
 
 def checker_print(phase):
-    width = 318
-    x, y = grid(width)
-    # A two-sided printed strip twists about its long axis. Inverting the projection
-    # gives constant-sized squares on the paper and sharp perspective at each fold.
-    u = (x-7)/(width-14)
-    twist = .33 + .77*TAU*u + .38*np.sin(phase) + .25*np.sin(u*TAU-phase)
-    bow = 29 - 8*np.sin(TAU*u+.55) + 2.0*np.sin(phase+3*u)
-    half = (13+6*np.sin(np.pi*np.clip(u,0,1))**2)*np.sin(twist)
-    v = (y-bow)/np.where(np.abs(half)>.08,half,.08)
-    edge = (u>=0) & (u<=1) & (np.abs(v)<1)
-    a = 17*u + .48*v*np.cos(twist) + .16*np.sin(phase)
-    b = (v+1)*1.5
-    checks = ((np.floor(a).astype(int)+np.floor(b).astype(int)) & 1).astype(bool)
-    face = (.48+.52*np.abs(np.sin(twist))) * np.where(half>0,1,.78)
-    pearl = np.array([222,220,207]) * face[...,None]
-    black = np.array([20,18,31]) + np.minimum(np.abs(v),1)[...,None]*[6,6,8]
-    color = np.where(checks[...,None], pearl, black)
-    hem = np.clip((np.abs(v)-.93)/.07,0,1)[...,None]
-    color = color*(1-hem) + hem*np.array([114,120,143])
-    rgb = np.where(edge[...,None],color,PAPER)
-    # A single lacquer bead travels above and below the fold.
-    cx, cy = 162 + 25*np.sin(phase), 26 - 6*np.cos(phase)
-    sx, sy = (x-cx)/10.9, (y-cy)/10.9
-    rr = sx*sx + sy*sy
-    sz = np.sqrt(np.maximum(0,1-rr))
-    shadow = np.exp(-(((x-cx-3)/13)**2 + ((y-cy-8)/5.5)**2))
-    rgb = rgb * (1 - .47*(shadow*edge)[...,None])
-    shade = np.clip(.32 - .23*sx - .56*sy + .47*sz,0,1)
-    bead = np.array([52,12,40]) + shade[...,None]*[172,23,22]
-    sheen = np.exp(-((sx+.29)**2/.050 + (sy+.52)**2/.015))
-    bead += sheen[...,None]*[42,137,142]
-    ribbon_depth = v*17*np.cos(twist)
-    behind_fold = edge & (ribbon_depth > 10*np.cos(phase)+10.9*sz)
-    rgb = np.where(((rr<1) & ~behind_fold)[...,None],bead,rgb)
+    # A continuous concertina, viewed from above and to the left. Back and
+    # front corners share the same hinge; each leaf keeps its own depth order.
+    u, v = np.sin(phase), np.cos(phase)
+    def seam(x,y, dx,dy, sway,lift):
+        back = (x+sway*u,y+lift*v)
+        front = (back[0]+dx+1.7*v,back[1]+dy+1.2*u)
+        return back,front
+
+    folds = (seam(10,33,10,6,1,1), seam(99,9,26,12,6,2),
+             seam(76,29,25,18,3,-2), seam(193,8,32,16,-7,2),
+             seam(160,34,34,16,4,-1.8), seam(299,13,10,5,2,-2))
+    center = (167+7*np.cos(phase-.45),24.5+2.2*np.sin(phase))
+    rgb = np.empty((HEIGHT*SCALE,(CUTS[1]-CUTS[0])*SCALE,3),dtype=float)
+    rgb[:] = PAPER
+    # Positive counts are checker columns. Negative counts are engraved lines
+    # on the two reverse faces, one in graphite and one in garnet.
+    for i, columns in enumerate((7,-5,7,-7,8)):
+        if i == 3:
+            print_disc(rgb, center, phase)
+        paper_plane(rgb,folds[i],folds[i+1],columns,center,phase)
     return Image.fromarray(np.uint8(np.clip(rgb,0,255)))
 
 
@@ -197,24 +247,39 @@ def compose(casting, frame):
 
 
 def bake(images):
-    # A single palette across all poses avoids flicker. Each frame is independently
-    # compressed, so opening an editor and seeking a frame only needs one small buffer.
-    sample = Image.new('RGB', (WIDTH, HEIGHT*12))
+    # Each palette spans the entire loop. Keep the stencil's original inks so
+    # grading the metal and paper can never recolour a stencil pixel.
+    split = CUTS[1]
+    left = (0,0,split,HEIGHT)
+    right = (split,0,WIDTH,HEIGHT)
+    sample = Image.new('RGB', (split, HEIGHT*12))
     for n, frame in enumerate(images[::FRAMES//12]):
-        sample.paste(frame, (0,n*HEIGHT))
-    palette = sample.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
-    colors = np.array(palette.getpalette(), dtype=np.uint8).reshape((-1,3))
-    bgra = np.full((256,4),255,dtype=np.uint8)
-    bgra[:len(colors),:3] = colors[:,::-1]
+        sample.paste(frame.crop(left), (0,n*HEIGHT))
+    prints = sample.quantize(colors=256, method=Image.Quantize.MEDIANCUT)
+    stencil = Image.new('P',(1,1))
+    with Image.open(ART / 'stencil-palette.png') as inks:
+        stencil.putpalette(inks.tobytes())
+    palettes = bytearray()
+    for palette in (prints,stencil):
+        rgb = np.array(palette.getpalette(),dtype=np.uint8).reshape((256,3))
+        bgra = np.full((256,4),255,dtype=np.uint8)
+        bgra[:,:3] = rgb[:,::-1]
+        palettes.extend(bgra.tobytes())
+
+    header = struct.pack('<4s6H',b'SFP2',WIDTH,HEIGHT,FRAMES,FPS,*CUTS)
+    offsets = [len(header) + len(palettes) + 4*(FRAMES+1)]
     packets = []
-    header = struct.pack('<4s6H',b'SFP1',WIDTH,HEIGHT,FRAMES,FPS,*CUTS)
-    offsets = [len(header) + bgra.nbytes + 4*(FRAMES+1)]
+    stencil_hash = hashlib.sha256()
     for frame in images:
-        pixels = frame.quantize(palette=palette,dither=Image.Dither.NONE).tobytes()
-        packets.append(zlib.compress(pixels,9))
+        first = frame.crop(left).quantize(palette=prints,dither=Image.Dither.NONE)
+        last = frame.crop(right).quantize(palette=stencil,dither=Image.Dither.NONE)
+        stencil_hash.update(last.convert('RGB').tobytes())
+        indices = np.hstack((np.asarray(first),np.asarray(last)))
+        packets.append(zlib.compress(indices.tobytes(),9))
         offsets.append(offsets[-1] + len(packets[-1]))
-    DEST.write_bytes(header + bgra.tobytes()
-                     + struct.pack(f'<{len(offsets)}I',*offsets) + b''.join(packets))
+    if stencil_hash.hexdigest() != STENCIL_DIGEST:
+        raise ValueError('The approved stencil differs from the original five-second print')
+    DEST.write_bytes(header + palettes + struct.pack(f'<{len(offsets)}I',*offsets) + b''.join(packets))
     print(f'{DEST.name}: {FRAMES} frames, {offsets[-1]:,} bytes')
 
 

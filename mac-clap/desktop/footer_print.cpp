@@ -20,19 +20,19 @@ namespace hdslave_desktop
 {
 namespace
 {
-// The embedded bank starts with its dimensions, rate, BGRA palette and frame offsets.
+// The embedded bank starts with its dimensions, rate, two BGRA palettes and frame offsets.
 // Each independently compressed frame expands to one palette index per pixel.
 struct Film
 {
     const uint8_t* data = desktopFooterBank();
     uint16_t width = 0, height = 0, count = 0, fps = 0;
     std::array<uint16_t, 2> cuts{};
-    std::array<uint32_t, 256> palette{};
-    static constexpr size_t headerSize = 16, indexStart = headerSize + 256 * sizeof(uint32_t);
+    std::array<uint32_t, 256> prints{}, stencil{};
+    static constexpr size_t headerSize = 16, indexStart = headerSize + sizeof(prints) + sizeof(stencil);
 
     Film()
     {
-        if (!data || SLINK_FOOTER_BANK_SIZE < indexStart || std::memcmp(data, "SFP1", 4)) return;
+        if (!data || SLINK_FOOTER_BANK_SIZE < indexStart || std::memcmp(data, "SFP2", 4)) return;
         std::memcpy(&width, data + 4, 2);
         std::memcpy(&height, data + 6, 2);
         std::memcpy(&count, data + 8, 2);
@@ -42,7 +42,8 @@ struct Film
             !cuts[0] || cuts[0] >= cuts[1] || cuts[1] >= width ||
             indexStart + (size_t(count) + 1) * 4 > SLINK_FOOTER_BANK_SIZE)
             count = 0;
-        std::memcpy(palette.data(), data + headerSize, sizeof(palette));
+        std::memcpy(prints.data(), data + headerSize, sizeof(prints));
+        std::memcpy(stencil.data(), data + headerSize + sizeof(prints), sizeof(stencil));
     }
 
     uint32_t offset(int frame) const
@@ -72,8 +73,16 @@ Rect FooterPrint::paint(Canvas& canvas, Rect bounds, uint64_t now, bool motion, 
                                                  reinterpret_cast<const char*>(film.data + begin), int(end - begin));
         if (size != samples) return {};
         pixels_.resize(samples);
-        std::transform(indices_.begin(), indices_.end(), pixels_.begin(),
-                       [&](uint8_t index) { return film.palette[index]; });
+        for (int y = 0; y < film.height; ++y)
+        {
+            const int row = y * film.width;
+            const auto first = indices_.begin() + row;
+            const auto split = first + film.cuts[1];
+            auto dest = std::transform(first, split, pixels_.begin() + row,
+                                       [&](uint8_t index) { return film.prints[index]; });
+            std::transform(split, first + film.width, dest,
+                           [&](uint8_t index) { return film.stencil[index]; });
+        }
         frame_ = next;
     }
     else if (!full) return {};

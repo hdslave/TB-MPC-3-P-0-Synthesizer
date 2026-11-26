@@ -6,9 +6,9 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 [View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [Watch the editor during playback](assets/desktop-preview.gif) · [See the animated footer up close](assets/footer-detail.gif) · [View the Windows editor under CrossOver](assets/windows-preview.png)
 
-Slink **0.9.3** uses the freesp16 Thorn Crown faceplate. The chrome logo sits above the seed and barcode, the thorn camera fills the center, and the glass step counter shares its panel with the cobalt transport key. The turning smiley and **Regen** sit at the right edge. All 34 parameters fit in one resizable window, down to 960 × 540.
+Slink **0.9.4** uses the freesp16 Thorn Crown faceplate. The chrome logo sits above the seed and barcode, the thorn camera fills the center, and the glass step counter shares its panel with the cobalt transport key. The turning smiley and **Regen** sit at the right edge. All 34 parameters fit in one resizable window, down to 960 × 540.
 
-The pitch ribbon and chrome note keys line up with the Gate, Accent and Slide rows. One cobalt column follows the current step. Steps 17–32 appear alongside steps 1–16 when the pattern length exceeds 16. The editable key and scale sit beside the chrome whip. Three animated prints span the rest of the footer. Light moves across a pierced silver ornament, a red bead passes through a folding checkerboard, and a fluorescent stencil bends over a fine grid.
+The pitch ribbon and chrome note keys line up with the Gate, Accent and Slide rows. One cobalt column follows the current step. Steps 17–32 appear alongside steps 1–16 when the pattern length exceeds 16. The editable key and scale sit beside the chrome whip. Three animated prints span the rest of the footer. Light rolls across a silver engraving threaded with fine nickel wire. Folds of ivory checkerboard cross a lacquered crimson disc, revealing ruled graphite and garnet on the reverse. The fluorescent stencil bends over a fine grid.
 
 | Section | Controls |
 | --- | --- |
@@ -56,6 +56,6 @@ Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\C
 
 Both desktop targets embed the same Thorn Crown artwork bank as freesp16. The desktop editor draws the score, parameter sections and XY plots at the window’s device scale. Cocoa and Win32 present the same editor and send pointer events through the same hit targets. The step editor shares the hardware version’s audition and saved-edit logic.
 
-Normal builds use the committed artwork. Rebuild the shared bank with `tools/sp16_thorn/bake_native.py` from the repository root. The desktop wordmark keeps the full resolution of the original lettering. To refresh it, run `python3 mac-clap/tools/bake_wordmark.py` with Pillow installed. To rebuild the five-second footer loop, run `python3 mac-clap/tools/bake_footer.py` with NumPy, SciPy and Pillow. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md).
+Normal builds use the committed artwork. Rebuild the shared bank with `tools/sp16_thorn/bake_native.py` from the repository root. The desktop wordmark keeps the full resolution of the original lettering. To refresh it, run `python3 mac-clap/tools/bake_wordmark.py` with Pillow installed. To rebuild the five-second footer loop, run `python3 mac-clap/tools/bake_footer.py` with NumPy, SciPy and Pillow. The [silver master and original print palette](tools/footer-art/) are included. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md).
 
 The desktop host test exercises all 34 parameter targets, editing at both ends of a 32-step score, project recall, MIDI learn, filter and LFO gestures, transport takeover, motion holds and native window resizing. Run `host_test --snap <directory> <plugin>` to capture the 16-step editor, the minimum window at Retina scale and a 32-step pattern. `--film <directory>` also captures five seconds of playback at 25 fps.

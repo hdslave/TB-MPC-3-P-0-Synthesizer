@@ -1,0 +1,11 @@
+# Slink desktop footer artwork
+
+[Silver engraving master](silver-engraving.png) · [Animation source](../bake_footer.py)
+
+The silver engraving is an original transparent raster made for Slink with built-in ImageGen. The baker turns and relights the casting, then draws the near and far arcs of the wire around its opening. The folding checkerboard, lacquered disc and fluorescent stencil are drawn in the baker. The stencil retains its own [original ink palette](stencil-palette.png).
+
+## Silver engraving prompt
+
+> Use case: stylized-concept. Make one production art master for the first of three tiny, very wide moving prints in Slink, an acid synthesizer. A single original abstract silver ornament, isolated on transparent, no text. Think experimental rave flyer design meeting an exquisite engraved silver object. It must read instantly as one specific shape when reduced to 340 by 40 pixels.
+>
+> Composition: extremely elongated, low horizontal silhouette, about 7:1 across, centered in a landscape canvas with generous clear margin above and below and both needle ends visible. Strong asymmetric counterpoise. A substantial off-center hollow almond or teardrop aperture like a sail cleft in two, angular cut-metal crescent crossing under a wide rolled silver blade. Two bold, sinuous strokes of different weight interlock at the eye, then taper in opposite directions into long needle terminals. Put most of the material in a few generous sculptural planes, with long areas of rest, a distinctly swelled shoulder and offset fork, crisp dark voids through the object, and a few short unmistakable hand-engraved parallel cuts only along one inner bevel. Interesting crossings must have front and back and a cast shadow. A jeweller's exact bevels, folded black-nickel underside, quiet cobalt reflected in silver, almost-white satin and mirror edges with one pale iridescent line. Dramatic raking studio light, long stable reflections. Type-design discipline without any glyphs or lettering. Orthographic frontal view with slight yaw so thickness is visible. One singular silhouette, no ground plane, no background, no printed label, no logos, no pendant chain, no frame, no particle effects. Pure artwork only; the interface, animation and other two panels are supplied separately.
