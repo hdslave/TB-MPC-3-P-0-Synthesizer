@@ -239,10 +239,9 @@ Rect PanelUI::update (uint64_t now)
     const int oldCamera = art_.camera.index;
 #ifdef SLINK_RAZOR_PANEL
     const uint64_t delta = elapsedSinceUpdate;
-    const int oldFace = facePose_, oldStorm = art_.storm.index;
+    const int oldFace = art_.faceFrame.index, oldStorm = art_.storm.index;
     if (!cameraHeld_) elapsed_ += delta;
     motionMs_ += delta;
-    if (motion_) advanceFace ();
 #else
     const uint64_t delta = std::min<uint64_t> (elapsedSinceUpdate, 150);
     const int oldShaft = art_.shaft.index;
@@ -263,17 +262,44 @@ Rect PanelUI::update (uint64_t now)
     const bool external = p_->screenRequested.exchange (false, std::memory_order_acq_rel);
     const bool repaintScore = dirty_ || scoreChanged || external;
 #ifdef SLINK_RAZOR_PANEL
-    const bool headerMoved = oldFace != facePose_;
+    const bool crestMoved = oldCamera != art_.camera.index;
+    const bool faceMoved = oldFace != art_.faceFrame.index;
     const bool stripMoved = oldStorm != art_.storm.index;
-    const Rect movingStrip = stormBox_;
+    Rect damage{};
+    c_.resetClip ();
+    if (repaintScore)
+    {
+        damage = {0, 0, w_, dirty_ ? h_ : deck_.y};
+        c_.fill (damage, ground);
+        drawHeader ();
+        drawScore ();
+        drawRazorFooter ();
+    }
+    else
+    {
+        if (crestMoved)
+        {
+            drawRazorCrest ();
+            damage = crown_.inset (3);
+        }
+        if (faceMoved)
+        {
+            drawRazorFace ();
+            damage = damage.unite (faceBox ());
+        }
+    }
+    if (stripMoved || repaintScore)
+    {
+        art_.storm.fit (c_, stormBox_);
+        damage = damage.unite (stormBox_);
+    }
+    if (damage.empty ()) return {};
 #else
     const bool headerMoved = oldShaft != art_.shaft.index;
     const bool stripMoved = oldMotionFrame != motionMs_ / 16;
-    const Rect movingStrip = motionBounds_;
-#endif
     const bool repaintHeader = repaintScore || oldCamera != art_.camera.index || headerMoved;
     if (!repaintHeader && !stripMoved) return {};
-    const Rect damage = repaintHeader ? Rect{0, 0, w_, dirty_ ? h_ : deck_.y} : movingStrip;
+    const Rect damage = repaintHeader ? Rect{0, 0, w_, dirty_ ? h_ : deck_.y} : motionBounds_;
     c_.resetClip ();
     if (repaintHeader)
     {
@@ -281,10 +307,6 @@ Rect PanelUI::update (uint64_t now)
         drawHeader ();
     }
     if (repaintScore) drawScore ();
-#ifdef SLINK_RAZOR_PANEL
-    if (repaintScore) drawRazorFooter ();
-    if (stripMoved || repaintScore) art_.storm.fit (c_, stormBox_);
-#else
     drawAcidMotion (c_, motionBounds_, motionMs_ * .001, accentLift_);
 #endif
     if (dirty_) drawDeck ();

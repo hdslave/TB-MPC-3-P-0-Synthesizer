@@ -83,10 +83,20 @@ void PanelUI::drawPitch (Rect box, int step, bool live)
                  octave[i] == '-' ? 10 : octave[i] - '0', 12);
 }
 
-void PanelUI::advanceFace ()
+Rect PanelUI::faceBox () const
 {
-    const double sway = .47 + .32 * std::sin ((motionMs_ % 4800) * (6.28318530718 / 4800.) + .18);
-    facePose_ = std::clamp (int (std::lround (32 * sway)), 0, razor::faceCount - 1);
+    return {regen_.x, regen_.y, regen_.w, regen_.h - regen_.h * 29 / 100 - 5};
+}
+
+void PanelUI::drawRazorCrest ()
+{
+    cover (c_, art_.camera, crown_.inset (3));
+}
+
+void PanelUI::drawRazorFace ()
+{
+    c_.fill (faceBox (), 0xff090810);
+    art_.faceFrame.fit (c_, faceBox ());
 }
 
 int PanelUI::focusedStep () const
@@ -122,7 +132,7 @@ void PanelUI::drawRazorHeader ()
     }
 
     housing (c_, crown_, 0xff07070d);
-    cover (c_, art_.camera, crown_.inset (3));
+    drawRazorCrest ();
     housing (c_, counter_, 0xff1d172c);
     art_.glass.fit (c_, counter_.inset (2));
     const Rect r = counter_.inset (5);
@@ -140,8 +150,7 @@ void PanelUI::drawRazorHeader ()
         lettering (c_, transport_.inset (3), playing_ ? "HOST PLAY" : "HOST STOP", 25, paper, Face::italic, 1);
 
     const int bh = regen_.h * 29 / 100;
-    Rect face{regen_.x, regen_.y, regen_.w, regen_.h - bh - 5};
-    art_.face.fit (c_, face, facePose_, razor::faceCount);
+    drawRazorFace ();
     Rect regen{regen_.x + 2, regen_.y + regen_.h - bh - 2, regen_.w - 4, bh};
     badge (c_, regen, hover_ == p_->findParamIndex (tbmpc::ParamId::regen));
     art_.labels.fit (c_, regen.inset (4), 7, 8);

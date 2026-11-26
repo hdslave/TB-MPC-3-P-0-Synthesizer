@@ -1,4 +1,5 @@
 #include "thorn_art.h"
+#include "../../src/animation_phase.h"
 #include <iterator>
 #include "../assets/thorn/index.h"
 #ifdef SLINK_RAZOR_PANEL
@@ -135,11 +136,52 @@ ThornArt::ThornArt ()
     counter.load (razor::counter);
 #endif
 }
+#ifdef SLINK_RAZOR_PANEL
+static void blendRows (ThornImage& out, const ThornImage& a, const ThornImage& b,
+                       int offsetA, int offsetB, int width, slink::motion::Frame phase)
+{
+    out.width = width;
+    out.height = a.height;
+    out.pixels.resize (size_t (width) * a.height);
+    for (int y = 0; y < a.height; ++y)
+    {
+        const auto* first = a.pixels.data () + size_t (y) * a.width + offsetA;
+        auto* row = out.pixels.data () + size_t (y) * width;
+        if (phase.weight == 0) std::copy_n (first, width, row);
+        else
+        {
+            const auto* next = b.pixels.data () + size_t (y) * b.width + offsetB;
+            for (int x = 0; x < width; ++x)
+                row[x] = slink::motion::blend (first[x], next[x], phase.weight);
+        }
+    }
+    out.index = phase.first * 256 + int (phase.weight);
+}
+
+static void sampleLoop (ThornImage& out, ThornImage (&tiles)[2], int first, slink::motion::Frame phase)
+{
+    if (out.index == phase.first * 256 + int (phase.weight)) return;
+    const int a = tiles[1].index == first + phase.first ? 1 : 0;
+    tiles[a].load (first + phase.first);
+    if (phase.weight) tiles[1-a].load (first + phase.next);
+    const auto& current = tiles[a];
+    const auto& next = tiles[1-a];
+    if (current.index != first + phase.first) return;
+    if (phase.weight && (next.index != first + phase.next || current.width != next.width || current.height != next.height))
+        return;
+    blendRows (out, current, next, 0, 0, current.width, phase);
+}
+#endif
+
 void ThornArt::animate (uint64_t cameraMs, uint64_t motionMs)
 {
 #ifdef SLINK_RAZOR_PANEL
-    camera.load (razor::cameraFirst + int ((cameraMs % 20000) * razor::cameraCount / 20000));
-    storm.load (razor::stormFirst + int ((motionMs % 8000) * razor::stormCount / 8000));
+    sampleLoop (camera, cameraTiles, razor::cameraFirst, slink::motion::loop (cameraMs, 20, razor::cameraCount));
+    sampleLoop (storm, stormTiles, razor::stormFirst, slink::motion::loop (motionMs, 8, razor::stormCount));
+    const auto phase = slink::motion::smile (motionMs, razor::faceCount);
+    const int width = face.width / razor::faceCount;
+    if (width && faceFrame.index != phase.first * 256 + int (phase.weight))
+        blendRows (faceFrame, face, face, phase.first * width, phase.next * width, width, phase);
 #else
     camera.load (thorn::cameraFirst + int (cameraMs / 50 % thorn::cameraCount));
     shaft.load (thorn::shaftFirst + int (cameraMs * 24 / 1000 % thorn::shaftCount));

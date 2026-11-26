@@ -878,6 +878,7 @@ void panelOpen(const void* plugin)
 {
     auto& p = panelPlugin(plugin);
     p.panel.dirty = true;
+    p.panel.thorn.open();
     p.panelOpen.store(true, std::memory_order_release);
     wakePanel(p);
 }
@@ -886,6 +887,7 @@ void panelClose(const void* plugin)
     auto& p = panelPlugin(plugin);
     p.panelOpen.store(false, std::memory_order_release);
     p.panel.release();
+    p.panel.thorn.close();
     p.previewRequested.store(false, std::memory_order_release);
     p.touchedStep.store(-1, std::memory_order_release);
 }

@@ -17,11 +17,11 @@
 
 [See all six freesp16 pages](docs/screen.md#thorn-crown-on-freesp16) · [Watch the freesp16 panel in motion](docs/slink-sp16.gif) · [See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View Blacklight Transfer](docs/slink-mpc-blacklight.png)
 
-[Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
+[Download Slink 0.8.0 for MPC Sample, freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.8.0)
 
 The desktop Thorn Crown panel brings the animated chrome crest, live pattern and all 34 controls into one window. [Desktop build and controls](mac-clap/)
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.3).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.0).
 
 On hdslaveOS 0.8.2, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
@@ -278,7 +278,7 @@ nothing until it is hit (then a step's pitch, or a pattern made again once when 
 
 ## freesp16 on SP-16
 
-The ARMv7 build is version **0.6.0**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
+The ARMv7 build is version **0.8.0**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
 
 Slink on freesp16 opens on the **Thorn Crown Pattern** page. Sixteen columns show the step number, pitch, gate, accent and outgoing slide. The cobalt column follows playback. The note row uses Razor Choir, with hooked chrome pitch letters and matching octave numerals. The numbered headers and panel controls use Barlow SemiBold. The octave sits low to the right of each letter, with the sharp directly above it when present. Press a numbered header to audition its step. Drag a pitch vertically to edit it in semitones. Tap Gate, Accent or Slide to toggle it, or drag across the row to paint the same setting. The first edit locks a random pattern to its displayed seed. The project saves edits with that seed. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
 

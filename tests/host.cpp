@@ -2906,6 +2906,7 @@ void testSp16Panel(const std::string& folder)
             tile.insert(tile.end(), data.begin()+stride*row+717, data.begin()+stride*row+778);
         return tile;
     };
+    ui->on_open(pad.plugin);
     auto restingPixels=pixels;
     auto restingSurface=surface;
     restingSurface.pixels=restingPixels.data();
@@ -2919,10 +2920,19 @@ void testSp16Panel(const std::string& folder)
         ui->render(pad.plugin,&restingSurface,true);
         auto frame = facePixels(pixels);
         CHECK(frame == facePixels(restingPixels));
+        if (poll % 5 == 0)
+        {
+            auto redraw = pixels;
+            auto checkSurface = surface;
+            checkSurface.pixels = redraw.data();
+            CHECK(ui->render(touch.plugin,&checkSurface,true));
+            CHECK(redraw == pixels);
+        }
         if (std::find(phases.begin(), phases.end(), frame) == phases.end())
             phases.push_back(frame);
     }
     CHECK(phases.size() >= 48);
+    ui->on_close(pad.plugin);
     touch.setup({});
     ui->render(touch.plugin, &surface, false);
     // At rest the face still sways. At an identical timestamp it is deterministic.

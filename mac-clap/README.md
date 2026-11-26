@@ -6,7 +6,7 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 [View the Windows panel at full size](assets/windows-preview.png)
 
-Slink 0.7.3 on macOS and Windows uses the SP-16 Razor Choir score. Each note has its own chrome letter with a separate sharp and octave. The plate beside the seed enlarges the current note. Click a step to inspect it there. Key and scale sit below the score beside the animated chrome whips, pitch contour and position rail. The counter offers **Play** and **Stop** in hosts that support CLAP transport requests. Other hosts show their transport state there.
+Slink 0.8.0 on macOS and Windows uses the SP-16 Razor Choir score. Each note has its own chrome letter with a separate sharp and octave. The plate beside the seed enlarges the current note. Click a step to inspect it there. Key and scale sit below the score beside the animated chrome whips, pitch contour and position rail. The counter offers **Play** and **Stop** in hosts that support CLAP transport requests. Other hosts show their transport state there.
 
 All 34 host parameters fit on one resizable panel down to 960 × 540. In **Tone**, click **TB-3PO** or **303** to select the slide mode and drag **303 Time** to set the glide speed. The pitch and cutoff LFO pairs sit together below the filter settings. **Voice** groups Accent with Accent Decay. **Sequencer** puts Gate Length beside Octave and Transpose.
 
@@ -16,7 +16,7 @@ All 34 host parameters fit on one resizable panel down to 960 × 540. In **Tone*
 - Drag the filter response horizontally for cutoff and vertically for resonance. Drag across the score for transpose and vertically for density. These gestures send both parameters to the host for automation.
 - Click the crest to jump to a different camera angle. Shift-click it to pause or resume the camera independently. **Motion off** holds the artwork while playback and parameter displays continue to update.
 
-Build from this checkout to use the updated editor. The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) contains the earlier desktop downloads.
+[Download Slink 0.8.0 for macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.8.0).
 
 Slink 0.6.0 is the new name of TB-MPC-3-P-0. Existing projects use the same CLAP ID and factory preset keys. On upgrade, replace the previous plug-in in place, keeping its installed filename if the host stores paths. Install one copy per host.
 
@@ -46,7 +46,7 @@ Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\C
 
 ## Desktop artwork
 
-Both builds embed the same SP-16 artwork bank, including 600 crest frames, 240 whip-storm frames and 33 poses of the chrome Regen face. The crest and storm play at 30 frames per second. The score, filter curve and controls follow the instrument.
+Both builds embed the same SP-16 artwork bank, including 600 crest frames, 240 whip-storm frames and 33 poses of the chrome Regen face. The crest and storm blend their 30 fps source frames at up to 60 Hz. The face blends adjacent poses independently. macOS 14 and later use the view’s display link. The score, filter curve and controls follow the instrument.
 
 Normal builds use the committed bank. To repack the desktop artwork, run `mac-clap/tools/bake_razor.py` with the SP-16 checkout containing `assets/sp16-thorn/panel.bank` and `tools/sp16_thorn`, followed by a Chromium executable. The baker uses Python, Pillow and Playwright.
 

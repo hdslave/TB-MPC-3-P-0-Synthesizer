@@ -1,4 +1,5 @@
 #import <Cocoa/Cocoa.h>
+#import <QuartzCore/QuartzCore.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -26,6 +27,9 @@ static uint32_t modsFromEvent (NSEvent* event)
 @public
     hdslave_desktop::DesktopPlugin* _plugin;
     NSTimer* _timer;
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+    id _displayLink;
+#endif
     NSTrackingArea* _trackingArea;
     hdslave_desktop::PanelPresentation _presented;
 }
@@ -132,6 +136,20 @@ static uint32_t modsFromEvent (NSEvent* event)
 - (void)startTimer
 {
     if (_timer) return;
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+    if (@available(macOS 14.0, *))
+    {
+        if (_displayLink) return;
+        CADisplayLink* link = [self displayLinkWithTarget:self selector:@selector(onDisplayTick:)];
+        if (link)
+        {
+            _displayLink = [link retain];
+            [link setPreferredFrameRateRange:CAFrameRateRangeMake (30, 60, 60)];
+            [link addToRunLoop:[NSRunLoop mainRunLoop] forMode:NSRunLoopCommonModes];
+            return;
+        }
+    }
+#endif
     _timer = [NSTimer scheduledTimerWithTimeInterval:(1.0 / 60.0)
                                               target:self
                                             selector:@selector(onTick:)
@@ -142,6 +160,14 @@ static uint32_t modsFromEvent (NSEvent* event)
 
 - (void)stopTimer
 {
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+    if (@available(macOS 14.0, *))
+    {
+        [_displayLink invalidate];
+        [_displayLink release];
+        _displayLink = nil;
+    }
+#endif
     if (_timer)
     {
         [_timer invalidate];
@@ -158,6 +184,14 @@ static uint32_t modsFromEvent (NSEvent* event)
     _presented.publish (ui.pixels(), ui.physWidth(), ui.physHeight(), ui.scale(), dirty,
         [self] (hdslave_desktop::Rect r) { [self setNeedsDisplayInRect:NSMakeRect (r.x, r.y, r.w, r.h)]; });
 }
+
+#if __MAC_OS_X_VERSION_MAX_ALLOWED >= 140000
+- (void)onDisplayTick:(CADisplayLink*)link API_AVAILABLE(macos(14.0))
+{
+    (void)link;
+    [self pumpFrame];
+}
+#endif
 
 - (void)onTick:(NSTimer*)timer
 {

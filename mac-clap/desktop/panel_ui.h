@@ -111,8 +111,9 @@ class PanelUI
 #ifdef SLINK_RAZOR_PANEL
     Rect transport_, stormBox_, position_, contour_;
     bool cameraHeld_ = false;
-    int facePose_ = 17;
-    void advanceFace ();
+    Rect faceBox () const;
+    void drawRazorCrest ();
+    void drawRazorFace ();
     int focusedStep () const;
     void layoutRazor (int y, int height);
     void drawRazorHeader ();

@@ -228,17 +228,23 @@ public:
         const bool layoutChanged = full || dirty;
         const bool sequenceChanged = !(shown == next);
         shown = next;
-        bool paramsChanged=false;
+        uint64_t changes=0;
         for (uint32_t i = 0; i < paramCount; ++i)
         {
             const float v = params[i].load(std::memory_order_relaxed);
-            paramsChanged |= v != values[i];
+            if (v != values[i]) changes |= uint64_t(1) << paramTable[i].id;
             values[i] = v;
         }
         dirty = false;
         Raster r{s.pixels, s.stride, s.height};
-        bool bodyChanged=layoutChanged || paramsChanged;
-        if (bodyChanged) drawFooter(r);
+        const auto changed = [changes](std::initializer_list<uint32_t> ids) {
+            for (const auto id : ids)
+                if (changes & (uint64_t(1) << id)) return true;
+            return false;
+        };
+        const bool footerChanged = layoutChanged || changed({root,scale});
+        if (footerChanged) drawFooter(r);
+        bool bodyChanged = layoutChanged;
         if (layoutChanged && bank!=patternPage) r.box(0,bodyTop,780,tabTop-bodyTop,bg);
         if (bank==voicePage)
         {
@@ -250,25 +256,40 @@ public:
                 if (std::abs(target-display)<.0005f) display=target;
                 return before!=display;
             };
+            bodyChanged |= changed({cutoff,resonance,filter,peakSpread});
             bodyChanged |= track(voiceCutoff,value(cutoff));
             bodyChanged |= track(voiceRes,value(resonance));
             voiceInitialized=true;
             voiceMs=s.now_ms;
             if (bodyChanged) drawVoice(r);
         }
-        if (bank==lfoPage && bodyChanged) drawLfos(r);
-        if ((bodyChanged || sequenceChanged) && (bank==performPage || bank==slidePage || bank==clockPage))
-            drawPattern(r);
+        if (bank==lfoPage)
+        {
+            bodyChanged |= changed({pitchLfoAmount,pitchLfoSpeed,cutoffLfoAmount,cutoffLfoSpeed});
+            if (bodyChanged) drawLfos(r);
+        }
+        if (bank==performPage || bank==slidePage || bank==clockPage)
+        {
+            bodyChanged |= sequenceChanged;
+            if (bank==performPage) bodyChanged |= changed({cutoff,resonance,filter,peakSpread});
+            if (bank==slidePage) bodyChanged |= changed({glide,slideTime,gate,octave,transpose});
+            if (bank==clockPage) bodyChanged |= changed({clockDiv,swing,reset,steps,mode});
+            if (bodyChanged) drawPattern(r);
+        }
         const int button=value(mode)>=.5f ? 3 : shown.running ? (localPlay?1:2) : 0;
-        const bool headerChanged=thorn.draw(r,shown,s.now_ms,layoutChanged || paramsChanged || sequenceChanged,
-                                           int(value(seed)),button,bank==patternPage);
-        return headerChanged || bodyChanged;
+        const bool headerChanged = layoutChanged || sequenceChanged || changed({seed,mode});
+        const bool scoreChanged = bank==patternPage && (layoutChanged || sequenceChanged);
+        return thorn.draw(r,shown,s.now_ms,full,headerChanged,scoreChanged,int(value(seed)),button)
+            || bodyChanged || footerChanged;
     }
 
 private:
     void drawFooter(const Raster& r) const
     {
-        r.box(0,tabTop,780,285-tabTop,bg);
+        r.box(0,tabTop,stormX,285-tabTop,bg);
+        r.box(stormX+168,tabTop,780-stormX-168,285-tabTop,bg);
+        r.box(stormX,tabTop,168,253-tabTop,bg);
+        r.box(stormX,278,168,285-278,bg);
         r.plate(7,252,115,27,0xff291d39,0xff141021,0xff685d80);
         char scaleName[64];
         formatParam(paramTable[paramIndex(scale)],value(scale),scaleName,sizeof(scaleName),{});

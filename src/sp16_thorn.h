@@ -1,6 +1,9 @@
 // Shared Thorn Crown panel artwork. The sequencer owns all musical state.
 #pragma once
 #include "../assets/sp16-thorn/index.h"
+#include "animation_phase.h"
+#include <memory>
+#include <new>
 
 extern "C" const unsigned char slink_sp16_thorn_bank[];
 namespace tbmpc::sp16
@@ -43,26 +46,36 @@ public:
         image(r, thorn::plotTitle, index, x, y);
     }
 
-    bool draw(const Raster& r,const PatternView& v,uint32_t now,bool full,
-              int seed,int button,bool score)
+    void open() { if (!media) media.reset(new (std::nothrow) Media); }
+    void close() { media.reset(); }
+
+    bool draw(const Raster& r,const PatternView& v,uint32_t now,bool full,bool updateHeader,bool updateScore,
+              int seed,int button)
     {
-        const uint32_t elapsed=lastCamera < 0 ? 0 : now-lastMs;
-        lastMs=now;
-        if (!heldCamera) cameraMs+=elapsed;
-        const int camera=int(uint64_t(cameraMs % 20000)*thorn::crest.count/20000);
-        const int storm=int(uint64_t(now % 8000)*thorn::storm.count/8000);
-        const double sway=.47+.32*std::sin((now%4800)*(6.28318530718/4800)+.18);
-        const int face=int(std::lround(256*(thorn::face.count-1)*sway));
-        if (full)
+        const uint32_t elapsed = initialized ? now-lastMs : 0;
+        initialized = true;
+        lastMs = now;
+        if (!heldCamera) cameraMs += elapsed;
+        const auto camera = slink::motion::loop(cameraMs,20,thorn::crest.count);
+        const auto storm = slink::motion::loop(now,8,thorn::storm.count);
+        const auto face = slink::motion::smile(now,thorn::face.count);
+
+        if (updateHeader)
         {
-            const auto* plate=slink_sp16_thorn_bank+thorn::backdropOffsets[0];
-            const int height = score ? tabTop : bodyTop;
-            for (int y=0; y<height; ++y)
-                std::memcpy(r.px+y*r.w,plate+4*y*thorn::backdrop.w,4*thorn::backdrop.w);
+            if (full) restore(r,0,0,780,bodyTop);
+            else
+            {
+                // Leave the crest and smiley on the persistent surface.
+                restore(r,0,0,186,bodyTop);
+                restore(r,186,0,332,6);
+                restore(r,186,96,332,bodyTop-96);
+                restore(r,518,0,199,bodyTop);
+                restore(r,717,58,63,bodyTop-58);
+                restore(r,778,0,2,58);
+            }
             const int offset=first(v), count=std::clamp(int(v.steps)-offset,0,16);
             const int focus=v.running?v.current:std::min(selected,int(v.steps)-1);
             const int col=focus-offset;
-            if (score) drawScore(r,v,offset,count,col);
             image(r,thorn::counter, std::clamp(focus+1,0,32),528,20);
             image(r,thorn::button,button,622,55);
             char text[16];
@@ -88,44 +101,74 @@ public:
                 trace(625,17,77,23);
             }
         }
-        const bool moving=full || camera!=lastCamera || storm!=lastStorm || face!=lastFace;
-        if (full || camera!=lastCamera) image(r,thorn::crest,camera,186,6);
-        if (full || face!=lastFace) drawFace(r,face);
-        if (full || storm!=lastStorm) image(r,thorn::storm,storm,stormX,253);
-        lastCamera=camera;lastFace=face;lastStorm=storm;
-        return moving;
+        if (updateScore)
+        {
+            restore(r,0,bodyTop,780,tabTop-bodyTop);
+            const int offset = first(v), count = std::clamp(int(v.steps)-offset,0,16);
+            const int focus = v.running ? v.current : std::min(selected,int(v.steps)-1);
+            drawScore(r,v,offset,count,focus-offset);
+        }
+        const bool crestChanged = full || camera!=lastCamera;
+        const bool faceChanged = full || face!=lastFace;
+        const bool stormChanged = full || storm!=lastStorm;
+        if (crestChanged) drawMedia(r,thorn::crest,camera,186,6,media ? &media->crest : nullptr);
+        if (faceChanged) drawMedia(r,thorn::face,face,717,0,media ? &media->face : nullptr);
+        if (stormChanged) drawMedia(r,thorn::storm,storm,stormX,253,media ? &media->storm : nullptr);
+        lastCamera=camera; lastFace=face; lastStorm=storm;
+        return updateHeader || updateScore || crestChanged || faceChanged || stormChanged;
     }
 
 private:
-    uint32_t lastMs=0,cameraMs=0;
-    int lastFace=-1,lastCamera=-1,lastStorm=-1;
+    uint32_t lastMs = 0;
+    uint64_t cameraMs = 0;
+    bool initialized = false;
+    slink::motion::Frame lastCamera{-1,-1,0}, lastFace{-1,-1,0}, lastStorm{-1,-1,0};
 
-    static constexpr int facePixels=thorn::face.w*thorn::face.h;
-    std::array<Ink,facePixels> poses[2];
-    int cached[2] {-1,-1};
-    void drawFace(const Raster& r,int position)
+    template <int Width, int Height> struct Tile
     {
-        const int low=position/256, fraction=position%256;
-        for (int frame=low; frame<=low+1; ++frame)
+        std::array<Ink,Width*Height> pixels[2];
+        int index[2]{-1,-1};
+    };
+    struct Media
+    {
+        Tile<thorn::crest.w,thorn::crest.h> crest;
+        Tile<thorn::face.w,thorn::face.h> face;
+        Tile<thorn::storm.w,thorn::storm.h> storm;
+    };
+    std::unique_ptr<Media> media;
+
+    static void restore(const Raster& r,int x,int y,int w,int h)
+    {
+        const auto* plate = slink_sp16_thorn_bank+thorn::backdropOffsets[0];
+        for (int row=y; row<y+h; ++row)
+            std::memcpy(r.px+row*r.w+x,plate+4*(row*thorn::backdrop.w+x),4*w);
+    }
+
+    template <int W, int H>
+    static void drawMedia(const Raster& r,const thorn::Images& clip,slink::motion::Frame frame,int x,int y,Tile<W,H>* cache)
+    {
+        if (!cache)
         {
-            const int slot=frame%2;
-            if (cached[slot]==frame) continue;
-            Raster tile {poses[slot].data(),thorn::face.w,thorn::face.h};
-            image(tile,thorn::face,frame,0,0);
-            cached[slot]=frame;
+            image(r,clip,frame.first,x,y);
+            return;
         }
-        for (int y=0;y<thorn::face.h;++y)
+        const auto load = [&](int index,int slot) {
+            if (cache->index[slot]==index) return;
+            Raster tile{cache->pixels[slot].data(),W,H};
+            image(tile,clip,index,0,0);
+            cache->index[slot]=index;
+        };
+        const int slot = cache->index[1]==frame.first ? 1 : 0;
+        load(frame.first,slot);
+        if (frame.weight) load(frame.next,1-slot);
+        const auto* a = cache->pixels[slot].data();
+        const auto* b = cache->pixels[1-slot].data();
+        for (int row=0; row<H; ++row)
         {
-            auto* out=r.px+y*r.w+717;
-            for (int x=0;x<thorn::face.w;++x)
-            {
-                const int i=y*thorn::face.w+x;
-                const Ink a=poses[low%2][i], b=poses[(low+1)%2][i];
-                auto mix=[&](unsigned mask) {
-                    return ((((a&mask)*(256-fraction)+(b&mask)*fraction)>>8)&mask);
-                };
-                out[x]=0xff000000u|mix(0xff00ff)|mix(0x00ff00);
-            }
+            auto* out = r.px+(y+row)*r.w+x;
+            if (!frame.weight) std::memcpy(out,a+row*W,W*sizeof(Ink));
+            else for (int col=0; col<W; ++col)
+                out[col]=slink::motion::blend(a[row*W+col],b[row*W+col],frame.weight);
         }
     }
 
