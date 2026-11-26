@@ -284,7 +284,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
                           const clap_plugin_params_t& params, const clap_plugin_state_t& state,
                           clap_process_t& block, const std::string& snapDir)
 {
-    constexpr int left=12, top=74, w=936, h=342, scale=2;
+    constexpr int left=12, top=45, w=936, h=342, scale=2;
     const auto px = [](int x){ return left+(x+.5f)*w/780; };
     const auto py = [](int y){ return top+(y+.5f)*h/285; };
     int width=0,height=0;
@@ -345,10 +345,10 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
             for(int x=int(px(x0)*scale);x<int(px(x1)*scale);x+=3) sample.push_back(data[y*width+x]);
         return sample;
     };
-    auto snap=[&](const char* page) {
+    auto snap=[&](const char* page, int w=1352, int h=708, int density=1) {
         if (snapDir.empty()) return;
         int sw=0,sh=0;
-        const auto* frame=ui.ui_render(plug,1352,708,1,&sw,&sh);
+        const auto* frame=ui.ui_render(plug,w,h,density,&sw,&sh);
         writePpm(snapDir+"/Slink-"+page+".ppm",frame,sw,sh);
         render();
     };
@@ -370,6 +370,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     }
     if (!check(pages.size()==6,"all six unique page bodies")) return false;
     page(0);
+    snap("perform-compact",960,540,2);
     const double cutoff=value("Cutoff");
     mouse(0,85,446); mouse(1,85,416); mouse(2,85,416);
     process();
@@ -416,7 +417,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     // Choices remain keyboard/wheel reachable through the desktop six-control strip.
     click(714,452);
     mouse(3,750,180,0,-1000);
-    click(714,400);
+    click(714,372);
     process();
     if (!check(value("Scale")==find("Scale").max_value,"last scale reachable from desktop menu")) return false;
 
@@ -556,8 +557,8 @@ bool testWin32Window (const clap_plugin_t* plug, const clap_plugin_gui_t& gui,
         }
         double before = 0, after = 0;
         ok = params.get_value (plug, seed, &before);
-        SendMessageW (child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (910, 164));
-        SendMessageW (child, WM_LBUTTONUP, 0, MAKELPARAM (910, 164));
+        SendMessageW (child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (910, 136));
+        SendMessageW (child, WM_LBUTTONUP, 0, MAKELPARAM (910, 136));
         static_cast<StrictHostCtx*> (block.out_events->ctx)->lastOutTime = 0;
         block.steady_time += block.frames_count;
         plug->process (plug, &block);

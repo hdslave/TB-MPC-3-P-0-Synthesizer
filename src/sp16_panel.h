@@ -263,12 +263,32 @@ private:
             r.text(x+9,109,param.name,muted);
             r.right(x+176,109,text,paper);
         }
+#ifdef SLINK_DESKTOP
+        // The three symbols read as one group on the wider desktop ribbon.
+        constexpr int legendX = 546, legendEnd = 772, iconWidth = 13, iconGap = 6, itemGap = 13;
+        constexpr const char* labels[] = {"Gate", "Accent", "Slide"};
+        int legendWidth = 2 * itemGap;
+        for (const auto* label : labels)
+            legendWidth += iconWidth + iconGap + Raster::readingWidth(label);
+        r.plate(legendX, 103, legendEnd - legendX, 25, 0xff241c34, 0xff141020, 0xff4a405c);
+        int iconX = legendX + (legendEnd - legendX - legendWidth) / 2;
+        r.box(iconX, 114, iconWidth, 3, steel);
+        for (int item = 0; item < 3; ++item)
+        {
+            if (item == 1) accentMark(r, iconX + 2, 113, ice);
+            if (item == 2) slideMark(r, iconX, 117, paper);
+            const int labelX = iconX + iconWidth + iconGap;
+            r.reading(labelX, 105, legendEnd - 3, labels[item], paper);
+            iconX = labelX + Raster::readingWidth(labels[item]) + itemGap;
+        }
+#else
         r.box(500,114,13,3,steel);
         r.text(519,109,"Gate",muted);
         accentMark(r,575,109,paper);
         r.text(590,109,"Accent",muted);
         slideMark(r,681,116,paper);
         r.text(699,109,"Slide",muted);
+#endif
 
         if (shown.steps <= 0) return;
         const int rows = shown.steps > 16 ? 2 : 1;

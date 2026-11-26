@@ -6,7 +6,7 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 [See all six desktop pages](assets/thorn-crown-desktop-pages.jpg)
 
-Slink **0.8.0** for macOS and Windows uses the same **Thorn Crown** panel, artwork and pointer gestures as the [freesp16 build](../README.md#freesp16-on-sp-16). The editor resizes down to 960 × 540. The six-control strip below the panel follows the selected page; it replaces the hardware encoder strip.
+Slink **0.8.1** for macOS and Windows uses the same **Thorn Crown** panel, artwork and pointer gestures as the [freesp16 build](../README.md#freesp16-on-sp-16). The editor resizes down to 960 × 540. The six-control strip below the panel follows the selected page; it replaces the hardware encoder strip.
 
 | Page | What you can edit directly | Desktop strip |
 | --- | --- | --- |

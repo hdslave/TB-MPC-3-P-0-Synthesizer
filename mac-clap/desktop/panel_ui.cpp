@@ -1,7 +1,9 @@
 #include "panel_ui.h"
 #include "../src/params.h"
+#include "../../src/sp16_graphics.h"
 #include <chrono>
 #include <cstdio>
+#include <string_view>
 
 namespace hdslave_desktop
 {
@@ -26,6 +28,72 @@ void button(Canvas& c,Rect r,const std::string& name,bool active=false)
     plate(c,r,active?0xff283b80:glass,active?0xff89a7fa:lineInk);
     c.textAligned(r.inset(4),name,active?light:muted,1,1);
 }
+// Use the same antialiased Barlow lettering as the panel for desktop control cards.
+namespace font = tbmpc::rave;
+
+unsigned glyphIndex(char ch)
+{
+    return ch >= ' ' && ch <= '~' ? unsigned(ch - ' ') : unsigned('?' - ' ');
+}
+
+int textWidth(std::string_view text, const font::Font& face)
+{
+    int width = 0;
+    for (char ch : text)
+        width += face.widths[glyphIndex(ch)];
+    return width;
+}
+
+void controlText(Canvas& c, Rect box, std::string_view text, const font::Font& face,
+                 uint32_t color, float zoom = 1.f, bool alignRight = false)
+{
+    std::string fitted(text);
+    const int available = int(box.w / zoom);
+    if (textWidth(fitted, face) > available)
+    {
+        const int ellipsisWidth = textWidth("...", face);
+        while (!fitted.empty() && textWidth(fitted, face) + ellipsisWidth > available)
+            fitted.pop_back();
+        fitted += "...";
+    }
+    const float glyphScale = zoom * c.s;
+    const int lineHeight = int(std::lround(face.height * glyphScale));
+    float cursor = float(box.x * c.s);
+    if (alignRight)
+        cursor += box.w * c.s - textWidth(fitted, face) * glyphScale;
+    const int y = box.y * c.s + (box.h * c.s - lineHeight) / 2;
+    for (const char ch : fitted)
+    {
+        const auto glyph = glyphIndex(ch);
+        const int advance = face.widths[glyph];
+        const auto* mask = face.ink + glyph * face.height * face.stride;
+        const int start = int(std::lround(cursor));
+        cursor += advance * glyphScale;
+        const int width = int(std::lround(cursor)) - start;
+        const auto coverage = [&](int row, int col) {
+            const auto packed = mask[row * face.stride + col / 2];
+            return int(col % 2 ? packed & 15 : packed >> 4);
+        };
+        // Sample at physical pixel centers so Retina text keeps soft edges.
+        for (int dy = 0; dy < lineHeight; ++dy)
+        {
+            const float v = std::clamp((dy + .5f) * face.height / lineHeight - .5f, 0.f, float(face.height - 1));
+            const int v0 = int(v), v1 = std::min(v0 + 1, face.height - 1);
+            for (int dx = 0; dx < width; ++dx)
+            {
+                const float u = std::clamp((dx + .5f) * advance / width - .5f, 0.f, float(advance - 1));
+                const int u0 = int(u), u1 = std::min(u0 + 1, advance - 1);
+                const float mixX = u - u0, mixY = v - v0;
+                const float top = coverage(v0, u0) * (1 - mixX) + coverage(v0, u1) * mixX;
+                const float bottom = coverage(v1, u0) * (1 - mixX) + coverage(v1, u1) * mixX;
+                const unsigned alpha = unsigned((top * (1 - mixY) + bottom * mixY) * 17.f + .5f);
+                if (alpha)
+                    c.plot(start + dx, y + dy, color, alpha);
+            }
+        }
+    }
+}
+
 }
 
 PanelUI::PanelUI(DesktopPlugin* p) : p_(p), bodyPixels_(bw*bh), previousBody_(bw*bh)
@@ -82,20 +150,20 @@ void PanelUI::layout()
     x=w_-m-(56+92+82+96+12);
     status_={statusX,top,x-statusX-10,toolH};
     tool(Item::Fine,56); tool(Item::Learn,92); tool(Item::ClearCc,82); tool(Item::Motion,96);
-    const int firstY=top+toolH+9;
-    const int availableH=h_-m-firstY;
-    const int stripH=std::clamp(h_/7,78,118);
-    const int panelW=std::min(contentW,(availableH-stripH-8)*bw/bh);
-    const int panelH=(panelW*bh+bw/2)/bw;
-    const int left=(w_-panelW)/2;
-    const int y=firstY+std::max(0,(availableH-panelH-stripH-8)/2);
-    body_={left,y,panelW,panelH};
-    strip_={left,y+panelH+8,panelW,stripH};
+    constexpr int toolbarGap = 5, stripGap = 8, minStripHeight = 96, maxStripHeight = 144;
+    const int panelY = top + toolH + toolbarGap;
+    const int availableHeight = h_ - m - panelY;
+    const int panelW = std::min(contentW, (availableHeight - minStripHeight - stripGap) * bw / bh);
+    const int panelH = (panelW * bh + bw / 2) / bw;
+    const int left = (w_ - panelW) / 2;
+    const int stripHeight = std::min(maxStripHeight, availableHeight - panelH - stripGap);
+    body_ = {left, panelY, panelW, panelH};
+    strip_ = {left, panelY + panelH + stripGap, panelW, stripHeight};
     for(int i=0;i<6;++i)
     {
         const int span=panelW+6;
         const int l=span*i/6,r=span*(i+1)/6;
-        cards_[i]={left+l,strip_.y,r-l-6,stripH};
+        cards_[i]={left+l,strip_.y,r-l-6,stripHeight};
     }
 }
 
@@ -148,18 +216,30 @@ void PanelUI::paintStrip()
         const bool active=index==hover_ || index==dragParam_;
         plate(c_,r,active?0xff242044:glass,active?0xff8b9fd8:lineInk);
         c_.gradient({r.x+4,r.y+4,r.w-8,r.h-8},active?0xff28233f:0xff211a31,glass);
-        const int left=r.x+10, width=r.w-20;
-        char badge[8];
-        const int cc=p_->findCcForParam(param.id);
-        if (cc>=0) std::snprintf(badge,sizeof(badge),"CC %d",cc);
-        else std::snprintf(badge,sizeof(badge),"0%d",i+1);
-        c_.textAligned({left,r.y+7,width,14},badge,muted,1,2);
-        c_.textAligned({left,r.y+24,width,15},param.name,muted,1,0);
-        const int size=r.w>=155 && c_.textWidth(valueText(index),2)<=width ? 2 : 1;
-        c_.textAligned({left,r.y+39,width,r.h-54},valueText(index),light,size,0);
-        c_.fill(left,r.y+r.h-9,width,2,lineInk);
-        const int meter=int(std::lround(norm(index)*width));
-        if (meter>0) c_.fill(left,r.y+r.h-9,meter,2,cobalt);
+        const int left = r.x + 11, width = r.w - 22;
+        const int labelY = r.y + (r.h - 64) / 2 - 8;
+        const auto& labelFace = textWidth(param.name, font::normal) <= width ? font::normal : font::small;
+        controlText(c_, {left, labelY, width, 20}, param.name, labelFace, 0xffd0c6e1);
+        const auto& reading = readings_[i];
+        const int readingWidth = textWidth(reading, font::large);
+        const auto& valueFace = readingWidth <= width ? font::large : font::normal;
+        const float zoom = readingWidth * 1.25f <= width ? 1.25f : 1.f;
+        controlText(c_, {left, labelY + 23, width, 32}, reading, valueFace, light, zoom);
+
+        const int railY = r.y + r.h - 18;
+        const int cc = ccs_[i];
+        if (cc >= 0)
+        {
+            char badge[10];
+            std::snprintf(badge, sizeof(badge), "CC %d", cc);
+            controlText(c_, {left, railY - 19, width, 15}, badge, font::small, lilac, 1.f, true);
+        }
+
+        c_.fill(left - 1, railY - 1, width + 2, 6, 0xff0d0a17);
+        c_.fill(left, railY, width, 4, 0xff423752);
+        const int meter = int(std::lround(norm(index) * width));
+        if (meter > 0)
+            c_.gradient({left, railY, meter, 4}, 0xff84a1ff, cobalt);
     }
 }
 
