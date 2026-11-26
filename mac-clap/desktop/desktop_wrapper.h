@@ -1,6 +1,9 @@
 #pragma once
 
 #include <clap/clap.h>
+#ifdef SLINK_RAZOR_PANEL
+#include <clap/ext/draft/transport-control.h>
+#endif
 
 #include <atomic>
 #include <cstdint>
@@ -122,6 +125,9 @@ struct DesktopPlugin
     const clap_host_params_t* hostParams = nullptr;
     const clap_host_preset_load_t* hostPresetLoad = nullptr;
     const clap_host_state_t* hostState = nullptr;
+#ifdef SLINK_RAZOR_PANEL
+    const clap_host_transport_control_t* hostTransport = nullptr;
+#endif
     const clap_host_log_t* hostLog = nullptr;
     const clap_host_thread_check_t* hostThreadCheck = nullptr;
     bool hostExtsResolved = false;

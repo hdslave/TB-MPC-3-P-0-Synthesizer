@@ -1,6 +1,12 @@
 #include "thorn_art.h"
 #include <iterator>
 #include "../assets/thorn/index.h"
+#ifdef SLINK_RAZOR_PANEL
+#include "../assets/razor/index.h"
+namespace plates = razor;
+#else
+namespace plates = thorn;
+#endif
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_JPEG
 #define STBI_ONLY_PNG
@@ -31,7 +37,7 @@ const unsigned char *bank ()
                              reinterpret_cast<LPCWSTR> (&bank), &module))
         return nullptr;
     auto res = FindResourceW (module, MAKEINTRESOURCEW (101), RT_RCDATA);
-    if (!res || SizeofResource (module, res) != thorn::offset[std::size (thorn::offset) - 1]) return nullptr;
+    if (!res || SizeofResource (module, res) != plates::offset[std::size (plates::offset) - 1]) return nullptr;
     return static_cast<const unsigned char *> (LockResource (LoadResource (module, res)));
 #else
     return slink_panel_bank;
@@ -53,18 +59,21 @@ struct Fonts
 
 void ThornImage::load (int image)
 {
-    if (image == index || image < 0 || size_t (image + 1) >= std::size (thorn::offset)) return;
+    if (image == index || image < 0 || size_t (image + 1) >= std::size (plates::offset)) return;
     static const auto *bytes = bank ();
     if (!bytes) return;
     int w = 0, h = 0, channels = 0;
-    const auto start = thorn::offset[image];
+    const auto start = plates::offset[image];
     auto *rgba =
-        stbi_load_from_memory (bytes + start, int (thorn::offset[image + 1] - start), &w, &h, &channels, 4);
+        stbi_load_from_memory (bytes + start, int (plates::offset[image + 1] - start), &w, &h, &channels, 4);
     if (!rgba) return;
     width = w;
     height = h;
     index = image;
     alpha = channels == 4 && (image == 1 || image == 6);
+#ifdef SLINK_RAZOR_PANEL
+    alpha = channels == 4 && (image < 2 || image >= 6);
+#endif
     pixels.resize (size_t (w) * h);
     for (size_t i = 0; i < pixels.size (); ++i)
     {
@@ -116,11 +125,22 @@ ThornArt::ThornArt ()
     logo.load (0);
     face.load (1);
     knob.load (6);
+#ifdef SLINK_RAZOR_PANEL
+    notes.load (razor::notes);
+    pearl.load (razor::pearl);
+    steel.load (razor::steel);
+    steps.load (razor::steps);
+    labels.load (razor::labels);
+    glass.load (razor::glass);
+    counter.load (razor::counter);
+#endif
 }
 void ThornArt::animate (uint64_t elapsed)
 {
-    camera.load (thorn::cameraFirst + int (elapsed / 50 % thorn::cameraCount));
+    camera.load (plates::cameraFirst + int (elapsed / 50 % plates::cameraCount));
+#ifndef SLINK_RAZOR_PANEL
     shaft.load (thorn::shaftFirst + int (elapsed * 24 / 1000 % thorn::shaftCount));
+#endif
 }
 
 void lettering (Canvas &c, Rect box, std::string_view text, int size, uint32_t ink, Face face, int align)

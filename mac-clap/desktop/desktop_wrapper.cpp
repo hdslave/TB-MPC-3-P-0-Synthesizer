@@ -807,8 +807,10 @@ bool CLAP_ABI guiSetSize (const clap_plugin_t* p, uint32_t width, uint32_t heigh
     auto& dp = of (p);
     dp.guiWidth = std::clamp (width, kMinGuiWidth, kMaxGuiWidth);
     dp.guiHeight = std::clamp (height, kMinGuiHeight, kMaxGuiHeight);
+#ifndef _WIN32
     if (dp.ui)
         dp.ui->setSize (int (dp.guiWidth), int (dp.guiHeight), dp.ui->scale());
+#endif
     if (dp.platformGui)
         return platformGuiSetSize (dp.platformGui, dp.guiWidth, dp.guiHeight);
     return true;
@@ -1181,6 +1183,10 @@ void DesktopPlugin::resolveHostExtensions()
     if (hostExtsResolved || !realHost || !realHost->get_extension)
         return;
     hostExtsResolved = true;
+#ifdef SLINK_RAZOR_PANEL
+    hostTransport = static_cast<const clap_host_transport_control_t*> (
+        realHost->get_extension (realHost, CLAP_EXT_TRANSPORT_CONTROL));
+#endif
     hostParams = static_cast<const clap_host_params_t*> (realHost->get_extension (realHost, CLAP_EXT_PARAMS));
     hostPresetLoad = static_cast<const clap_host_preset_load_t*> (realHost->get_extension (realHost, CLAP_EXT_PRESET_LOAD));
     if (!hostPresetLoad)

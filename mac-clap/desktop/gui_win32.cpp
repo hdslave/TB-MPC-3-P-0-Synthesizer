@@ -27,7 +27,7 @@ struct PlatformGui
 {
     DesktopPlugin* plugin = nullptr;
     HWND hwnd = nullptr;
-    int scale = 1;
+    float logicalPerPixelX = 1.f, logicalPerPixelY = 1.f;
     bool trackingMouse = false;
 };
 
@@ -47,12 +47,12 @@ uint32_t currentMods()
     return m;
 }
 
-int dpiScaleForWindow (HWND hwnd)
+float dpiScaleForWindow (HWND hwnd)
 {
     using GetDpiFn = UINT (WINAPI*) (HWND);
     static GetDpiFn fn = reinterpret_cast<GetDpiFn> (GetProcAddress (GetModuleHandleW (L"user32.dll"), "GetDpiForWindow"));
     const UINT dpi = fn ? fn (hwnd) : 96u;
-    return (dpi >= 144u) ? 2 : 1;
+    return dpi ? dpi / 96.f : 1.f;
 }
 
 void syncAndPump (PlatformGui* gui)
@@ -62,19 +62,22 @@ void syncAndPump (PlatformGui* gui)
     GetClientRect (gui->hwnd, &rc);
     const int pw = std::max (1, int (rc.right - rc.left));
     const int ph = std::max (1, int (rc.bottom - rc.top));
-    gui->scale = dpiScaleForWindow (gui->hwnd);
-    const int lw = std::max (320, pw / gui->scale);
-    const int lh = std::max (240, ph / gui->scale);
-    gui->plugin->ui->setSize (lw, lh, gui->scale);
+    auto &ui = *gui->plugin->ui;
+    const float dpi = dpiScaleForWindow (gui->hwnd);
+    const int lw = std::clamp (int (std::lround (pw / dpi)), int (kMinGuiWidth), int (kMaxGuiWidth));
+    const int lh = std::clamp (int (std::lround (ph / dpi)), int (kMinGuiHeight), int (kMaxGuiHeight));
+    const int density = std::clamp (int (std::lround (std::max (float (pw) / lw, float (ph) / lh))), 1, 4);
+    ui.setSize (lw, lh, density);
+    gui->logicalPerPixelX = float (lw) / pw;
+    gui->logicalPerPixelY = float (lh) / ph;
 
-    const Rect dirty = gui->plugin->ui->update (nowMs());
+    const Rect dirty = ui.update (nowMs());
     if (!dirty.empty())
     {
         RECT inv {
-            dirty.x * gui->scale,
-            dirty.y * gui->scale,
-            (dirty.x + dirty.w) * gui->scale,
-            (dirty.y + dirty.h) * gui->scale
+            dirty.x * pw / lw, dirty.y * ph / lh,
+            ((dirty.x + dirty.w) * pw + lw - 1) / lw,
+            ((dirty.y + dirty.h) * ph + lh - 1) / lh
         };
         InvalidateRect (gui->hwnd, &inv, FALSE);
     }
@@ -139,8 +142,8 @@ LRESULT CALLBACK wndProc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         {
             SetFocus (hwnd);
             SetCapture (hwnd);
-            const float lx = float (GET_X_LPARAM (lParam)) / float (gui->scale);
-            const float ly = float (GET_Y_LPARAM (lParam)) / float (gui->scale);
+            const float lx = float (GET_X_LPARAM (lParam)) * gui->logicalPerPixelX;
+            const float ly = float (GET_Y_LPARAM (lParam)) * gui->logicalPerPixelY;
             gui->plugin->ui->mouseDown (lx, ly, 0, currentMods(), 1);
             syncAndPump (gui);
         }
@@ -149,8 +152,8 @@ LRESULT CALLBACK wndProc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
     case WM_LBUTTONDBLCLK:
         if (gui && gui->plugin && gui->plugin->ui)
         {
-            const float lx = float (GET_X_LPARAM (lParam)) / float (gui->scale);
-            const float ly = float (GET_Y_LPARAM (lParam)) / float (gui->scale);
+            const float lx = float (GET_X_LPARAM (lParam)) * gui->logicalPerPixelX;
+            const float ly = float (GET_Y_LPARAM (lParam)) * gui->logicalPerPixelY;
             gui->plugin->ui->mouseDown (lx, ly, 0, currentMods(), 2);
             syncAndPump (gui);
         }
@@ -160,8 +163,8 @@ LRESULT CALLBACK wndProc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if (gui && gui->plugin && gui->plugin->ui)
         {
             SetFocus (hwnd);
-            const float lx = float (GET_X_LPARAM (lParam)) / float (gui->scale);
-            const float ly = float (GET_Y_LPARAM (lParam)) / float (gui->scale);
+            const float lx = float (GET_X_LPARAM (lParam)) * gui->logicalPerPixelX;
+            const float ly = float (GET_Y_LPARAM (lParam)) * gui->logicalPerPixelY;
             gui->plugin->ui->mouseDown (lx, ly, 1, currentMods(), 1);
             syncAndPump (gui);
         }
@@ -176,8 +179,8 @@ LRESULT CALLBACK wndProc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
                 TrackMouseEvent (&tme);
                 gui->trackingMouse = true;
             }
-            const float lx = float (GET_X_LPARAM (lParam)) / float (gui->scale);
-            const float ly = float (GET_Y_LPARAM (lParam)) / float (gui->scale);
+            const float lx = float (GET_X_LPARAM (lParam)) * gui->logicalPerPixelX;
+            const float ly = float (GET_Y_LPARAM (lParam)) * gui->logicalPerPixelY;
             gui->plugin->ui->mouseMove (lx, ly, currentMods());
             syncAndPump (gui);
         }
@@ -196,8 +199,8 @@ LRESULT CALLBACK wndProc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         if (gui && gui->plugin && gui->plugin->ui)
         {
             ReleaseCapture();
-            const float lx = float (GET_X_LPARAM (lParam)) / float (gui->scale);
-            const float ly = float (GET_Y_LPARAM (lParam)) / float (gui->scale);
+            const float lx = float (GET_X_LPARAM (lParam)) * gui->logicalPerPixelX;
+            const float ly = float (GET_Y_LPARAM (lParam)) * gui->logicalPerPixelY;
             gui->plugin->ui->mouseUp (lx, ly, 0, currentMods());
             syncAndPump (gui);
         }
@@ -208,8 +211,8 @@ LRESULT CALLBACK wndProc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         {
             POINT pt { GET_X_LPARAM (lParam), GET_Y_LPARAM (lParam) };
             ScreenToClient (hwnd, &pt);
-            const float lx = float (pt.x) / float (gui->scale);
-            const float ly = float (pt.y) / float (gui->scale);
+            const float lx = float (pt.x) * gui->logicalPerPixelX;
+            const float ly = float (pt.y) * gui->logicalPerPixelY;
             const float delta = float (GET_WHEEL_DELTA_WPARAM (wParam)) / float (WHEEL_DELTA);
             gui->plugin->ui->wheel (lx, ly, 0.0f, delta, false, currentMods());
             syncAndPump (gui);
@@ -294,11 +297,10 @@ bool platformGuiSetParent (PlatformGui* gui, const clap_window_t* window)
     HWND parent = static_cast<HWND> (window->win32);
     if (!gui->hwnd)
     {
-        gui->scale = dpiScaleForWindow (parent);
         gui->hwnd = CreateWindowExW (
             0, HDSLAVE_WIN32_CLASS_NAME, L"",
             WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
-            0, 0, int (gui->plugin->guiWidth) * gui->scale, int (gui->plugin->guiHeight) * gui->scale,
+            0, 0, int (gui->plugin->guiWidth), int (gui->plugin->guiHeight),
             parent, nullptr, GetModuleHandleW (nullptr), nullptr);
         if (!gui->hwnd) return false;
         SetWindowLongPtrW (gui->hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR> (gui));
@@ -330,9 +332,9 @@ bool platformGuiHide (PlatformGui* gui)
 
 bool platformGuiSetSize (PlatformGui* gui, uint32_t width, uint32_t height)
 {
-    if (!gui || !gui->hwnd) return false;
-    gui->scale = dpiScaleForWindow (gui->hwnd);
-    SetWindowPos (gui->hwnd, nullptr, 0, 0, int (width) * gui->scale, int (height) * gui->scale, SWP_NOZORDER | SWP_NOMOVE);
+    if (!gui) return false;
+    if (!gui->hwnd) return true; // set_parent uses the negotiated physical size.
+    if (!SetWindowPos (gui->hwnd, nullptr, 0, 0, int (width), int (height), SWP_NOZORDER | SWP_NOMOVE)) return false;
     syncAndPump (gui);
     return true;
 }

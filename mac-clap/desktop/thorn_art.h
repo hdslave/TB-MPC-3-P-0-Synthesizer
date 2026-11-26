@@ -18,6 +18,9 @@ struct ThornImage
 struct ThornArt
 {
     ThornImage logo, face, camera, shaft, knob;
+#ifdef SLINK_RAZOR_PANEL
+    ThornImage notes, pearl, steel, steps, labels, glass, counter;
+#endif
     ThornArt ();
     void animate (uint64_t elapsed);
 };

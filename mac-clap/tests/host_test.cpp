@@ -1,4 +1,7 @@
 #include <clap/clap.h>
+#ifdef SLINK_RAZOR_PANEL
+#include <clap/ext/draft/transport-control.h>
+#endif
 
 #include <chrono>
 #include <cmath>
@@ -46,6 +49,7 @@ struct StrictHostCtx
     int presetLoadedCalls = 0;
     int stateDirtyCalls = 0;
     int callbackRequests = 0;
+    int transportRequests = 0;
     clap_id openGesture = CLAP_INVALID_ID;
     uint32_t lastOutTime = 0;
     int bareParamValues = 0;
@@ -116,6 +120,20 @@ const void* CLAP_ABI hostGetExtension (const clap_host_t* h, const char* id)
 {
     checkHostPtr (h, "host.get_extension");
     if (!id) return nullptr;
+#ifdef SLINK_RAZOR_PANEL
+    if (std::strcmp (id, CLAP_EXT_TRANSPORT_CONTROL) == 0)
+    {
+        static const clap_host_transport_control_t transport = [] {
+            clap_host_transport_control_t ext {};
+            ext.request_toggle_play = [] (const clap_host_t* host) {
+                checkHostPtr (host, "transport.request_toggle_play");
+                ++static_cast<StrictHostCtx*> (host->host_data)->transportRequests;
+            };
+            return ext;
+        }();
+        return &transport;
+    }
+#endif
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &kHostParams;
     if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0 || std::strcmp (id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0) return &kHostPresetLoad;
     if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &kHostState;
@@ -303,9 +321,21 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     }
 
     // The scale selector scrolls through the entire host choice range.
+#ifdef SLINK_RAZOR_PANEL
+    click (875, 137);
+    if (static_cast<StrictHostCtx*> (block.out_events->ctx)->transportRequests != 1)
+    {
+        std::fprintf (stderr, "FAIL: host transport button did not request playback\n");
+        return false;
+    }
+    click (155, 335);
+    ui.ui_mouse (plug, 3, 155, 205, 0, 0, -1000, 0);
+    click (155, 302);
+#else
     click (235, 144);
     ui.ui_mouse (plug, 3, 235, 219, 0, 0, -1000, 0);
     click (235, 461);
+#endif
     process();
     clap_param_info_t scaleInfo {};
     for (uint32_t i=0; i<params.count (plug); ++i)
@@ -348,8 +378,67 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         std::fprintf (stderr, "FAIL: vector motion did not resume\n");
         return false;
     }
+#ifdef SLINK_RAZOR_PANEL
+    // Switch banks through the toolbar and inspect their actual step numerals.
+    ui.ui_mouse (plug, 0, 650, 448, 0, 0, 0, 1);
+    ui.ui_mouse (plug, 1, 650, 100, 0, 0, 0, 1);
+    ui.ui_mouse (plug, 2, 650, 100, 0, 0, 0, 1);
+    process();
+    if (value ("Steps") != 32 || !render()) return false;
+    auto stepNumbers = [&] { return sampleArea (80, 171, 245, 189); };
+    const auto firstBank = stepNumbers();
+    click (570, 27);
+    if (stepNumbers() == firstBank)
+    {
+        std::fprintf (stderr, "FAIL: 17-32 score bank did not appear\n");
+        return false;
+    }
+    click (518, 27);
+    if (stepNumbers() != firstBank) return false;
+#endif
     return render();
 }
+
+#ifdef _WIN32
+bool testWin32Window (const clap_plugin_t* plug, const clap_plugin_gui_t& gui,
+                      const clap_plugin_params_t& params, clap_process_t& block)
+{
+    HWND parent = CreateWindowExW (0, L"STATIC", L"", WS_POPUP, 0, 0, 1352, 708, nullptr, nullptr,
+                                   GetModuleHandleW (nullptr), nullptr);
+    if (!parent) return false;
+    const bool created = gui.create (plug, CLAP_WINDOW_API_WIN32, false);
+    clap_window_t window {};
+    window.api = CLAP_WINDOW_API_WIN32;
+    window.win32 = parent;
+    bool ok = created && gui.set_size (plug, 1352, 708) && gui.set_parent (plug, &window) && gui.show (plug);
+    HWND child = GetWindow (parent, GW_CHILD);
+    RECT bounds {};
+    ok = ok && child && GetClientRect (child, &bounds) && bounds.right == 1352 && bounds.bottom == 708;
+    ok = ok && gui.set_size (plug, 960, 540) && GetClientRect (child, &bounds)
+            && bounds.right == 960 && bounds.bottom == 540;
+    if (ok)
+    {
+        clap_id seed = CLAP_INVALID_ID;
+        for (uint32_t i = 0; i < params.count (plug); ++i)
+        {
+            clap_param_info_t info {};
+            if (params.get_info (plug, i, &info) && std::strcmp (info.name, "Seed") == 0) seed = info.id;
+        }
+        double before = 0, after = 0;
+        ok = params.get_value (plug, seed, &before);
+        SendMessageW (child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (910, 140));
+        SendMessageW (child, WM_LBUTTONUP, 0, MAKELPARAM (910, 140));
+        static_cast<StrictHostCtx*> (block.out_events->ctx)->lastOutTime = 0;
+        block.steady_time += block.frames_count;
+        plug->process (plug, &block);
+        ok = ok && params.get_value (plug, seed, &after) && before != after;
+    }
+    if (created) gui.destroy (plug);
+    DestroyWindow (parent);
+    if (!ok) std::fprintf (stderr, "FAIL: Win32 child creation, physical resize or Regen hit test\n");
+    return ok;
+}
+#endif
 
 bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
 {
@@ -567,6 +656,9 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
             && !testIntegratedPanel (plug, *dbg, *params, proc)) return false;
 
         dbg->ui_close (plug);
+#ifdef _WIN32
+        if (!testWin32Window (plug, *gui, *params, proc)) return false;
+#endif
     }
 
     std::printf ("PASS  %-22s  gui=%s (%ux%u)  params=%3u  mods=%2zu  presets=%2d  render=%.1fms  rescans=%d\n",

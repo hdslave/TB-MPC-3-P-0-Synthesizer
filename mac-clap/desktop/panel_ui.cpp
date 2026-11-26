@@ -130,6 +130,7 @@ void PanelUI::layout ()
     const int patternHeight = scoreH + std::clamp (h_ / 22, 24, 52);
     const int motionHeight = std::clamp (h_ * 8 / 100 - 8, 34, 88);
     scoreBox_ = {m, scoreY, width, patternHeight - motionHeight};
+#ifndef SLINK_RAZOR_PANEL
     const int crownX = column (4).x, rightX = column (12).x;
     brand_ = {m, hy, crownX - m - gap, hh};
     crown_ = {crownX, hy, rightX - crownX - gap, hh};
@@ -143,7 +144,11 @@ void PanelUI::layout ()
     scaleBox_ = {root_.x + root_.w + 4, readoutY, brand_.x + brand_.w - 14 - root_.x - root_.w, readoutH};
     for (int k = 0; k < 3; ++k)
         banks_[k] = {w_ - m - (3 - k) * 66, scoreY - 30, 62, 24};
+#endif
     motionBounds_ = {m, scoreY + scoreBox_.h + 5, width, motionHeight};
+#ifdef SLINK_RAZOR_PANEL
+    layoutRazor (hy, hh);
+#endif
     const int dy = motionBounds_.y + motionBounds_.h + 8;
     deck_ = {m, dy, width, h_ - m - dy};
     const int voiceW = (width - 2 * gap) * 30 / 100, toneW = (width - 2 * gap) * 28 / 100;
@@ -243,7 +248,12 @@ Rect PanelUI::update (uint64_t now)
     const bool repaintScore = dirty_ || scoreChanged || external;
     const bool repaintHeader = repaintScore || oldCamera != art_.camera.index || oldShaft != art_.shaft.index;
     if (!repaintHeader && !vectorMoved) return {};
-    const Rect damage = repaintHeader ? Rect{0, 0, w_, dirty_ ? h_ : deck_.y} : motionBounds_;
+#ifdef SLINK_RAZOR_PANEL
+    const Rect movingStrip = ribbon_;
+#else
+    const Rect movingStrip = motionBounds_;
+#endif
+    const Rect damage = repaintHeader ? Rect{0, 0, w_, dirty_ ? h_ : deck_.y} : movingStrip;
     c_.resetClip ();
     if (repaintHeader)
     {
@@ -251,7 +261,12 @@ Rect PanelUI::update (uint64_t now)
         drawHeader ();
     }
     if (repaintScore) drawScore ();
+#ifdef SLINK_RAZOR_PANEL
+    if (repaintScore) drawRazorFooter ();
+    if (vectorMoved || repaintScore) drawAcidMotion (c_, ribbon_, motionMs_ * .001, accentLift_);
+#else
     drawAcidMotion (c_, motionBounds_, motionMs_ * .001, accentLift_);
+#endif
     if (dirty_) drawDeck ();
     if (popup_ != PopupKind::None && !damage.intersect (popupRect_).empty ()) drawPopup ();
     dirty_ = false;
@@ -285,6 +300,20 @@ void PanelUI::drawHeader ()
         const int cc = p_->findCcForParam (p_->params[active].id);
         if (cc >= 0) status += "   /   CC " + std::to_string (cc);
     }
+#ifdef SLINK_RAZOR_PANEL
+    Rect readout = status_;
+    if (score_.steps > 16) readout.w = banks_[0].x - status_.x - 4;
+    if (inspected_ >= 0 && !learn && hover_ < 0 && dragParam_ < 0)
+    {
+        const uint32_t bit = uint32_t (1) << inspected_;
+        status = "Step " + number ("%02d", inspected_ + 1) + "   " + noteName (score_.pitch[inspected_]);
+        status += score_.gates & bit ? "   Gate" : "   Rest";
+        if (score_.accents & bit) status += "   Accent";
+        if (score_.slides & bit) status += "   Slide";
+    }
+    lettering (c_, readout, status, 15, muted);
+    drawRazorHeader ();
+#else
     lettering (c_, status_, status, 15, muted);
 
     plate (c_, brand_);
@@ -343,6 +372,7 @@ void PanelUI::drawHeader ()
     art_.face.fit (c_, {regen_.x + 6, regen_.y + 5, regen_.w - 12, regen_.h - 41}, pose, 6);
     button (c_, {regen_.x + 6, regen_.y + regen_.h - 32, regen_.w - 12, 25}, "Regen",
             hover_ == p_->findParamIndex (id::regen));
+#endif
 }
 
 void PanelUI::trace (Rect r, uint32_t ink)
@@ -367,6 +397,7 @@ void PanelUI::drawScore ()
 {
     const Rect r = scoreBox_;
     const int n = std::clamp (score_.steps, 0, 32);
+#ifndef SLINK_RAZOR_PANEL
     lettering (c_, {r.x, r.y - 35, 128, 30}, "Pattern", 26, light, Face::italic);
     std::string subtitle;
     if (!n)
@@ -389,15 +420,25 @@ void PanelUI::drawScore ()
         button (c_, banks_[2], "Follow", follow_);
     }
     const int pct[] = {0, 17, 48, 66, 83, 100};
+#else
+    const int pct[] = {0, 16, 52, 70, 85, 100};
+#endif
+#ifndef SLINK_RAZOR_PANEL
     const char *lanes[] = {"STEP", "NOTE", "GATE", "ACC", "SLD"};
+#endif
     for (int j = 0; j < 5; ++j)
     {
         const int y = r.y + r.h * pct[j] / 100, height = r.h * pct[j + 1] / 100 - (y - r.y) - 2;
         const Rect title{r.x, y, column (0).x - r.x - 5, height};
         const bool note = j == 1;
         c_.gradient (title, note ? 0xffdaddeb : 0xff32283f, note ? 0xff8992b1 : 0xff1b1728);
+#ifdef SLINK_RAZOR_PANEL
+        c_.frame (title, note ? 0xffadb6ce : 0xff61566f);
+        art_.labels.fit (c_, title.inset (4), j, 8);
+#else
         lettering (c_, title.inset (4), lanes[j], std::min (height - 5, 19), note ? ground : light, Face::regular,
                    1);
+#endif
         for (int k = 0; k < 16; ++k)
         {
             const int step = 16 * bank_ + k;
@@ -426,6 +467,13 @@ void PanelUI::drawScore ()
             if (selected) c_.hline (cell.x, cell.y, cell.w, lilac);
             const int cx = cell.x + cell.w / 2, cy = cell.y + cell.h / 2;
             const uint32_t ink = current ? 0xffffffff : light;
+#ifdef SLINK_RAZOR_PANEL
+            if (j == 0 && exists)
+                art_.steps.fit (c_, cell.inset (3), step, 32);
+            else if (j == 1 && exists)
+                drawPitch (cell.inset (2), step, current);
+            else
+#endif
             if (j == 0)
                 lettering (c_, cell, number ("%02d", step + 1), std::min (22, height - 2),
                            exists || !n ? ink : quiet, Face::regular, 1);
@@ -469,9 +517,18 @@ void PanelUI::drawDeck ()
     for (int i = 0; i < 4; ++i)
     {
         const auto t = groupTitles_[i];
+#ifdef SLINK_RAZOR_PANEL
+        const int titleW = std::min (t.w / 2, i == 2 ? 112 : 77);
+        c_.fillChamfer ({t.x, t.y + 2, titleW, t.h - 3}, 4, 0xff2a243b);
+        c_.fill (t.x + 3, t.y + 6, 2, t.h - 11, 0xff9faee9);
+        lettering (c_, {t.x + 10, t.y, titleW - 13, t.h}, upper (groups[i].name),
+                   std::min (22, t.h), light, Face::italic);
+        c_.hline (t.x + titleW + 2, t.y + t.h - 3, t.w - titleW - 2, lineInk);
+#else
         lettering (c_, {t.x + 2, t.y, t.w, t.h}, groups[i].name, std::min (23, t.h + 1), light, Face::italic);
         const int ruleX = t.x + (i == 2 ? 91 : 52);
         c_.hline (ruleX, t.y + t.h * 2 / 3, t.x + t.w - ruleX, lineInk);
+#endif
     }
     for (const auto &ctl : controls_)
     {
@@ -480,7 +537,11 @@ void PanelUI::drawDeck ()
         const auto &pr = p_->params[size_t (ctl.param)];
         const auto kind = tbmpc::paramTable[tbmpc::paramIndex (pr.id)].kind;
         const bool hot = ctl.param == hover_ || ctl.param == dragParam_;
+#ifdef SLINK_RAZOR_PANEL
+        c_.gradient (r, hot ? 0xff3c3452 : 0xff292333, hot ? 0xff211c30 : 0xff15131e);
+#else
         c_.fill (r, hot ? 0xff26223a : 0xff181521);
+#endif
         c_.hline (r.x, r.y, r.w, hot ? lilac : lineInk);
         const int inset = std::clamp (r.w / 15, 7, 14);
         const int d = std::clamp (std::min (r.h * 7 / 10, r.w / 4), 17, 52);
@@ -490,6 +551,15 @@ void PanelUI::drawDeck ()
         lettering (c_, {tx, r.y + half - 1, tw, r.h - half - 1}, valueText (ctl.param), std::min (23, half + 3),
                    light, Face::italic);
         const int cx = r.x + r.w - inset - d / 2, cy = r.y + r.h / 2;
+#ifdef SLINK_RAZOR_PANEL
+        if (kind == tbmpc::Kind::choice)
+        {
+            const int halfW = std::clamp (d / 3, 5, 9);
+            c_.line (cx - halfW, cy - 2, cx, cy + 3, 1.6f, hot ? light : lilac);
+            c_.line (cx, cy + 3, cx + halfW, cy - 2, 1.6f, hot ? light : lilac);
+            continue;
+        }
+#endif
         if (kind == tbmpc::Kind::button)
         {
             c_.frame ({cx - 7, cy - 7, 14, 14}, hot ? light : lilac);
@@ -875,6 +945,14 @@ void PanelUI::mouseDown (float x, float y, int buttonId, uint32_t mods, int clic
                 }
                 return;
             }
+#ifdef SLINK_RAZOR_PANEL
+    if (transport_.contains (x, y))
+    {
+        if (buttonId == 0 && p_->hostTransport && p_->hostTransport->request_toggle_play)
+            p_->hostTransport->request_toggle_play (p_->realHost);
+        return;
+    }
+#endif
     if (crown_.contains (x, y))
     {
         constexpr uint64_t shots[] = {0, 5000, 11000, 14000, 20000};

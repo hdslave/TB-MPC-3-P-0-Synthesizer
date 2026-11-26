@@ -106,6 +106,14 @@ class PanelUI
     Rect column (int slot) const;
     int hitStep (int x, int y) const;
     int hitParam (int x, int y) const;
+#ifdef SLINK_RAZOR_PANEL
+    Rect transport_, ribbon_, position_, contour_;
+    int facePose_ = 15;
+    void layoutRazor (int y, int height);
+    void drawRazorHeader ();
+    void drawRazorFooter ();
+    void drawPitch (Rect box, int step, bool live);
+#endif
     void drawHeader ();
     void drawScore ();
     void drawDeck ();

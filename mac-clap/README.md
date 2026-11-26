@@ -2,9 +2,11 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink acid bass sequencer and voice controls during playback](assets/desktop-preview.gif)
+![Windows Razor Choir editor during playback of the Acid Line preset](assets/windows-preview.png)
 
-Desktop 0.7.1 uses the SP-16 Thorn Crown artwork on one resizable panel. The chrome crest and camshaft move above the live score. Voice, Tone, Sequencer and Clock keep all 34 host parameters in reach, down to a 960 × 540 window.
+The Windows 0.7.2 editor uses the SP-16 Razor Choir score. Each note has its own chrome letter with a separate sharp and octave. The plate beside the seed enlarges the current note. Click a step to inspect it there. Key and scale sit below the score beside the vector ribbons, pitch contour and position rail. The counter offers **Play** and **Stop** in hosts that support CLAP transport requests. Other hosts show their transport state there.
+
+On macOS, the [0.7.1 Thorn Crown editor](assets/desktop-preview.gif) has an animated chrome crest and camshaft above its live score. Both editors keep all 34 host parameters on one resizable panel down to 960 × 540.
 
 - Start playback in the host to advance the cobalt playhead. Beneath the steps, lilac ribbons twist around a thorned eye. Accented gates open the folds. Click a step to inspect it. Patterns longer than 16 steps have two banks and a **Follow** switch.
 - Click the enamel **Regen** button for a new pattern. Drag the seed under the Slink wordmark to set a seed. Click **Key** or **Scale** to choose from a list.
@@ -12,7 +14,7 @@ Desktop 0.7.1 uses the SP-16 Thorn Crown artwork on one resizable panel. The chr
 - Drag the filter response horizontally for cutoff and vertically for resonance. Drag across the score for transpose and vertically for density. These gestures send both parameters to the host for automation.
 - Click the crest to jump to a different camera angle. **Motion off** holds the artwork while playback and parameter displays continue to update.
 
-Build from this checkout to use the Thorn Crown panel. The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) contains the earlier desktop downloads.
+Build from this checkout to use these editors. The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) contains the earlier desktop downloads.
 
 Slink 0.6.0 is the new name of TB-MPC-3-P-0. Existing projects use the same CLAP ID and factory preset keys. On upgrade, replace the previous plug-in in place, keeping its installed filename if the host stores paths. Install one copy per host.
 
@@ -43,10 +45,12 @@ Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\C
 
 ## Desktop artwork
 
-The plug-in embeds the Thorn Crown camera film, camshaft loop, chrome wordmark, enamel smiley and satin dial. The editor draws the monochrome ribbons and curved blades as vectors at the display’s resolution. The score, filter curve and controls follow the instrument. The bundled art bank is sufficient for macOS and Windows builds. To repack it from the original motion-study exports, run the following from the repository root with Python, Pillow and FFmpeg available.
+Each platform embeds its own artwork. Windows uses the full-width crest film, 33 poses of the chrome Regen face and the original SP-16 score lettering. macOS uses the Thorn Crown camera film, camshaft loop, chrome wordmark and enamel smiley. The editor draws the monochrome ribbons and curved blades as vectors at the display’s resolution. The score, filter curve and controls follow the instrument. Normal builds use the committed art banks. To repack the macOS artwork from the original motion-study exports, run the following from the repository root with Python, Pillow and FFmpeg available.
 
 ```sh
 python3 mac-clap/tools/bake_thorn.py camera-film.mp4 "Camshaft loop.mp4" assets.json
 ```
 
 The interface uses Barlow SemiBold and Barlow Condensed Bold Italic under the SIL Open Font License. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md). The embedded JPEG and PNG decoder is Sean Barrett’s stb_image 2.30 under the MIT license. [Source and license](third_party/stb/stb_image.h)
+
+To repack the Windows bank, pass the SP-16 `tools/sp16_thorn` artwork directory, the 20-second full-width crest master and a Chromium executable to `mac-clap/tools/bake_razor.py`. The baker uses Python, Pillow, Playwright and FFmpeg.
