@@ -10,12 +10,12 @@
   </tr>
   <tr>
     <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
-    <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16-thorn.png" alt="Slink’s freesp16 Pattern page with its chrome crest and sixteen-step score"></a></td>
+    <td align="center"><a href="docs/screen.md#thorn-crown-on-freesp16"><img src="docs/slink-sp16-thorn.png" alt="Thorn Crown playing a sixteen-step pattern on freesp16"></a></td>
     <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
   </tr>
 </table>
 
-[See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View the Blacklight Transfer theme](docs/slink-mpc-blacklight.png)
+[See all six freesp16 pages](docs/screen.md#thorn-crown-on-freesp16) · [Watch the freesp16 panel in motion](docs/slink-sp16.gif) · [See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View Blacklight Transfer](docs/slink-mpc-blacklight.png)
 
 [Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
 
@@ -107,9 +107,9 @@ for Diode and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0
 | Control | Range | The applet's |
 |---|---|---|
 | Mode | Sequence / Notes | — (new). The sequencer on or off. **Sequence** plays the voice, and pads 1-16 play its steps (see [MIDI notes and pads](#midi-notes-and-pads)). **Notes**: your MIDI notes play it instead, the pads too, chromatic (see [Mode: Notes](#mode-notes)); TB-3PO goes on counting unheard, so switching back lands in time. |
-| Seed Mode | Random / Locked | The die / the lock. **Random**: every reset picks a new seed (a new pattern); the Seed shows it. **Locked**: the seed stays. |
-| Seed | 0000 – ffff | The 16-bit seed, shown in hex as on the module. A new seed plays from the next clock. |
-| Regen | button | Turning the encoder past the die or the lock: a reset now. |
+| Seed Mode | Random / Locked | New instances start **Locked**. **Random**: every reset picks a new seed (a new pattern); the Seed shows it. **Locked**: the seed stays. |
+| Seed | 0000 – ffff | The 16-bit seed, shown in hex as on the module. While stopped, an edit updates the score immediately. During playback it takes effect on the next clock. |
+| Regen | button | A reset pulse. Pressing Regen on the instrument panel explicitly picks a fresh seed, including in Locked mode. |
 | Mutate | 0 – 100 % | — (new): at a reset that brings a new seed (Seed Mode: Random), only this share of the steps take the new seed's pattern; the rest keep the one playing, so the line changes a little each time. Which steps change comes from the new seed. 0 % is the applet. Seed and Seed Back give a seed's own pattern, not the mutated mix. |
 | Seed Back | button | — (new): back to the seed before, and Seed Mode to Locked so the next Play keeps it. It remembers the last 16 seeds whose patterns played (a knob turned through seeds remembers only the ones that played); press again to go further back. |
 | Density | -7 – +7 | Density. Its distance from 0 sets how many steps play (0: 10 %, ±7: all); left of +1, fewer different pitches and more repeated notes (-7: the root alone). |
@@ -153,9 +153,8 @@ the bottom left.
 - **Nothing moves.** The play head, the seed, Seed Back's memory and the transposition stay as they were. While the
   host plays, the sequencer's next step takes the voice back, as it would have played. A pad hit on the very frame a
   step comes (Play, say) gives way to that step.
-- **The pattern that will play.** A seed, Density or a scale with another number of notes set while stopped waits
-  for the next clock (the screen reads PENDING over the pattern before): the pads already play the steps that clock
-  will play.
+- **The pattern that will play.** Changing Seed while stopped updates the score and the steps you can audition. Density and scale-size edits take
+  effect on the next clock. The pads already audition the steps that clock will play.
 - **Letting go does nothing**: the step plays to its end. A pad hit again while its step sounds strikes again (both
   envelopes from the start). Two pads at once (in one block): the louder plays, once; on a tie, the later. A host's
   choke of the pad, or All Sound Off (CC 120), stops it; all notes off (CC 123) does not. All Sound Off (and a choke
@@ -192,7 +191,7 @@ step (legato: no new envelope, but the step's own accent and decay). Accented st
 pattern holds 32 steps of notes, gates, slides, accents and octave flags; Steps sets how many play.
 
 The pattern is made again from the seed at the next clock when Density, the scale's number of notes or the seed
-changes. Root, Octave, Transpose and a scale of the same size only move its pitches.
+changes during playback. A seed edited while stopped updates the pattern immediately. Root, Octave, Transpose and a scale of the same size only move its pitches.
 
 ### What the module does, kept
 
@@ -212,7 +211,7 @@ These come from the applet's code and are kept so the plug-in plays what the mod
   exact.
 - **The gate's length comes from the tempo.** The applet measures half a clock from the last two clocks: the same
   while the tempo holds (on the module the first note after the clock starts is long).
-- **A new seed plays from the next clock.** On the module a typed-in seed waits for a Regen pulse (its later
+- **While stopped, an edit updates the score immediately. During playback it takes effect on the next clock.** On the module a typed-in seed waits for a Regen pulse (its later
   firmware changed this too).
 - **The host stopping shuts the gate.** The module would hold a sliding step's gate until the next clock.
 - **A scale change requantizes the transposition.** The module's quantizer keeps the cell it chose in the old
@@ -234,8 +233,7 @@ instance on every page, in Edit and Stage, until Melodee restarts; projects and 
 - **PATTERN**, TB-3PO's own screen: the seed (locked or random), the transport and the step in the dark window; then
   the scale, root, octave, density and division; then one column a step with its number, nearest note, gate (a
   filled block; a rest is hollow), accent (a diamond) and outgoing slide (an arrow), the playing column lit. A
-  32-step pattern stacks two banks of 16. The wheel dials the seed and locks it, so the pattern you dial is kept; it
-  plays from the next clock (until then the window reads PENDING over the pattern still playing); Push is Regen;
+  32-step pattern stacks two banks of 16. The wheel dials the seed and locks it, so the pattern you dial is kept; a stopped edit updates the score immediately. During playback the window reads PENDING until the next clock; Push is Regen;
   Shift + Push is Seed Back. K1-K3: Cutoff, Resonance, Env Mod. [docs/screen.md](docs/screen.md) has the details.
 - **VOICE** and **TONE**: the voice's knobs, beside the filter's response (Cutoff's reading marked). VOICE ends with the cutoff LFO. TONE ends with the pitch LFO.
 - **SEQUENCER** and **CLOCK**: SEQUENCER pairs its settings with the score. On the silver CLOCK page, Clock Div, Swing, Reset and Theme sit above a full-width score.
@@ -249,14 +247,14 @@ choice a step, a knob 1/128, 1/1024 with Shift; Push again leaves), or presses a
 
 | Preset | Seed | Patch |
 |---|---|---|
-| Default | Random | The applet's start: Gunakri, density +5, 16 steps; a new pattern every Play. |
+| Default | 3039 | Gunakri, density +5, 16 steps. Play restarts the same pattern. |
 | Acid Line | 5a17 | Aeolian, density +5, low cutoff, high resonance and accent. |
 | Root Pulse | 0303 | Semitone, density -7: every step plays, the root alone, with octave jumps and full accent. |
 | Square Lead | beef | Phrygian, square wave an octave up, the 303 glide. |
 | Dub Steps | 1d0b | Dorian, density +3, 12 steps an octave down, long decay. |
 | Note Bass | — | Mode: Notes: a dark, resonant bass to play from Melodee's notes (glides and accents as above). |
 
-All the TB-3PO presets but Default lock their seed, so they play the same pattern every time.
+All the TB-3PO presets lock their seed, so they play the same pattern every time.
 
 ## Cost
 
@@ -282,11 +280,11 @@ nothing until it is hit (then a step's pitch, or a pattern made again once when 
 
 The ARMv7 build is version **0.6.0**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
 
-Slink on freesp16 opens on the **Thorn Crown Pattern** page. Sixteen columns show the step number, pitch, gate, accent and outgoing slide. The cobalt column follows playback. The note row uses Razor Choir, a set of hooked chrome pitch letters with matching numerals for steps and octaves. The octave sits low to the right of each letter, with the sharp directly above it when present. Tap a column to audition its step. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
+Slink on freesp16 opens on the **Thorn Crown Pattern** page. Sixteen columns show the step number, pitch, gate, accent and outgoing slide. The cobalt column follows playback. The note row uses Razor Choir, with hooked chrome pitch letters and matching octave numerals. The numbered headers and panel controls use Barlow SemiBold. The octave sits low to the right of each letter, with the sharp directly above it when present. Press a numbered header to audition its step. Drag a pitch vertically to edit it in semitones. Tap Gate, Accent or Slide to toggle it, or drag across the row to paint the same setting. The first edit locks a random pattern to its displayed seed. The project saves edits with that seed. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
 
-**Play** auditions the sequence locally at the host tempo while the transport is stopped. **Stop** ends that preview. Starting freesp16’s transport takes over and the button reads **Sync**. Tap the thorn crest to pause or resume its camera independently. **Regen** regenerates the pattern, and tapping the seed plate recalls the previous seed.
+**Play** auditions the sequence locally at the host tempo while the transport is stopped. **Stop** ends that preview. Starting freesp16’s transport takes over and the button reads **Sync**. Tap the thorn crest to pause or resume its camera independently. **Regen** rolls a fresh seed each time you tap it. **Locked** keeps that seed across transport starts. Tap the seed value to recall a previous seed. Drag the barcode to adjust the seed.
 
-Tap the root/scale plate at lower left for the six bank tabs, or use the main selector to move between banks. The six encoders follow the selected bank. Voice displays the filter response, LFO shows modulation over one beat, and Perform, Glide and Clock retain the touch-playable pitch ribbon.
+Tap **Perform**, **Voice**, **Glide**, **LFO**, **Pattern** or **Clock** along the bottom of any Slink page. The cobalt underline marks the active bank. Turn its six encoders or drag up or down on the corresponding values in the host strip below. The main selector also changes banks. The crest, transport and seed controls stay in the same place throughout. On **Voice**, drag across the response graph to change cutoff or upward to increase resonance. The diamond follows your finger. Frequency is logarithmic and the silver curve shows the modeled gain in dB. On LFO, dragging horizontally across either plot changes its rate and dragging upward increases its depth. Perform, Glide and Clock have numbered audition headers and pitch cells that you can drag vertically. Drag a parameter readout to change its value.
 
 | Bank | Encoders 1–6 |
 | --- | --- |
@@ -297,7 +295,7 @@ Tap the root/scale plate at lower left for the six bank tabs, or use the main se
 | Pattern | Seed Mode, Seed, Mutate, Density, Scale, Root |
 | Clock | Mode, Clock Div, Swing, Reset, Steps, Octave |
 
-In **Sequence** mode, tap or slide across the score to audition individual steps. The physical pads do the same in freesp16’s **Scale** pad mode with the chromatic scale, centre window and zero key shift. MIDI notes 60–75 address the first sixteen steps. A pattern longer than sixteen extends that range, up to note 91. Other notes transpose the sequence. In **Notes** mode the pads play chromatic pitches. **Regen** resets the generator and **Seed back** recalls a previous seed. The six factory patches are under the host’s **Presets** menu.
+In **Sequence** mode, tap a step number or slide across the numbered headers to audition individual steps. The physical pads do the same in freesp16’s **Scale** pad mode with the chromatic scale, centre window and zero key shift. MIDI notes 60–75 address the first sixteen steps. A pattern longer than sixteen extends that range, up to note 91. Other notes transpose the sequence. In **Notes** mode the pads play chromatic pitches. **Regen** resets the generator and **Seed back** recalls a previous seed. The six factory patches are under the host’s **Presets** menu.
 
 The freesp16 toolchain builds and tests the device plug-in with this command.
 

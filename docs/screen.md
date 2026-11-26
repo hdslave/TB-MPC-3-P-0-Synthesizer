@@ -4,9 +4,7 @@ On hdslaveOS 0.8.2, open **Stage → Panel**. Edit shows the host’s parameter 
 
 Each new plug-in instance opens in **Press Plate**. To audition **Blacklight Transfer**, use Plus to reach **CLOCK**, turn the wheel to **THEME** and press the encoder. Another press switches back. The choice follows this instance across all five pages and between Edit and Stage for the session. Project and preset files contain the instrument settings only.
 
-The freesp16 edition opens on the **Thorn Crown** Pattern page. The score uses Razor Choir. Each pitch has a hooked chrome letter, with its octave at the lower right and its sharp directly above. Step numbers and octaves use the same cut numerals. The native panel draws pre-rendered color glyphs with transparent edges over the silver and cobalt cells. The crest uses a twenty-second baked camera move. The smiley and the narrow whip strip animate separately. [SP-16 controls](../README.md#freesp16-on-sp-16)
-
-Build the offline browser study with `python3 tools/sp16_thorn/build.py` and open `build/slink-thorn-crown.html`. Its editable example runs on a silent local clock. The native plug-in displays the engine's generated pattern and auditions touched steps. [Razor Choir pitch lettering](../tools/sp16_thorn/razor-choir.js) · [Native artwork baker](../tools/sp16_thorn/bake_native.py)
+Build the offline browser study with `python3 tools/sp16_thorn/build.py` and open `build/slink-thorn-crown.html`. Its editable example runs on a silent local clock. The native plug-in displays the engine’s pattern. Touch a step number to audition, drag its note vertically to change pitch, or drag along Gate, Accent or Slide to paint switches. [Razor Choir pitch lettering](../tools/sp16_thorn/razor-choir.js) · [Native artwork baker](../tools/sp16_thorn/bake_native.py)
 
 The blue-chrome Slink wordmark starts seven pixels from the left edge and spans 216 pixels of the brushed silver header on all five Press Plate pages. The lettering has three pixels of brushed silver above it and two below it before the dark edge. The brushed face grades from a soft upper-left highlight into a deeper silver at the lower right. The page name sits in the angled tab to its right. Iridescent lines run through the cobalt trim and black readout below the nameplate. The lime melting smiley sits at the right end. PATTERN uses the dark window for the four-digit seed, seed mode, transport and position. Turning the seed dial before publication shows PENDING and the seed of the score still on screen. In Notes mode the title bar reads “MIDI / SEQ MUTED”. Before the first pattern arrives the score displays “Awaiting clock”.
 
@@ -15,6 +13,20 @@ Each column of the punched-metal matrix shows one step's number, nearest note, g
 On all five Blacklight Transfer pages, the blue-chrome Slink title sits directly on the navy panel between the smiley ticket and the lavender page tab. A curved highlight and a reflected pink edge give the dripping lime face a jelly finish. The graph sits in a shallow recess, with shaded focus rows and pot rails below. PATTERN plots notes on a pitch roll. Filled notes indicate gates, hollow notes are rests, and pink connectors mark slides. VOICE and TONE place the filter trace above two columns of controls. [Blacklight Pattern in Stage](slink-mpc-blacklight.png) · [Smiley ticket](../assets/art/blacklight-pass.png)
 
 On all five pages in both themes, two narrow slices through the smiley’s lower drips move sideways on a four-step downbeat or a gated accent. The offset grows from one native pixel to two, returns to one, and settles after 144 ms. Closely spaced hits share the current pulse. Stop clears it immediately. The motion uses Melodee’s display clock and the published sequencer position.
+
+## Thorn Crown on freesp16
+
+These six captures show the ARM plug-in playing the same 16-step pattern at its native 780 × 285 resolution. Tap an image to see the lettering at full size. [Watch all six pages during playback](slink-sp16.gif)
+
+| Pattern | Voice |
+| --- | --- |
+| [![Pattern with chrome notes on black keys, gate squares, accent diamonds and slide arrows](slink-sp16-thorn.png)](slink-sp16-thorn.png) | [![Voice with its cutoff and resonance cursor on the filter response](slink-sp16-voice.png)](slink-sp16-voice.png) |
+| **Perform** | **Glide** |
+| [![Perform with cutoff, resonance and a numbered pitch ribbon](slink-sp16-perform.png)](slink-sp16-perform.png) | [![Glide with slide timing and the pitch contour](slink-sp16-glide.png)](slink-sp16-glide.png) |
+| **LFO** | **Clock** |
+| [![LFO with separate pitch and cutoff modulation curves](slink-sp16-lfo.png)](slink-sp16-lfo.png) | [![Clock with division and swing above the playing steps](slink-sp16-clock.png)](slink-sp16-clock.png) |
+
+The freesp16 edition opens on the **Thorn Crown** Pattern page. The score uses Razor Choir. Each pitch has a hooked chrome letter, with its octave at the lower right and its sharp directly above. The numbered headers, counter, switches, tabs and parameter labels use Barlow SemiBold. The native panel draws pre-rendered color glyphs with transparent edges over black note keys and a cobalt playhead. The crest follows a twenty-second camera move and the whip strip loops every eight seconds. Both use 30 frames per second. The chrome face blends adjacent poses on its own 4.8-second cycle. All six SP-16 pages share the crest, animated smiley, whip strip, transport and bank tabs. The three pitch ribbons show chrome notes over near-black cells, with a separate numbered row for audition. Voice overlays a cutoff/resonance touch cursor on the modeled filter response. The lower axis shows frequency, the left scale shows gain in dB and the right scale shows resonance. LFO plots its curves on dark violet glass. [SP-16 controls](../README.md#freesp16-on-sp-16)
 
 ## Silver panel on MPC
 

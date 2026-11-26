@@ -2,13 +2,15 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink’s Razor Choir panel playing the Acid Line preset on macOS](assets/desktop-preview.gif)
+![Slink’s Razor Choir panel playing the Default preset on macOS](assets/desktop-preview.gif)
+
+[View the Windows panel at full size](assets/windows-preview.png)
 
 Slink 0.7.3 on macOS and Windows uses the SP-16 Razor Choir score. Each note has its own chrome letter with a separate sharp and octave. The plate beside the seed enlarges the current note. Click a step to inspect it there. Key and scale sit below the score beside the animated chrome whips, pitch contour and position rail. The counter offers **Play** and **Stop** in hosts that support CLAP transport requests. Other hosts show their transport state there.
 
 All 34 host parameters fit on one resizable panel down to 960 × 540.
 
-- Start playback in the host to advance the cobalt playhead. The chrome face turns and pulses on every fourth step and on gated accents. The lower strip loops two metal whips and forked lightning. Click a step to inspect it. Patterns longer than 16 steps have two banks and a **Follow** switch.
+- Start playback in the host to advance the cobalt playhead. The chrome face turns on its own 4.8-second cycle. The lower strip loops two metal whips and forked lightning. Click a step to inspect it. New instances start with a locked seed. Click Regen to roll another seed and keep it for the next Play. Patterns longer than 16 steps have two banks and a **Follow** switch.
 - Click the enamel **Regen** button for a new pattern. Drag the seed under the Slink wordmark to set a seed. Click **Key** or **Scale** to choose from a list.
 - Drag or scroll a control to edit it. Hold Shift or enable **Fine** for small adjustments. Clicking a choice opens its menu. Double-click a control to reset it, or right-click for reset and MIDI mapping.
 - Drag the filter response horizontally for cutoff and vertically for resonance. Drag across the score for transpose and vertically for density. These gestures send both parameters to the host for automation.
@@ -45,7 +47,7 @@ Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\C
 
 ## Desktop artwork
 
-Both builds embed the same SP-16 artwork bank, including 240 crest frames, 96 whip-storm frames and 33 poses of the chrome Regen face. The crest and storm play at 12 frames per second. The score, filter curve and controls follow the instrument.
+Both builds embed the same SP-16 artwork bank, including 600 crest frames, 240 whip-storm frames and 33 poses of the chrome Regen face. The crest and storm play at 30 frames per second. The score, filter curve and controls follow the instrument.
 
 Normal builds use the committed bank. To repack the desktop artwork, run `mac-clap/tools/bake_razor.py` with the SP-16 checkout containing `assets/sp16-thorn/panel.bank` and `tools/sp16_thorn`, followed by a Chromium executable. The baker uses Python, Pillow and Playwright.
 
