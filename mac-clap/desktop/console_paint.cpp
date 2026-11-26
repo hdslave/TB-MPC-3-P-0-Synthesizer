@@ -2,7 +2,15 @@
 #include "../../src/sp16_graphics.h"
 #include "../../assets/sp16-thorn/index.h"
 #include <cstdio>
+#include <cstring>
 #include <string_view>
+
+#ifdef _WIN32
+const uint32_t* desktopWordmark();
+#else
+extern "C" const uint32_t slink_desktop_wordmark[];
+static const uint32_t* desktopWordmark() { return slink_desktop_wordmark; }
+#endif
 
 namespace hdslave_desktop
 {
@@ -94,10 +102,13 @@ Rect fit(Rect src, Rect box)
     const int w = int(std::lround(src.w * scale)), h = int(std::lround(src.h * scale));
     return {box.x + (box.w - w) / 2, box.y + (box.h - h) / 2, w, h};
 }
-// Crop the source around its center without distorting the animation.
-Rect cover(Rect src, Rect dest)
+void screenInk(uint32_t& bed, uint32_t ink)
 {
-    return fit(dest, src);
+    const auto channel = [&](int shift) {
+        const uint32_t paper = (bed >> shift) & 255, shine = (ink >> shift) & 255;
+        return (paper + ((255 - paper) * shine + 127) / 255) << shift;
+    };
+    bed = 0xff000000u | channel(16) | channel(8) | channel(0);
 }
 const char* fieldName(int slot)
 {
@@ -184,10 +195,13 @@ void PanelUI::paintToolbar()
         status = "Choose a control";
     else if (lastLearn_ != CLAP_INVALID_ID)
         status = "Move a MIDI controller";
+    else if (hover_ == crestHover)
+        status = "Click to hold or resume the crest   /   Shift-click to cut";
     else if (hover_ >= 0 && hover_ < int(id::count))
     {
-        status =
-            std::string(tbmpc::paramTable[tbmpc::paramIndex(hover_)].name) + "   /   " + readings_[hover_].text;
+        if (hover_ == int(id::regen)) status = "Roll a new pattern seed";
+        else if (hover_ == int(id::seedBack)) status = "Recall a previously played seed";
+        else status = std::string(tbmpc::paramTable[tbmpc::paramIndex(hover_)].name) + "   /   " + readings_[hover_].text;
         if (readings_[hover_].cc >= 0) status += "   /   CC " + std::to_string(readings_[hover_].cc);
     }
     else if (hover_ >= filterPlot)
@@ -204,68 +218,162 @@ void PanelUI::paintToolbar()
     controlText(c_, layout_.status, status, font::normal, muted, .9f);
 }
 
-void PanelUI::paintHeader()
+void PanelUI::paintMast()
 {
-    plate(c_, layout_.brand, 0xff0d0e19);
+    const Rect mast = layout_.mast;
     const auto seed = layout_.slots[id::seed], back = layout_.slots[id::seedBack];
-    c_.fill(seed.x + 3, seed.y, layout_.brand.w - 6, 1, edge);
+    const Rect regen = layout_.slots[id::regen];
+    c_.gradient(mast, 0xff222438, 0xff101020);
+    c_.hline(mast.x, mast.y, mast.w, 0xff51516a);
+
+    // Etched contours open around the signature and gather at the seed barcode.
+    const int span = seed.x - mast.x;
+    constexpr float tau = 6.2831853f;
+    for (int i = 0; i < 8; ++i)
+    {
+        float lastX = 0, lastY = 0;
+        for (int j = 0; j <= 64; ++j)
+        {
+            const float t = float(j) / 64, fan = std::sin(t * tau * .5f);
+            const float wave = std::sin(t * tau + i * .16f) * .19f + std::sin(t * tau * 2 - i * .18f) * .10f;
+            const float x = mast.x + t * (span - 1);
+            const float y = mast.y + mast.h * (.63f + wave * fan + (i - 3.5f) * (.005f * (1 - t) + .043f * fan));
+            if (j) c_.line(lastX, lastY, x, y, .72f, i == 5 ? 0xff9686bb : 0xff6976a0, i == 5 ? 118 : 74);
+            lastX = x;
+            lastY = y;
+        }
+    }
+
     const int seedNumber = int(readings_[id::seed].value);
     char hex[8];
     std::snprintf(hex, sizeof(hex), "%04X", seedNumber & 65535);
-    controlText(c_, {seed.x + 7, seed.y, 31, seed.h}, "SEED", font::small, muted, .9f);
-    controlText(c_, {seed.x + 40, seed.y, 52, seed.h}, hex, font::normal, light);
-    const int bx = seed.x + 91, barWidth = seed.w - 96;
-    for (int i = 0; i < 18; ++i)
+    const int pad = 8, labelH = seed.h / 3, valueW = seed.w * 43 / 100;
+    const uint32_t seedInk = hover_ == int(id::seed) ? lime : ice;
+    controlText(c_, {seed.x + pad, seed.y, seed.w - pad, labelH}, "PATTERN SEED", font::small, seedInk);
+    controlText(c_, {seed.x + pad, seed.y + labelH, valueW, seed.h - labelH}, hex, font::large, light,
+                seed.h >= 50 ? 1.28f : 1.05f);
+    const int bx = seed.x + pad + valueW, by = seed.y + labelH + 4, barWidth = seed.x + seed.w - bx - 2;
+    for (int i = 0; i < 20; ++i)
     {
-        const int left = bx + i * barWidth / 18, right = bx + (i + 1) * barWidth / 18;
+        const int left = bx + i * barWidth / 20, right = bx + (i + 1) * barWidth / 20;
         const int w = (seedNumber >> (i % 16)) & 1 ? std::max(1, right - left - 1) : 1;
-        c_.fill(left, seed.y + 6, w, seed.h - 12, i % 5 ? 0xff8899ba : ice);
+        c_.fill(left, by, w, seed.y + seed.h - by - 5, i % 5 ? 0xff98a8c3 : seedInk);
     }
-    button(c_, back.inset(2), "Recall", hover_ == int(id::seedBack));
-    plate(c_, layout_.counter, glass);
-    const Rect play = layout_.play, regen = layout_.slots[id::regen];
-    plate(c_, play, 0xff171827);
-    const bool notes = readings_[id::mode].value >= .5;
-    const char* action = notes ? "Notes" : localPlay_ ? "Stop" : pattern_.running ? "Sync" : "Play";
-    const uint32_t ink = notes ? muted : lime;
-    controlText(c_, {play.x + 3, play.y + 3, play.w - 6, play.h / 3}, "TRANSPORT", font::small, muted, .9f, 1);
-    const Rect key{play.x + 7, play.y + play.h / 3, play.w - 14, play.h * 53 / 100};
-    plate(c_, key, notes ? glass : localPlay_ ? 0xff39452d : 0xff273326, notes ? edge : 0xff789557);
-    controlText(c_, key, action, font::large, ink, 1.f, 1);
-    plate(c_, regen, 0xff14121f, hover_ == int(id::regen) ? ice : edge);
-    const int fy = layout_.face.y + layout_.face.h;
-    controlText(c_, {regen.x, fy, regen.w, regen.y + regen.h - fy}, "Regen", font::normal, light, .95f, 1);
+    const bool recallHot = hover_ == int(id::seedBack), regenHot = hover_ == int(id::regen);
+    const Rect recall = back.inset(2);
+    c_.fillChamfer(recall, 7, recallHot ? 0xff353044 : 0xff242232);
+    c_.frameChamfer(recall, 7, recallHot ? ice : 0xff534d68);
+    controlText(c_, recall, "Recall", font::normal, recallHot ? light : muted, 1.f, 1);
+    const int cx = layout_.face.x + layout_.face.w / 2, cy = regen.y + regen.h / 2;
+    const int radius = regen.h / 2;
+    const Rect key{cx, regen.y + 4, regen.x + regen.w - cx, regen.h - 8};
+    const uint32_t cap = regenHot ? 0xff4c405d : 0xff322b45, rim = regenHot ? lilac : 0xff756583;
+    c_.fillChamfer(key, 8, cap);
+    c_.frameChamfer(key, 8, rim);
+    c_.disc(cx, cy, radius, rim);
+    c_.disc(cx, cy, radius - 1, 0xff272337);
+    const int nameX = layout_.face.x + layout_.face.w;
+    controlText(c_, {nameX, key.y, key.x + key.w - nameX - 4, key.h}, "Regen", font::normal, light, 1.f, 1);
 }
 
-Rect PanelUI::paintArt(bool reset, bool repaintHeader, bool repaintScore, uint64_t now)
+// The hardware plates have dark opaque grounds. Use their light as screen ink on the desktop metal.
+void PanelUI::chrome(Rect src, Rect dst, int fadeX, int fadeY, int intensity)
+{
+    const size_t area = size_t(src.w) * src.h;
+    if (chromeInk_.size() < area) chromeInk_.resize(area);
+    auto feather = [](int p, int length, int fade) {
+        return std::min({p, length - 1 - p, fade}) * 256 / fade;
+    };
+    std::array<int, tbmpc::thorn::crest.w> horizontal;
+    for (int x = 0; x < src.w; ++x) horizontal[x] = feather(x, src.w, fadeX);
+    for (int y = 0; y < src.h; ++y)
+    {
+        const auto* original = art_.data() + (src.y + y) * SIXTEEN_SCREEN_WIDTH + src.x;
+        auto* ink = chromeInk_.data() + y * src.w;
+        const int gain = feather(y, src.h, fadeY) * intensity;
+        for (int x = 0; x < src.w; ++x)
+        {
+            const int weight = (gain * horizontal[x]) >> 16;
+            const auto channel = [&](int shift) {
+                const int value = int((original[x] >> shift) & 255);
+                return uint32_t(std::min(255, std::max(0, value - 17) * weight / 238)) << shift;
+            };
+            ink[x] = 0xff000000u | channel(16) | channel(8) | channel(0);
+        }
+    }
+    c_.blitScaled(chromeInk_.data(), src.w, src.h, dst, src.w, screenInk);
+}
+
+Rect PanelUI::paintArt(bool repaintMast, bool repaintScore, uint64_t now)
 {
     constexpr int sw = SIXTEEN_SCREEN_WIDTH, sh = SIXTEEN_SCREEN_HEIGHT;
     sixteen_screen_surface_t surface{art_.data(), sw, sh, sw, uint32_t(now)};
-    const bool changed = p_->panel->renderArt(p_->inner, surface, reset, selected_);
-    if (!changed && !repaintHeader && !repaintScore) return {};
+    const bool changed = p_->panel->renderArt(p_->inner, surface, repaintMast, selected_);
+    if (!changed && !repaintMast && !repaintScore) return {};
     Rect damage;
-    auto sprite = [&](Rect src, Rect dst, bool repaint)
+    const auto changedPlate = [&](Rect src, bool force)
     {
-        bool touched = repaint;
+        if (!changed) return force;
+        bool touched = force;
         for (int y = src.y; y < src.y + src.h; ++y)
         {
             const size_t offset = size_t(y) * sw + src.x;
             const size_t bytes = size_t(src.w) * sizeof(uint32_t);
-            if (!repaint && !std::memcmp(art_.data() + offset, previousArt_.data() + offset, bytes)) continue;
+            if (!force && !std::memcmp(art_.data() + offset, previousArt_.data() + offset, bytes)) continue;
             std::memcpy(previousArt_.data() + offset, art_.data() + offset, bytes);
             touched = true;
         }
-        if (!touched) return;
-        c_.blitSharp(art_.data() + src.y * sw + src.x, src.w, src.h, dst, sw);
+        return touched;
+    };
+    const Rect mast = layout_.mast;
+    const int stride = mast.w * c_.s;
+    if (repaintMast)
+    {
+        const Rect wordmark{0, 0, 680, 108};
+        c_.blitScaled(desktopWordmark(), wordmark.w, wordmark.h, fit(wordmark, layout_.logo), wordmark.w, screenInk);
+        mastBacking_.resize(size_t(stride) * mast.h * c_.s);
+        for (int y = 0; y < mast.h * c_.s; ++y)
+            std::copy_n(c_.px + (mast.y * c_.s + y) * c_.pw + mast.x * c_.s, stride,
+                        mastBacking_.data() + size_t(y) * stride);
+    }
+    const auto inlay = [&](Rect src, Rect dst, int fadeX, int fadeY, int gain) {
+        if (!changedPlate(src, repaintMast)) return;
+        // Restore the engraving underneath each moving silhouette before laying down the next exposure.
+        if (!repaintMast)
+            for (int y = 0; y < dst.h * c_.s; ++y)
+                std::copy_n(mastBacking_.data() + ((dst.y - mast.y) * c_.s + y) * stride + (dst.x - mast.x) * c_.s,
+                            dst.w * c_.s, c_.px + (dst.y * c_.s + y) * c_.pw + dst.x * c_.s);
+        chrome(src, dst, fadeX, fadeY, gain);
         damage = damage.unite(dst);
     };
-    const Rect logo{10, 9, 164, 34}, crest{186, 6, 332, 90}, face{717, 0, 61, 58}, storm{127, 253, 168, 25};
-    sprite(logo, fit(logo, layout_.logo), repaintHeader);
-    sprite(cover(crest, layout_.crest), layout_.crest, repaintHeader);
-    sprite({526, 7, 95, 88}, layout_.counter.inset(1), repaintHeader);
-    sprite(face, fit(face, layout_.face), repaintHeader);
-    sprite(cover(storm, layout_.storm), layout_.storm, repaintScore);
+    inlay({186, 6, 332, 90}, layout_.crest, 42, 10, 262);
+    const Rect face{717, 0, 61, 58};
+    inlay(face, fit(face, layout_.face), 2, 2, 252);
+    if (changedPlate({127, 253, 168, 25}, repaintScore) && pattern_.steps)
+    {
+        const Rect cap = layout_.column(focus(), columns()).intersect(layout_.lane(0));
+        paintPlayhead(cap);
+        damage = damage.unite(cap);
+    }
     return damage;
+}
+
+void PanelUI::paintPlayhead(Rect cap)
+{
+    const Rect head{cap.x + 1, cap.y, cap.w - 2, cap.h};
+    c_.gradient(head, 0xff49405e, 0xff26243c);
+    const Rect storm{129, 255, 164, 21};
+    // The moving chrome belongs to the one focused column. Keep the number on a quiet face.
+    const Rect foil = head.inset(1);
+    chrome(fit(foil, storm), foil, 4, 2, 201);
+    char number[4];
+    std::snprintf(number, sizeof(number), "%02d", focus() + 1);
+    const int badgeW = std::min(head.w - 4, textWidth(number, font::normal) + 6);
+    const Rect badge{head.x + (head.w - badgeW) / 2, head.y + 1, badgeW, head.h - 3};
+    c_.fillChamfer(badge, 4, 0xff211e34, 225);
+    controlText(c_, badge, number, font::normal, light, .9f, 1);
+    c_.fill(head.x, head.y + head.h - 2, head.w, 2, lime);
+    if (hoverStep_ == focus()) c_.hline(head.x, head.y, head.w, lilac);
 }
 
 void PanelUI::paintScore()
@@ -273,20 +381,54 @@ void PanelUI::paintScore()
     const auto& l = layout_;
     const Rect box = l.score, heading = l.caption;
     plate(c_, box, 0xff11101c);
-    controlText(c_, {box.x + 10, heading.y, 148, heading.h}, "Step sequencer", font::large, light,
-                heading.h < 26 ? .82f : 1.f);
+    c_.gradient(heading, 0xff191a2a, 0xff141321);
+    c_.hline(box.x, heading.y, box.w, 0xff46445a);
+    const int titleX = box.x + 14;
+    const float titleZoom = heading.h >= 41 ? 1.13f : .97f;
+    const int titleW = int(std::ceil(textWidth("Step sequencer", font::large) * titleZoom));
+    controlText(c_, {titleX, heading.y, titleW + 1, heading.h}, "Step sequencer", font::large, light, titleZoom);
     const int active = focus(), n = std::clamp(int(pattern_.steps), 0, 32), count = columns();
+    int railStart = titleX + titleW + 20;
     if (n)
     {
-        char step[32];
-        std::snprintf(step, sizeof(step), "%02d / %02d", active + 1, n);
-        const int x = box.x + (heading.h < 26 ? 147 : 166);
-        controlText(c_, {x, heading.y, 68, heading.h}, step, font::normal, ice, .85f);
-        controlText(c_, {x + 70, heading.y, std::max(1, l.storm.x - x - 78), heading.h},
-                    std::string(tbmpc::rootChoices[int(readings_[id::root].value)]) + " / " +
-                        readings_[id::scale].text,
-                    font::normal, muted, .9f);
+        const std::string key = std::string(tbmpc::rootChoices[int(readings_[id::root].value)]) + " / " +
+                                readings_[id::scale].text;
+        const int keyW = textWidth(key, font::normal);
+        const int mid = heading.y + heading.h / 2;
+        c_.line(railStart - 8, mid + 6, railStart - 4, mid - 6, 1.f, 0xff69657b);
+        controlText(c_, {railStart + 4, heading.y, keyW, heading.h}, key, font::normal, muted, .92f);
+        railStart += keyW + 20;
+        char current[4], length[8];
+        std::snprintf(current, sizeof(current), "%02d", active + 1);
+        std::snprintf(length, sizeof(length), "/ %02d", n);
+        const Rect r = l.counter;
+        if (heading.h >= 41)
+            controlText(c_, {r.x + 3, r.y - 2, r.w / 2, r.h}, current, font::large, 0xff40384f, titleZoom, 2);
+        controlText(c_, {r.x, r.y, r.w / 2, r.h}, current, font::large, light, titleZoom, 2);
+        controlText(c_, {r.x + r.w / 2 + 6, r.y + 1, r.w / 2 - 6, r.h - 1}, length, font::normal, muted, .9f);
     }
+    const int railY = heading.y + heading.h / 2;
+    c_.hline(railStart, railY + 3, l.counter.x - railStart - 6, 0xff423e53);
+    c_.line(l.counter.x - 7, railY + 3, l.counter.x - 1, railY - 3, 1, 0xff77738e);
+    c_.hline(l.counter.x, railY - 3, 7, 0xff77738e);
+
+    const Rect play = l.play;
+    const bool notes = readings_[id::mode].value >= .5, sync = pattern_.running && !localPlay_;
+    const char* action = notes ? "Notes" : localPlay_ ? "Stop" : sync ? "Sync" : "Play";
+    const uint32_t keyInk = notes ? muted : 0xff19221b;
+    c_.fillChamfer(play, 7, notes ? 0xff373344 : sync ? 0xffa5cbea : lime);
+    const int nameW = textWidth(action, font::normal), icon = play.x + (play.w - nameW - 19) / 2;
+    const int mid = play.y + play.h / 2;
+    if (localPlay_ || notes)
+        c_.fillChamfer({icon, mid - 4, 9, 9}, 1, keyInk);
+    else if (sync)
+    {
+        c_.line(icon, mid + 4, icon + 5, mid - 4, 2.f, keyInk);
+        c_.line(icon + 5, mid + 4, icon + 10, mid - 4, 2.f, keyInk);
+    }
+    else
+        for (int i = 0; i < 7; ++i) c_.fill(icon + i, mid - (6 - i), 1, 2 * (6 - i) + 1, keyInk);
+    controlText(c_, {icon + 18, play.y, nameW + 2, play.h}, action, font::normal, keyInk);
     constexpr const char* labels[]{"Step", "Pitch", "Gate", "Accent", "Slide"};
     for (int lane = 0; lane < 5; ++lane)
     {
@@ -321,17 +463,16 @@ void PanelUI::paintScore()
         c_.fill(col, bed);
         c_.fill(col.x, col.y, i % 4 ? 1 : 2, col.h, i % 4 ? 0xff312a3d : 0xff615770);
         const Rect ruler = l.lane(0);
-        if (hit) c_.fill(col.x + 1, ruler.y, col.w - 1, ruler.h, 0xff56487e);
-        if (i == hoverStep_ && live) c_.hline(col.x + 2, ruler.y, col.w - 3, lilac);
-        char number[4];
-        std::snprintf(number, sizeof(number), "%02d", i + 1);
-        controlText(c_, {col.x, ruler.y, col.w, ruler.h}, number, font::normal,
-                    hit    ? light
-                    : live ? muted
-                           : quiet,
-                    .85f, 1);
+        if (!hit)
+        {
+            if (i == hoverStep_ && live) c_.hline(col.x + 2, ruler.y, col.w - 3, lilac);
+            char number[4];
+            std::snprintf(number, sizeof(number), "%02d", i + 1);
+            controlText(c_, {col.x, ruler.y, col.w, ruler.h}, number, font::normal, live ? muted : quiet, .85f, 1);
+        }
         for (int lane = 1; lane < 5; ++lane)
             c_.hline(col.x + 1, l.lane(lane).y, col.w - 1, 0xff382f45);
+        if (hit) c_.fill(col.x + 1, pitch.y, 1, col.y + col.h - pitch.y, mix(bed, lime, .43f));
         if (!live) continue;
         const int mid = col.x + col.w / 2, markSize = std::clamp(col.w / 9, 3, 6);
         const uint32_t bits = uint32_t(1) << i;
@@ -397,9 +538,15 @@ void PanelUI::paintSection(size_t index)
     plate(c_, group, 0xff171520);
     const int hh = layout_.headerHeight;
     c_.gradient({group.x + 4, group.y + 1, group.w - 8, hh - 1}, mix(glass, section.ink, .12f), 0xff1b1826);
-    c_.fill(group.x + 3, group.y + 4, 3, hh - 8, section.ink);
-    controlText(c_, {group.x + 12, group.y, group.w - 24, hh}, section.name, font::large, light,
-                hh < 25 ? .83f : 1.f);
+    const int mid = group.y + hh / 2, left = group.x + 19, right = group.x + group.w - 9;
+    const float zoom = hh < 25 ? .78f : .88f;
+    const int labelW = int(std::ceil(textWidth(section.name, font::large) * zoom)) + 1;
+    c_.line(group.x + 5, mid + 5, group.x + 11, mid - 5, 2.1f, section.ink);
+    controlText(c_, {left, group.y, labelW, hh}, section.name, font::large, light, zoom);
+    const int rail = left + labelW + 9;
+    const uint32_t etch = mix(glass, section.ink, .25f);
+    c_.line(rail, mid + 3, rail + 5, mid - 2, 1.f, etch);
+    c_.hline(rail + 5, mid - 2, right - rail - 5, etch);
     for (int j = 0; j < 2 * section.columns; ++j)
         paintSlot(section.slots[j], section.ink);
 }

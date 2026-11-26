@@ -338,12 +338,12 @@ Rect PanelUI::update(uint64_t now)
     const bool focusChanged = focus() != paintedFocus_;
     const bool hoverChanged = hover_ != paintedHover_,
                stepHoverChanged = hoverStep_ != paintedHoverStep_ || hoverLane_ != paintedHoverLane_;
-    const auto hoveredHeader = [](int slot) { return slot == int(id::seedBack) || slot == int(id::regen); };
-    const bool header = full || focusChanged || playChanged || patternChanged || changed[id::seed] ||
-                        changed[id::mode] ||
-                        (hoverChanged && (hoveredHeader(hover_) || hoveredHeader(paintedHover_)));
-    const bool score =
-        full || patternChanged || focusChanged || stepHoverChanged || changed[id::scale] || changed[id::root];
+    const auto mastSlot = [](int slot) {
+        return slot == int(id::seed) || slot == int(id::seedBack) || slot == int(id::regen);
+    };
+    const bool mast = full || changed[id::seed] || (hoverChanged && (mastSlot(hover_) || mastSlot(paintedHover_)));
+    const bool score = full || patternChanged || focusChanged || stepHoverChanged || playChanged ||
+                       changed[id::scale] || changed[id::root] || changed[id::mode];
     const bool toolbar = full || lastLearn_ != learn || paintedPreset_ != p_->currentPresetIndex || hoverChanged ||
                          stepHoverChanged || (hover_ >= 0 && hover_ < int(id::count) && changed[hover_]);
     lastLearn_ = learn;
@@ -359,18 +359,17 @@ Rect PanelUI::update(uint64_t now)
         paintToolbar();
         damage = damage.unite(layout_.toolbar);
     }
-    if (header)
+    if (mast)
     {
-        paintHeader();
-        damage = damage.unite(layout_.brand.unite(layout_.slots[id::regen]));
+        paintMast();
+        damage = damage.unite(layout_.mast);
     }
     if (score)
     {
         paintScore();
         damage = damage.unite(layout_.score);
     }
-    damage =
-        damage.unite(paintArt(full || focusChanged || patternChanged || changed[id::seed], header, score, now));
+    damage = damage.unite(paintArt(mast, score, now));
     for (size_t i = 0; i < std::size(sections); ++i)
     {
         if (full)
@@ -421,7 +420,7 @@ void PanelUI::finishDrag()
 
 void PanelUI::setHover(float x, float y)
 {
-    hover_ = layout_.hitSlot(x, y);
+    hover_ = layout_.crest.contains(x, y) ? crestHover : layout_.hitSlot(x, y);
     hoverStep_ = hoverLane_ = -1;
     if (!layout_.grid.contains(x, y)) return;
     const int step = layout_.stepAt(int(x), columns());

@@ -4,11 +4,11 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 ![Slink’s one-screen desktop editor during local playback](assets/thorn-crown-desktop.png)
 
-[View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [Watch the editor during playback](assets/desktop-preview.gif)
+[View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [Watch the editor during playback](assets/desktop-preview.gif) · [View the Windows editor under CrossOver](assets/windows-preview.png)
 
-Slink **0.9.0** puts all 34 parameters in one resizable window. At 960 × 540 the full instrument still fits. The chrome crest, step counter, whip storm and rave smiley use the artwork from the freesp16 Thorn Crown panel.
+Slink **0.9.1** puts all 34 parameters in one resizable window, down to 960 × 540. The chrome crest grows out of the Slink wordmark, and its etched contours lead to the seed controls. The turning smiley is the face of the **Regen** button.
 
-One score shows the numbered steps, pitch contour and note names above the Gate, Accent and Slide rows. Steps 17–32 appear alongside steps 1–16 as soon as the pattern length exceeds 16. The same highlighted column follows the playhead through every row.
+The step count and transport sit above the score. A moving chrome ribbon picks out the active step number, and a lime edge leads down its pitch, Gate, Accent and Slide cells. Steps 17–32 appear alongside steps 1–16 as soon as the pattern length exceeds 16.
 
 | Section | Controls |
 | --- | --- |
@@ -23,7 +23,7 @@ One score shows the numbered steps, pitch contour and note names above the Gate,
 - **Play and recall.** Click **Play** to preview while the DAW is stopped. **Stop** ends the preview. The DAW takes over on transport start and the button reads **Sync**. Shift-click requests DAW transport in hosts that support it. Drag the seed number or barcode to set it, click **Regen** for a fresh pattern, or click **Recall** to restore a previously played seed.
 - **Shape the sound.** Drag across the filter plot for cutoff and up for resonance. Each LFO plot spans one beat. Drag across for rate and up for depth. Pitch depth reads in semitones and cutoff depth in octaves.
 - **Use desktop controls.** Drag or scroll any value. Hold Shift or enable **Fine** for smaller adjustments. Click a choice to open its menu, double-click to reset, or right-click for reset and MIDI mapping. Left and Right select a step while stopped. Up and Down adjust the last touched parameter.
-- **Control the artwork.** Click the crest to hold its camera, or Shift-click it to cut to the next angle. **Motion off** pauses the crest, smiley and storm while the score follows playback.
+- **Control the artwork.** Click the crest to hold its camera, or Shift-click it to cut to the next angle. **Motion off** freezes the crest, smiley and ribbon textures while the playhead continues to mark each step.
 
 The CLAP ID, parameter IDs and choice order, factory preset keys, MIDI note behavior, and desktop state envelope stay compatible with previous builds. Older projects load without manual step edits. A raw state from the freesp16 build can also carry the shared step-edit records.
 
@@ -55,6 +55,6 @@ Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\C
 
 Both desktop targets embed the same Thorn Crown artwork bank as freesp16. The desktop editor draws the score, parameter sections and XY plots at the window’s device scale. Cocoa and Win32 present the same editor and send pointer events through the same hit targets. The step editor shares the hardware version’s audition and saved-edit logic.
 
-Normal builds use the committed bank. Rebuild it with `tools/sp16_thorn/bake_native.py` from the repository root. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md).
+Normal builds use the committed artwork. Rebuild the shared bank with `tools/sp16_thorn/bake_native.py` from the repository root. The desktop wordmark keeps the full resolution of the original lettering. To refresh it, run `python3 mac-clap/tools/bake_wordmark.py` with Pillow installed. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md).
 
-The desktop host test exercises all 34 parameter targets, editing at both ends of a 32-step score, project recall, MIDI learn, filter and LFO gestures, transport takeover, motion holds and native window resizing. Run `host_test --snap <directory> <plugin>` to capture the 16-step editor, the minimum window at Retina scale and a 32-step pattern. `--film <directory>` also captures four seconds of playback at 15 fps.
+The desktop host test exercises all 34 parameter targets, editing at both ends of a 32-step score, project recall, MIDI learn, filter and LFO gestures, transport takeover, motion holds and native window resizing. Run `host_test --snap <directory> <plugin>` to capture the 16-step editor, the minimum window at Retina scale and a 32-step pattern. `--film <directory>` also captures four seconds of playback at 25 fps.

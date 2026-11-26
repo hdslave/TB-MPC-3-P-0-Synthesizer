@@ -33,23 +33,23 @@ struct Section
     std::array<int, 6> slots;
 };
 inline constexpr Section sections[] = {
-    {"Perform", 0xffb7c5ff, 3, {id::cutoff, id::resonance, id::envMod, id::decay, id::accent, id::volume}},
-    {"Voice", 0xff9aafff, 3, {id::waveform, id::tuning, id::drive, id::filter, id::peakSpread, filterPlot}},
-    {"Glide", 0xffdea3ff, 2, {id::glide, id::slideTime, id::gate, id::accentDecay, -1, -1}},
-    {"Pattern", 0xffb3ec87, 3, {id::seedMode, id::mutate, id::density, id::root, id::scale, id::transpose}},
-    {"Modulation",
+    {"PERFORM", 0xffb7c5ff, 3, {id::cutoff, id::resonance, id::envMod, id::decay, id::accent, id::volume}},
+    {"VOICE", 0xff9aafff, 3, {id::waveform, id::tuning, id::drive, id::filter, id::peakSpread, filterPlot}},
+    {"GLIDE", 0xffdea3ff, 2, {id::glide, id::slideTime, id::gate, id::accentDecay, -1, -1}},
+    {"PATTERN", 0xffb3ec87, 3, {id::seedMode, id::mutate, id::density, id::root, id::scale, id::transpose}},
+    {"MODULATION",
      0xffc7a7ff,
      3,
      {pitchPlot, id::pitchLfoAmount, id::pitchLfoSpeed, cutoffPlot, id::cutoffLfoAmount, id::cutoffLfoSpeed}},
-    {"Clock", 0xff8dd6da, 3, {id::mode, id::clockDiv, id::swing, id::reset, id::steps, id::octave}}};
+    {"CLOCK", 0xff8dd6da, 3, {id::mode, id::clockDiv, id::swing, id::reset, id::steps, id::octave}}};
 
 struct ConsoleLayout
 {
     std::array<Rect, size_t(Item::Count)> tools{};
     std::array<Rect, std::size(sections)> groups{};
     std::array<Rect, slotCount> slots{};
-    Rect toolbar, status, brand, logo, crest, counter, play, face, storm;
-    Rect score, caption, grid;
+    Rect toolbar, status, mast, logo, crest, face;
+    Rect score, caption, counter, play, grid;
     int headerHeight = 0, gutter = 0;
 
     void arrange(int width, int height)
@@ -74,28 +74,30 @@ struct ConsoleLayout
         tool(Item::ClearCc, 75);
         tool(Item::Motion, 92);
 
-        const int y = margin + toolHeight + gap, h = std::clamp(height * 15 / 100, 72, 160);
-        const int brandWidth = std::clamp(usable / 5, 184, 380), faceWidth = h * 4 / 5;
-        brand = {margin, y, brandWidth, h};
-        const int footer = std::clamp(h / 3, 24, 39);
-        logo = {brand.x + 5, y + 3, brandWidth - 10, h - footer - 5};
-        slots[id::seedBack] = {brand.x + brandWidth - std::clamp(brandWidth / 4, 48, 74), y + h - footer,
-                               std::clamp(brandWidth / 4, 48, 74), footer};
-        slots[id::seed] = {brand.x, y + h - footer, brandWidth - slots[id::seedBack].w - 2, footer};
-        slots[id::regen] = {width - margin - faceWidth, y, faceWidth, h};
-        face = {slots[id::regen].x + 3, y + 2, faceWidth - 6, h - footer + 1};
-        const int playWidth = std::clamp(usable / 11, 86, 145);
-        play = {slots[id::regen].x - gap - playWidth, y, playWidth, h};
-        const int counterWidth = h * 100 / 90;
-        counter = {play.x - counterWidth, y, counterWidth, h};
-        crest = {brand.x + brandWidth + gap, y, counter.x - brand.x - brandWidth - 2 * gap, h};
+        const int y = margin + toolHeight + gap, h = std::clamp(height * 13 / 100, 68, 132);
+        mast = {margin, y, usable, h};
+        const int inset = std::clamp(usable / 64, 12, 28), right = margin + usable - inset;
+        const int keyH = std::clamp(h / 2, 34, 54), keyY = y + (h - keyH) / 2;
+        const int regenW = std::clamp(usable / 10, 99, 144), backW = std::clamp(usable / 18, 60, 82);
+        slots[id::regen] = {right - regenW, keyY - 2, regenW, keyH + 4};
+        slots[id::seedBack] = {slots[id::regen].x - gap - backW, keyY, backW, keyH};
+        const int seedW = std::clamp(usable / 6, 147, 240), seedH = std::min(h - 8, keyH + 12);
+        slots[id::seed] = {slots[id::seedBack].x - 2 * gap - seedW, y + (h - seedH) / 2, seedW, seedH};
+        const int faceW = keyH + 4;
+        face = {slots[id::regen].x + 2, keyY - 2, faceW, keyH + 4};
+        const int logoW = std::clamp(usable / 5, 184, 325);
+        logo = {margin + inset, y + h / 8, logoW, h * 3 / 4};
+        const int crestLeft = logo.x + logoW * 4 / 5;
+        const int crestRoom = slots[id::seed].x - inset - crestLeft, crestW = std::min(h * 5, crestRoom);
+        crest = {crestLeft + std::min((crestRoom - crestW) / 2, h / 5), y, crestW, h};
 
-        const int scoreY = y + h + gap, scoreH = std::clamp(height * 32 / 100, 158, 365);
+        const int scoreY = y + h, scoreH = std::clamp(height * 34 / 100, 172, 391) + gap;
         score = {margin, scoreY, usable, scoreH};
-        const int captionH = std::clamp(scoreH / 7, 23, 38);
+        const int captionH = std::clamp(scoreH / 5, 32, 53);
         caption = {margin, scoreY, usable, captionH};
-        storm = {margin + usable - std::clamp(usable / 5, 150, 320) - 5, scoreY + 3,
-                 std::clamp(usable / 5, 150, 320), captionH - 6};
+        const int playW = std::clamp(usable / 11, 90, 138);
+        play = {right - playW, scoreY + 4, playW, captionH - 8};
+        counter = {play.x - 96, scoreY, 84, captionH};
         gutter = std::clamp(usable / 13, 86, 110);
         grid = {margin + gutter, scoreY + captionH, usable - gutter - 2, scoreH - captionH - 2};
 

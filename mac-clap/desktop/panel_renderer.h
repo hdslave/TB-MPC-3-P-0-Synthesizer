@@ -290,6 +290,12 @@ public:
     // both integer and fractional window scales without uneven pixel-column artifacts.
     void blitSharp (const uint32_t* src, int sw, int sh, const Rect& dst, int stride = 0)
     {
+        blitScaled (src, sw, sh, dst, stride, [] (uint32_t& out, uint32_t color) { out = color | 0xFF000000u; });
+    }
+
+    template <typename WritePixel>
+    void blitScaled (const uint32_t* src, int sw, int sh, const Rect& dst, int stride, WritePixel write)
+    {
         if (!src || dst.w <= 0 || dst.h <= 0 || sw <= 0 || sh <= 0) return;
         if (!stride) stride = sw;
         const int dx0 = dst.x * s, dy0 = dst.y * s;
@@ -321,7 +327,7 @@ public:
                 const int ix1 = std::clamp ((int) sx1, 0, sw - 1);
                 if (ix0 == ix1 && wy == 0u)
                 {
-                    drow[pxl] = row0[ix0] | 0xFF000000u;
+                    write (drow[pxl], row0[ix0]);
                 }
                 else
                 {
@@ -334,7 +340,7 @@ public:
                         if (wx > 0u) bot = blend (bot, row1[ix1], wx);
                         top = blend (top, bot, wy);
                     }
-                    drow[pxl] = top | 0xFF000000u;
+                    write (drow[pxl], top);
                 }
             }
         }

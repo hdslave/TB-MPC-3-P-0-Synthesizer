@@ -4,3 +4,8 @@
 .p2align 4
 _slink_sp16_thorn_bank:
 .incbin "@THORN_BANK@"
+.globl _slink_desktop_wordmark
+.private_extern _slink_desktop_wordmark
+.p2align 4
+_slink_desktop_wordmark:
+.incbin "@THORN_WORDMARK@"

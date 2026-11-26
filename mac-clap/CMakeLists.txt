@@ -47,6 +47,12 @@ set(SHELL_SRCS
     "${DESKTOP_DIR}/console_paint.cpp"
 )
 set(THORN_BANK "${CMAKE_SOURCE_DIR}/../assets/sp16-thorn/panel.bank")
+set(THORN_WORDMARK "${CMAKE_SOURCE_DIR}/assets/thorn-wordmark.bgra")
+file(SIZE "${THORN_WORDMARK}" WORDMARK_BYTES)
+if(NOT WORDMARK_BYTES EQUAL 293760)
+    message(FATAL_ERROR "Expected the 680 x 108 BGRA Slink wordmark")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${THORN_WORDMARK}")
 if(APPLE)
     enable_language(ASM)
     set(BANK_SRC "${CMAKE_BINARY_DIR}/thorn_bank.S")
@@ -61,7 +67,7 @@ elseif(WIN32)
     list(APPEND SHELL_SRCS "${DESKTOP_DIR}/gui_win32.cpp" "${DESKTOP_DIR}/thorn_resource.cpp"
         "${DESKTOP_DIR}/win32/clap.def")
 endif()
-set_source_files_properties("${BANK_SRC}" PROPERTIES OBJECT_DEPENDS "${THORN_BANK}")
+set_source_files_properties("${BANK_SRC}" PROPERTIES OBJECT_DEPENDS "${THORN_BANK};${THORN_WORDMARK}")
 list(APPEND SHELL_SRCS "${BANK_SRC}")
 
 add_library(${TARGET_NAME} MODULE

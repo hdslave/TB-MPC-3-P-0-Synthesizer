@@ -370,15 +370,25 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(render() && width==1920 && height==1080,"Retina buffer")) return false;
     const auto art=area(desk.crest);
     if (!check(std::set<uint32_t>(art.begin(),art.end()).size()>100,"chrome artwork bank rendered")) return false;
+    const auto logo=area({desk.logo.x,desk.logo.y,desk.logo.w*2/3,desk.logo.h});
+    if (!check(std::count_if(logo.begin(),logo.end(),[](uint32_t px) { return ((px>>8)&255)>145; })>50,
+               "highlights from the desktop wordmark are visible")) return false;
     for (const auto size : {std::pair{960,540},std::pair{1352,708},std::pair{960,1100},std::pair{2400,540}})
     {
         ConsoleLayout layout;
         layout.arrange(size.first,size.second);
+        const Rect regen=layout.slots[id::regen];
+        if (!check(regen.contains(layout.face.x,layout.face.y) &&
+                   regen.contains(layout.face.x+layout.face.w-1,layout.face.y+layout.face.h-1) &&
+                   layout.caption.intersect(layout.play).w==layout.play.w,
+                   "smiley is inside Regen and transport belongs to the score")) return false;
         for (int i=0;i<slotCount;++i)
         {
             const Rect r=layout.slots[i];
             if (!check(r.w>=40 && r.h>=20 && r.x>=0 && r.y>=0 && r.x+r.w<=size.first && r.y+r.h<=size.second
                        && layout.hitSlot(r.x+r.w/2,r.y+r.h/2)==i,"every parameter and XY plot has a visible hit target")) return false;
+            if (!check(r.intersect(layout.crest).empty() && r.intersect(layout.play).empty(),
+                       "camera and transport do not intercept parameter edits")) return false;
             for (int j=0;j<i;++j)
                 if (!check(r.intersect(layout.slots[j]).empty(),"control hit targets do not overlap")) return false;
         }
@@ -399,7 +409,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         if (captureMotion)
         {
             // Run the 48 kHz host alongside the artwork clock for four seconds.
-            constexpr int fps=15;
+            constexpr int fps=25;
             int64_t rendered=0;
             const auto start=std::chrono::steady_clock::now();
             for (int i=0;i<4*fps;++i)
@@ -594,17 +604,20 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     process();
     if (!check(value("Seed")==playedSeed,"Recall restores the previous played seed")) return false;
 
+    press(cell(0,0));
     const auto crest=[&] { return area(desk.crest); };
-    const auto storm=[&] { return area(desk.storm); };
+    const auto storm=[&] { return area(cell(0,0)); };
+    const auto smile=[&] { return area(desk.face); };
     press(desk.crest);
-    const auto held=crest(), moving=storm();
+    const auto held=crest(), moving=storm(), turning=smile(), nextCap=area(cell(1,0));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    if (!check(crest()==held && storm()!=moving,"crest hold is independent of storm")) return false;
+    if (!check(crest()==held && storm()!=moving && smile()!=turning && area(cell(1,0))==nextCap,
+               "held crest, moving Regen and chrome confined to the focused step")) return false;
     press(desk.crest);
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
     if (!check(crest()!=held,"crest resumes")) return false;
     press(desk.tools[size_t(Item::Motion)]);
-    const auto frozenCrest=crest(), frozenStorm=storm();
+    const auto frozenCrest=crest(), frozenStorm=storm(), frozenFace=smile();
     set("Resonance",.28);
     mouse(1,0,0);
     const auto* partial=render();
@@ -612,9 +625,14 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     ui.ms_per_full_render(plug,960,540,scale);
     if (!check(std::equal(expected.begin(),expected.end(),render()),"partial and full paints match at Retina scale")) return false;
     std::this_thread::sleep_for(std::chrono::milliseconds(130));
-    if (!check(crest()==frozenCrest && storm()==frozenStorm,"global motion hold")) return false;
+    if (!check(crest()==frozenCrest && storm()==frozenStorm && smile()==frozenFace,"global motion hold")) return false;
     press(desk.crest,1);
     if (!check(crest()!=frozenCrest && storm()==frozenStorm,"manual cut while global motion is held")) return false;
+    const auto lastCap=area(cell(31,0));
+    press(cell(31,0)); mouse(1,0,0);
+    if (!check(storm()!=frozenStorm && area(cell(31,0))!=lastCap,"held chrome follows selection to step 32")) return false;
+    press(cell(0,0)); mouse(1,0,0);
+    if (!check(storm()==frozenStorm && area(cell(31,0))==lastCap,"a departing playhead leaves a clean ruler")) return false;
     return true;
 }
 
