@@ -16,7 +16,8 @@
 //
 // Cost, a sample, while sounding: one exp2 (cutoff), one division (the filter's solve; Twin Peak's two ladders share
 // it), about 110 other operations (Twin Peak about twice that); a second division while Drive is on; the pitch's exp2
-// only while it slides or the tuning moves. With the VCA shut: the envelopes only, then nothing.
+// only while it slides or the tuning moves. With the VCA shut: the envelopes only, then nothing. Either way the
+// filter is cleared on the way to silence, so every gate after one starts it clean.
 // The knobs are eased every 8 samples.
 #pragma once
 
@@ -218,7 +219,9 @@ public:
             else
             {
                 // Nothing moves until the next gate: the rest of this run is silence. The knobs are taken as they are
-                // (eased or not, they end the same, whatever the host's block size).
+                // (eased or not, they end the same, whatever the host's block size). The filter starts clean at the
+                // next gate, as after idle(): a note held until its MEG died comes here straight from sample().
+                s1 = s2 = s3 = s4 = t1 = t2 = t3 = t4 = 0.0f;
                 if (dirty)
                     retarget();
                 if (moving)

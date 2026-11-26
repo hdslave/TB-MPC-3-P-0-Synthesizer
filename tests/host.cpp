@@ -2737,6 +2737,96 @@ void testMasterFixes()
     }
 }
 
+// 0.8.1: two defects a review reproduced.
+void testCleanAttackAndShortNotes()
+{
+    auto peak = [] (const std::vector<float>& x, size_t from, size_t to) {
+        float m = 0;
+        for (size_t i = from; i < to && i < x.size(); ++i) m = std::max (m, std::fabs (x[i]));
+        return m;
+    };
+    // A note held until its MEG has died away (Decay 0: about 0.6 s), let go, then a new one: the filter starts the
+    // new note clean, as after a shorter note. Before, the VCA's closing went straight to the silent fast path, which
+    // never cleared the ladder, so the next attack began on the old note's filter state (0.15 off for 7 - 20 ms).
+    // The reference holds its first note at Decay 2 s (the MEG still up when let go, so the filter is cleared on the
+    // way to silence), with Decay 0 from the last block before the release: the oscillator, the VCA and the knobs run
+    // the same in both, the MEG is 0 in both by the second note, and from that note on the two are the same to the bit.
+    for (double filter : { 0.0, 1.0, 2.0 })
+    {
+        const uint64_t release = 48000, again = 48000 + 128 * 260; // 1 s held, then 0.69 s of silence
+        auto playWith = [&] (double firstDecay) {
+            Instance a;
+            a.setup ({ { "Mode", 1.0 }, { "Filter", filter }, { "Cutoff", 0.45 }, { "Resonance", 0.5 }, { "Env Mod", 0.7 },
+                       { "Accent", 0.0 }, { "Decay", firstDecay } });
+            std::vector<float> l, r;
+            a.render ((uint32_t) (again + 12000), 128, l, r, stoppedTransport, [&] (uint64_t at, uint32_t, Events& e) {
+                if (at == 0) e.note (0, CLAP_EVENT_NOTE_ON, 36, 0.6);
+                if (at == release - 128) a.set (e, "Decay", 0.0);
+                if (at == release) e.note (0, CLAP_EVENT_NOTE_OFF, 36, 0.0);
+                if (at == again) e.note (0, CLAP_EVENT_NOTE_ON, 36, 0.6);
+                if (at == again + 9600) e.note (0, CLAP_EVENT_NOTE_OFF, 36, 0.0);
+            });
+            return l;
+        };
+        const auto longNote = playWith (0.0), cleared = playWith (1.0);
+        float worst = 0.0f;
+        for (size_t i = again; i < longNote.size(); ++i)
+            worst = std::max (worst, std::fabs (longNote[i] - cleared[i]));
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug filter %.0f: the attack after a long note differs from a clean one by %.4f\n", filter, worst);
+        CHECK (peak (longNote, (size_t) release - 4800, (size_t) release) > 0.01f); // the first note sounds to the end
+        CHECK (peak (longNote, (size_t) again - 4800, (size_t) again) == 0.0f);    // then silence
+        CHECK (peak (longNote, (size_t) again, (size_t) again + 4800) > 0.01f);
+        CHECK (worst == 0.0f);
+    }
+
+    // Mode: Notes, a note on and its note off in one block (hdslaveOS sends a note shorter than its 128-frame block
+    // so, both at frame 0): it plays, its gate open for 128 frames, exactly as when its off comes a block later. Before,
+    // the gate shut before a sample sounded, and nothing played.
+    {
+        const Patch p { { "Mode", 1.0 }, { "Cutoff", 0.5 }, { "Resonance", 0.4 }, { "Env Mod", 0.6 }, { "Accent", 0.6 } };
+        const uint64_t at = 1280;
+        const auto shortNote = playHits (p, { noteOnAt (at, 48), noteOffAt (at, 48) }, 9600);
+        const auto blockLong = playHits (p, { noteOnAt (at, 48), noteOffAt (at + 128, 48) }, 9600);
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug on and off in one block: peak %.4f (a block long: %.4f)\n", peak (shortNote, 0, 9600), peak (blockLong, 0, 9600));
+        CHECK (peak (shortNote, at, at + 2400) > 0.01f);
+        CHECK (shortNote == blockLong);
+        CHECK (peak (shortNote, at + 4800, 9600) < 1e-4f); // and it ends
+        // The same at every block size, and for an accented note, and for on, on, off of the key (Melodee's retrigger).
+        for (uint32_t block : { 1u, 37u, 4096u })
+            CHECK (playHits (p, { noteOnAt (at, 48), noteOffAt (at, 48) }, 9600, stoppedTransport, block) == shortNote);
+        CHECK (playHits (p, { noteOnAt (at, 48), noteOnAt (at, 48), noteOffAt (at, 48) }, 9600) == shortNote);
+        CHECK (playHits (p, { noteOnAt (at, 48, 1.0), noteOffAt (at, 48) }, 9600)
+               == playHits (p, { noteOnAt (at, 48, 1.0), noteOffAt (at + 128, 48) }, 9600));
+        // Two keys struck and let go on one frame: the gate is open for the 128 frames as well.
+        CHECK (playHits (p, { noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at, 48) }, 9600)
+               == playHits (p, { noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at + 128, 48) }, 9600));
+        // Inside those 128 frames, a choke of the key, All Notes Off and All Sound Off shut it at once, as a note off
+        // there would; a choke of another key does not; a new note strikes as after a note off (no glide from it).
+        const auto offAt64 = playHits (p, { noteOnAt (at, 48), noteOffAt (at + 64, 48) }, 9600, stoppedTransport, 1);
+        CHECK (offAt64 != shortNote);
+        for (const Hit& cut : { chokeAt (at + 64, 48), chokeAt (at + 64, -1), midiAt (at + 64, 0xb0, 123, 0), midiAt (at + 64, 0xb0, 120, 0) })
+            CHECK (playHits (p, { noteOnAt (at, 48), noteOffAt (at, 48), cut }, 9600, stoppedTransport, 1) == offAt64);
+        CHECK (playHits (p, { noteOnAt (at, 48), noteOffAt (at, 48), chokeAt (at + 64, 50) }, 9600, stoppedTransport, 1) == shortNote);
+        CHECK (playHits (p, { noteOnAt (at, 48), noteOffAt (at, 48), noteOnAt (at + 64, 55) }, 9600, stoppedTransport, 1)
+               == playHits (p, { noteOnAt (at, 48), noteOffAt (at + 64, 48), noteOnAt (at + 64, 55) }, 9600, stoppedTransport, 1));
+        // Switching Mode in them stops it, as it stops a held note.
+        auto switched = [&] (bool shortOne) {
+            Instance a;
+            a.setup (p);
+            std::vector<float> l, r;
+            a.render (9600, 1, l, r, stoppedTransport, [&] (uint64_t f, uint32_t, Events& e) {
+                if (f == at) e.note (0, CLAP_EVENT_NOTE_ON, 48, 0.6);
+                if (f == (shortOne ? at : at + 64)) e.note (0, CLAP_EVENT_NOTE_OFF, 48, 0.0);
+                if (f == at + 64) a.set (e, "Mode", 0.0);
+            });
+            return l;
+        };
+        CHECK (switched (true) == switched (false));
+    }
+}
+
 // Run against the shipped ARM object with freesp16's screen ABI and pad pitches.
 void testSp16Panel(const std::string& folder)
 {
@@ -3118,6 +3208,7 @@ int main (int argc, char** argv)
     testTempoLimits();
     testBendAndWheel();
     testMasterFixes();
+    testCleanAttackAndShortNotes();
     testExtremes();
     demos (argv[2]);
     entry->deinit();

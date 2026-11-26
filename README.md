@@ -21,7 +21,7 @@
 
 The desktop Thorn Crown panel brings the animated chrome crest, live pattern and all 34 controls into one window. [Desktop build and controls](mac-clap/)
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.0).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.1).
 
 On hdslaveOS 0.8.2, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
@@ -94,6 +94,11 @@ Both LFOs run when playing notes with transport stopped. Each Amount starts at z
 - **18 dB**: three equal stages in a loop, the 18 dB/octave ladder of acid filters such as Doepfer's A-103. Brighter
   than the diode ladder with Resonance low, and it self-oscillates at the top of Resonance (from 86 %), at about
   the peak's pitch.
+
+Each filter is cleared once the VCA has closed, so a gate after silence starts it clean, however long the note before
+it was held. (Before 0.8.1, after a gate held until its filter envelope had died away, about 1.3 s at the default
+Decay, as a long note in Mode: Notes or a long slid gate, the next attack began on the old note's filter state and
+differed from a clean start by up to 0.15 for its first 7 – 20 ms.)
 
 Calibration: the 303's service notes ask for the resonance to sit at about 500 Hz with Cutoff at its middle and
 Resonance full. Each filter is placed so (Env Mod at 0; the tests play C1 and find the strongest harmonic at 490 Hz,
@@ -178,6 +183,9 @@ Melodee's notes (its roll, its pads, a keyboard) play the voice, the way MIDI-pl
   its velocity; over another held key it glides as above. Its one note off lets it go. (Before 0.4.4 it ran into the
   note before, with no new envelope.)
 - Letting go of the newest note glides back to the newest one still held; letting go of the last closes the gate.
+- A note let go on the frame it started (hdslaveOS sends a note shorter than its 128-frame block that way, its on and
+  off together) keeps the gate open for 128 frames, as a note one block long: it sounds. A choke, All Notes Off, All
+  Sound Off or a Mode switch in that time closes it at once. (Before 0.8.1 it played nothing.)
 - The host stopping does not stop a held note. Switching Mode stops the note sounding.
 
 Tuning, the voice's knobs and Accent work as in TB-3PO mode; Transpose, Octave and the pattern's settings do not.
@@ -262,12 +270,12 @@ Instructions a 128-frame block (48 kHz), counted by callgrind (`tools/bench.sh`)
 
 | Case | Instructions | Share of a block on one A55 core |
 |---|---|---|
-| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 29,475 | 0.61 % |
-| The same through Twin Peak (two ladders), Drive full | 39,432 | 0.82 % |
-| The same through 18 dB, Drive full | 29,351 | 0.61 % |
-| Twin Peak, full Drive, both LFOs at full depth | 53,329 | 1.11 % |
-| Typical: the default patch | 19,019 | 0.40 % |
-| Stopped | 660 | 0.01 % |
+| Worst: every step gated at 1/64, full resonance, accent and decay, sliding | 31,993 | 0.67 % |
+| The same through Twin Peak (two ladders), Drive full | 41,975 | 0.87 % |
+| The same through 18 dB, Drive full | 32,125 | 0.67 % |
+| Twin Peak, full Drive, both LFOs at full depth | 56,385 | 1.17 % |
+| Typical: the default patch | 20,586 | 0.43 % |
+| Stopped | 604 | 0.01 % |
 
 The voice runs at the host's rate. A sounding sample costs one exp2 for the cutoff and one division: the diode
 ladder's zero-delay solve has five denominators that are polynomials in the cutoff, so their reciprocals come from
@@ -278,7 +286,7 @@ nothing until it is hit (then a step's pitch, or a pattern made again once when 
 
 ## freesp16 on SP-16
 
-The ARMv7 build is version **0.8.0**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
+The ARMv7 build is version **0.8.1**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
 
 Slink on freesp16 opens on the **Thorn Crown Pattern** page. Sixteen columns show the step number, pitch, gate, accent and outgoing slide. The cobalt column follows playback. The note row uses Razor Choir, with hooked chrome pitch letters and matching octave numerals. The numbered headers and panel controls use Barlow SemiBold. The octave sits low to the right of each letter, with the sharp directly above it when present. Press a numbered header to audition its step. Drag a pitch vertically to edit it in semitones. Tap Gate, Accent or Slide to toggle it, or drag across the row to paint the same setting. The first edit locks a random pattern to its displayed seed. The project saves edits with that seed. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
 
@@ -365,7 +373,10 @@ statically and needs only the MPC's libc and libm.
   scale), the 0.5.2 fixes (All Sound Off closing a sequencer gate, a scale change requantizing the transposition,
   the seed told DONT_RECORD, nan and inf refused as text, a null flush, CC 121 centring bend and the wheel, a
   state settling as it lands over a sounding note, Play's window the same at every block size, a state from a
-  newer version refused, and no rate at all), bounded output at random settings, and the demo renders of the presets.
+  newer version refused, and no rate at all), the 0.8.1 fixes (the attack after a note held until its filter
+  envelope died the same to the bit as a clean one, in each filter; in Mode: Notes a note on and off in one block the
+  same to the bit as one a block long, at any block size, on, on, off too, and a choke, All Notes Off, All Sound Off,
+  a new note or a Mode switch inside it), bounded output at random settings, and the demo renders of the presets.
 - `tests/fingerprint.cpp` renders 77 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
   MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and
