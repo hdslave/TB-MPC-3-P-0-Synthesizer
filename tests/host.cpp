@@ -2799,22 +2799,34 @@ void testCleanAttackAndShortNotes()
         CHECK (playHits (p, { noteOnAt (at, 48), noteOnAt (at, 48), noteOffAt (at, 48) }, 9600) == shortNote);
         CHECK (playHits (p, { noteOnAt (at, 48, 1.0), noteOffAt (at, 48) }, 9600)
                == playHits (p, { noteOnAt (at, 48, 1.0), noteOffAt (at + 128, 48) }, 9600));
-        // Two keys struck and let go on one frame: the gate is open for the 128 frames as well.
-        CHECK (playHits (p, { noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at, 48) }, 9600)
-               == playHits (p, { noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at + 128, 48) }, 9600));
+        // The rule: the note sounding (the newest key held) let go on the frame it was played, struck or glided to,
+        // sounds for 128 frames as if its off came a block later; keys let go meanwhile leave it alone, and then the
+        // voice goes to the newest key still held, or the gate shuts. The same at every block size.
+        auto sameAtEveryBlock = [&] (const std::vector<Hit>& hits, const std::vector<Hit>& blockLater) {
+            const auto want = playHits (p, blockLater, 9600);
+            for (uint32_t block : { 128u, 1u, 37u, 4096u })
+                CHECK (playHits (p, hits, 9600, stoppedTransport, block) == want);
+        };
+        // Two keys struck and let go on one frame: the newer, sounding, plays its 128 frames.
+        sameAtEveryBlock ({ noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at, 48) },
+                          { noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at + 128, 55) });
         // A short note that arrives legato: A held, then B on, A off, B off on one frame (a slide's order, on before
-        // off). B glides and is heard for its 128 frames, as when its off comes a block later, at any block size.
-        // Before, the gate shut on that frame (it had opened for A), and B was never heard.
-        {
-            const std::vector<Hit> slid { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at, 55) };
-            const auto heard = playHits (p, { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at + 128, 55) }, 9600);
-            CHECK (playHits (p, slid, 9600) == heard);
-            for (uint32_t block : { 1u, 37u, 4096u })
-                CHECK (playHits (p, slid, 9600, stoppedTransport, block) == heard);
-            // Unchanged: a held key let go on a frame another note glided to and from shuts the gate then.
-            CHECK (playHits (p, { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at, 48) }, 9600)
-                   == playHits (p, { noteOnAt (0, 48), noteOffAt (at, 48) }, 9600));
-        }
+        // off). B glides and is heard for its 128 frames. Before, the gate shut on that frame, and B was never heard.
+        sameAtEveryBlock ({ noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at, 55) },
+                          { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at + 128, 55) });
+        // A short note over a key still held: A held, B on and off on one frame, A let go much later. B is heard for
+        // its 128 frames, then the voice glides back to A. Before, it glided back at once: the same as A alone.
+        sameAtEveryBlock ({ noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at + 2000, 48) },
+                          { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at + 128, 55), noteOffAt (at + 2000, 48) });
+        CHECK (playHits (p, { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at + 2000, 48) }, 9600)
+               != playHits (p, { noteOnAt (0, 48), noteOffAt (at + 2000, 48) }, 9600));
+        // B on, B off, then A off, on one frame: B is heard for its 128 frames, then the gate shuts.
+        sameAtEveryBlock ({ noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at, 48) },
+                          { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at + 128, 55) });
+        // Inside its 128 frames, a choke of B goes back to A at once, as B's off there would.
+        CHECK (playHits (p, { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 55), chokeAt (at + 64, 55), noteOffAt (at + 2000, 48) }, 9600,
+                         stoppedTransport, 1)
+               == playHits (p, { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at + 64, 55), noteOffAt (at + 2000, 48) }, 9600, stoppedTransport, 1));
         // Inside those 128 frames, a choke of the key, All Notes Off and All Sound Off shut it at once, as a note off
         // there would; a choke of another key does not; a new note strikes as after a note off (no glide from it).
         const auto offAt64 = playHits (p, { noteOnAt (at, 48), noteOffAt (at + 64, 48) }, 9600, stoppedTransport, 1);

@@ -184,9 +184,9 @@ Melodee's notes (its roll, its pads, a keyboard) play the voice, the way MIDI-pl
   note before, with no new envelope.)
 - Letting go of the newest note glides back to the newest one still held; letting go of the last closes the gate.
 - A note let go on the frame it started (hdslaveOS sends a note shorter than its 128-frame block that way, its on and
-  off together), struck or slid to from a held one, keeps the gate open for 128 frames, as a note one block long: it
-  sounds. A choke, All Notes Off, All Sound Off or a Mode switch in that time closes it at once. (Before 0.8.1 it
-  played nothing.)
+  off together), struck or slid to over a held one, sounds for 128 frames, as a note one block long; then the voice
+  glides back to the newest key still held, or the gate closes. A choke of it ends it at once; All Notes Off, All
+  Sound Off or a Mode switch close the gate. (Before 0.8.1 it played nothing.)
 - The host stopping does not stop a held note. Switching Mode stops the note sounding.
 
 Tuning, the voice's knobs and Accent work as in TB-3PO mode; Transpose, Octave and the pattern's settings do not.
@@ -376,9 +376,9 @@ statically and needs only the MPC's libc and libm.
   state settling as it lands over a sounding note, Play's window the same at every block size, a state from a
   newer version refused, and no rate at all), the 0.8.1 fixes (the attack after a note held until its filter
   envelope died the same to the bit as a clean one, in each filter; in Mode: Notes a note on and off in one block the
-  same to the bit as one a block long, at any block size, on, on, off too, one slid to over a held note in a slide's
-  order, and a choke, All Notes Off, All Sound Off, a new note or a Mode switch inside it), bounded output at random
-  settings, and the demo renders of the presets.
+  same to the bit as one a block long, at any block size, on, on, off too, two keys at once, one slid to over a held
+  note in either order of the offs, one over a key held on, and a choke, All Notes Off, All Sound Off, a new note or a
+  Mode switch inside it), bounded output at random settings, and the demo renders of the presets.
 - `tests/fingerprint.cpp` renders 77 fixed scenarios (each preset, the bench's patches, 24 random patches with Regen,
   MIDI and knobs moving, other block sizes and rates, stop and jumps with both kinds of reset, Swing, Seed Back, a
   MIDI line in Mode: Notes and a switch between the modes, Gate, pitch bend and the mod wheel, Drive, each filter and
