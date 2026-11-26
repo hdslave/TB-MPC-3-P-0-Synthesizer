@@ -91,10 +91,16 @@ struct Raster : hdui::Raster
     }
 };
 
+}
+#include "sp16_thorn.h"
+namespace tbmpc::sp16
+{
 class Panel
 {
 public:
-    int bank = 0;
+    int bank = patternPage;
+    ThornPage thorn;
+    bool localPlay = false;
     int finger = -1;
     bool dirty = true;
     PatternView shown {};
@@ -110,6 +116,7 @@ public:
 
     int stepAt(int x, int y) const
     {
+        if (bank == patternPage) return thorn.stepAt(shown,x,y);
         if (bank == voicePage || bank == lfoPage) return -1;
         if (x < gridLeft || x >= gridLeft + gridWidth || y < gridTop || y >= gridTop + gridHeight)
             return -1;
@@ -133,8 +140,22 @@ public:
             changed |= v != values[i];
             values[i] = v;
         }
-        if (!changed && face == lastFace) return false;
         Raster r{s.pixels, s.stride, s.height};
+        if (bank == patternPage)
+        {
+            if (!wasThorn) { thorn.enter(s.now_ms); changed=true; thorn.menu=false; }
+            wasThorn=true; dirty=false;
+            char tuning[72];
+            char name[48];
+            formatParam(paramTable[paramIndex(scale)],value(scale),name,sizeof(name),{});
+            std::snprintf(tuning,sizeof(tuning),"%s / %s",rootChoices[int(value(root))],name);
+            const int button=value(mode)>=.5f?3:shown.running?(localPlay?1:2):0;
+            const bool redraw=thorn.draw(r,shown,s.now_ms,changed,face,int(value(seed)),tuning,button);
+            if (changed && thorn.menu) drawTabs(r);
+            return redraw;
+        }
+        wasThorn=false;
+        if (!changed && face == lastFace) return false;
         if (!changed)
         {
             paintFace(r, face);
@@ -159,6 +180,15 @@ public:
             drawLfos(r);
         else
             drawPattern(r);
+        drawTabs(r);
+        return true;
+    }
+
+private:
+    bool wasThorn=false;
+    void drawTabs(const Raster& r) const
+    {
+        r.box(0,tabTop,780,285-tabTop,bg);
         for (unsigned b = 0; b < std::size(banks); ++b)
         {
             const int x = int(b) * 130;
@@ -168,10 +198,7 @@ public:
             const int w = Raster::readingWidth(banks[b].name, true);
             r.reading(x + (130-w)/2, tabTop + 9, x+128, banks[b].name, selected ? bg : muted, true);
         }
-        return true;
     }
-
-private:
     int lastFace = -1;
     uint32_t pulseAt = 0;
     bool pulsing = false;

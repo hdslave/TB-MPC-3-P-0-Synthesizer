@@ -1,0 +1,17 @@
+<style>
+#thorn-crown-metal{container-type:inline-size;width:100%;color-scheme:dark}
+#thorn-crown-metal .panel{position:relative;width:100%;aspect-ratio:780/285;background:#070812;isolation:isolate;overflow:hidden}
+#thorn-crown-metal .panel>canvas,#thorn-crown-metal .keys{position:absolute;inset:0;display:block;width:100%;height:100%}
+#thorn-crown-metal .key{position:absolute;border:0;margin:0;padding:0;background:transparent;touch-action:manipulation}
+#thorn-crown-metal .key:focus-visible{outline:2px solid #f2f4ff;outline-offset:-3px;box-shadow:inset 0 0 0 5px #5266ff}
+#thorn-crown-metal .compact{display:none;background:#111123;color:#e2e5fa;font:14px system-ui,sans-serif;padding:8px;gap:6px;align-items:center;flex-wrap:wrap}
+#thorn-crown-metal .compact button{min-height:44px;min-width:44px;border:1px solid #687089;border-radius:3px;background:#20253a;color:inherit;padding:4px 10px;font:inherit}
+#thorn-crown-metal .compact button[aria-pressed=true]{background:#303b91;border-color:#9fb1ff}
+#thorn-crown-metal .sr{position:absolute;clip-path:inset(50%);width:1px;height:1px;overflow:hidden;white-space:nowrap}
+@container(max-width:530px){#thorn-crown-metal .compact{display:flex}}
+</style>
+<div id="thorn-crown-metal" aria-label="Slink, Thorn Crown">
+  <div class="panel" role="group" aria-label="Thorn Crown sequencer"><canvas width="1560" height="570" role="img" aria-label="Silver and blue Slink 303 panel with a turning chrome acid smiley in the top right, a violet thorn sculpture, a silver step counter with four violet outlines, a sixteen-step sequencer and swept chrome whips and forked blue-violet lightning below the grid"></canvas><div class="keys"></div></div>
+  <div class="compact"><button data-do="prev" aria-label="Previous step">‹</button><span data-detail>03 / 16 · F3</span><button data-do="next" aria-label="Next step">›</button><button data-do="transport">Play</button><button data-do="gate">Gate</button><button data-do="accent">Accent</button><button data-do="slide">Slide</button><button data-do="regen">Regen</button><button data-do="motion">Hold motion</button></div>
+  <div class="sr" role="status" aria-live="polite"></div>
+</div>

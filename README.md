@@ -10,7 +10,7 @@
   </tr>
   <tr>
     <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
-    <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16.gif" alt="Slink pitch ribbon and animated smiley"></a></td>
+    <td align="center"><a href="#freesp16-on-sp-16"><img src="docs/slink-sp16-thorn.png" alt="Slink’s freesp16 Pattern page with its chrome crest and sixteen-step score"></a></td>
     <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
   </tr>
 </table>
@@ -282,7 +282,11 @@ nothing until it is hit (then a step's pitch, or a pattern made again once when 
 
 The ARMv7 build is version **0.6.0**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
 
-Tap a tab, turn the main selector to move between banks, or push the selector to advance one bank. The six encoders follow the selected tab. **Voice** displays the filter response. **LFO** shows pitch and cutoff modulation over one beat. The other tabs show the pattern, with a second row for steps 17–32. The chrome melting smiley pulses on four-step downbeats and accented gates. An ice-blue playhead follows the pitch ribbon. Solid bars are gates, outlined bars are rests, triangles are accents and curved joins mark slides.
+Slink on freesp16 opens on the **Thorn Crown Pattern** page. Sixteen columns show the step number, pitch, gate, accent and outgoing slide. The cobalt column follows playback. The note row uses Razor Choir, a set of hooked chrome pitch letters with matching numerals for steps and octaves. The octave sits low to the right of each letter, with the sharp directly above it when present. Tap a column to audition its step. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
+
+**Play** auditions the sequence locally at the host tempo while the transport is stopped. **Stop** ends that preview. Starting freesp16’s transport takes over and the button reads **Sync**. Tap the thorn crest to pause or resume its camera independently. **Regen** regenerates the pattern, and tapping the seed plate recalls the previous seed.
+
+Tap the root/scale plate at lower left for the six bank tabs, or use the main selector to move between banks. The six encoders follow the selected bank. Voice displays the filter response, LFO shows modulation over one beat, and Perform, Glide and Clock retain the touch-playable pitch ribbon.
 
 | Bank | Encoders 1–6 |
 | --- | --- |
