@@ -1,4 +1,5 @@
 #include <clap/clap.h>
+#include "../desktop/panel_presentation.h"
 #ifdef SLINK_RAZOR_PANEL
 #include <clap/ext/draft/transport-control.h>
 #endif
@@ -37,6 +38,41 @@ typedef struct hdslave_desktop_debug_api
 
 namespace
 {
+// Replay exactly the invalidated logical rectangles into a simulated Retina window.
+bool testPresentation()
+{
+    using namespace hdslave_desktop;
+    PanelPresentation frame;
+    constexpr int w = 98, h = 82, scale = 2;
+    const Rect full {0, 0, w / scale, h / scale};
+    std::vector<uint32_t> source (w * h, 0xff405060), window (w * h);
+    std::vector<Rect> emitted;
+    auto present = [&] (Rect candidate) {
+        emitted.clear();
+        frame.publish (source.data(), w, h, scale, candidate, [&] (Rect r) {
+            emitted.push_back (r);
+            for (int row = r.y * scale; row < (r.y + r.h) * scale; ++row)
+            {
+                const int offset = row * w + r.x * scale;
+                std::copy_n (source.data() + offset, r.w * scale, window.data() + offset);
+            }
+        });
+        return window == source && frame.pixels == source;
+    };
+    if (!present ({}) || emitted.size() != 1 || !present (full) || !emitted.empty()) return false;
+    source[3 * w + 7] ^= 1;
+    source[77 * w + 91] ^= 2;
+    if (!present (full) || emitted.size() != 2) return false;
+    for (Rect damage : emitted)
+        if (damage.contains (w / 4, h / 4)) return false;
+    source.back() ^= 4;
+    if (!present ({w / scale - 1, h / scale - 1, 10, 10}) || emitted.size() != 1) return false;
+
+    emitted.clear();
+    frame.publish (source.data(), h, w, 1, {}, [&] (Rect r) { emitted.push_back (r); });
+    return emitted.size() == 1 && emitted.front().w == h && emitted.front().h == w;
+}
+
 constexpr uint64_t kHostCanary = 0x4844534C5544494Full;
 
 struct StrictHostCtx
@@ -705,6 +741,11 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
 
 int main (int argc, char** argv)
 {
+    if (!testPresentation())
+    {
+        std::fprintf (stderr, "FAIL: partial panel presentation\n");
+        return 1;
+    }
     std::string snapDir;
     std::vector<std::string> plugins;
     for (int i = 1; i < argc; ++i)
