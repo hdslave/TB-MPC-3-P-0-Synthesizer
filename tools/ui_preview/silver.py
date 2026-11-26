@@ -4,6 +4,7 @@ from pathlib import Path
 from random import Random
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from wordmark import fit_wordmark
 
 ROOT = Path(__file__).resolve().parents[2]
 ART = ROOT / 'assets/art'
@@ -37,14 +38,14 @@ def nameplate(height=30, wide_logo=False):
     red, green, blue = logo.split()
     alpha = ImageChops.lighter(ImageChops.lighter(red, green), blue)
     logo.putalpha(alpha.point(lambda v: max(0, min(255, (v - 5) * 255 / 13))))
-    logo = logo.crop(logo.getbbox())
     if wide_logo:
-        # Fit the MPC's short, sloping plate directly from the full-resolution lettering.
         top_margin = 3
         bottom_margin = 3
-        logo = logo.resize((216, face_height - top_margin - bottom_margin), Image.Resampling.LANCZOS)
-        origin = (7, top_margin)
+        logo = fit_wordmark(logo, 216, face_height - top_margin - bottom_margin,
+                            gaps=(0, 2, 0, 1), background=(0, 0, 0, 0))
+        origin = (115 - logo.width // 2, top_margin)
     else:
+        logo = logo.crop(logo.getbbox())
         logo.thumbnail((180, 26), Image.Resampling.LANCZOS)
         origin = (118 - logo.width // 2, 2)
     plate.paste(logo, origin, logo)

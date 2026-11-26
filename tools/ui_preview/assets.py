@@ -1,5 +1,6 @@
 """Build the native display glyphs and indexed screen artwork."""
 from foil import inlay
+from wordmark import fit_wordmark
 from math import cos, radians, sin
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -153,19 +154,7 @@ wordmark = Image.open(ART/'slink.png').convert('RGB')
 navy = (9, 10, 35)
 curve = [min(1, 1.2*max(0, (v-5)/250)**0.68) for v in range(256)]
 wordmark = wordmark.point([round(bg + (255-bg)*v) for bg in navy for v in curve])
-# Split between letters in the master so the L, I and N
-# keep distinct stems after sampling to the 17-pixel-high header.
-edges = (0, 332, 530, 575, 829, wordmark.width)
-letters = []
-for left, right in zip(edges, edges[1:]):
-    letter = wordmark.crop((left, 0, right, wordmark.height))
-    letters.append(letter.resize((round(letter.width*120/wordmark.width), 17), Image.Resampling.LANCZOS))
-gap = 2
-title = Image.new('RGB', (sum(letter.width for letter in letters) + gap*(len(letters)-1), 17), navy)
-x = 0
-for letter in letters:
-    title.paste(letter, (x, 0))
-    x += letter.width + gap
+title = fit_wordmark(wordmark, 120, 17, gaps=(2, 3, 2, 2), background=navy)
 title = title.filter(ImageFilter.UnsharpMask(radius=0.75, percent=65, threshold=3))
 title = title.quantize(colors=64, dither=Image.Dither.NONE)
 palette = bytes(title.getpalette())
