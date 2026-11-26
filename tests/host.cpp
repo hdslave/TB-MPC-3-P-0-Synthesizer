@@ -2802,6 +2802,19 @@ void testCleanAttackAndShortNotes()
         // Two keys struck and let go on one frame: the gate is open for the 128 frames as well.
         CHECK (playHits (p, { noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at, 48) }, 9600)
                == playHits (p, { noteOnAt (at, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at + 128, 48) }, 9600));
+        // A short note that arrives legato: A held, then B on, A off, B off on one frame (a slide's order, on before
+        // off). B glides and is heard for its 128 frames, as when its off comes a block later, at any block size.
+        // Before, the gate shut on that frame (it had opened for A), and B was never heard.
+        {
+            const std::vector<Hit> slid { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at, 55) };
+            const auto heard = playHits (p, { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 48), noteOffAt (at + 128, 55) }, 9600);
+            CHECK (playHits (p, slid, 9600) == heard);
+            for (uint32_t block : { 1u, 37u, 4096u })
+                CHECK (playHits (p, slid, 9600, stoppedTransport, block) == heard);
+            // Unchanged: a held key let go on a frame another note glided to and from shuts the gate then.
+            CHECK (playHits (p, { noteOnAt (0, 48), noteOnAt (at, 55), noteOffAt (at, 55), noteOffAt (at, 48) }, 9600)
+                   == playHits (p, { noteOnAt (0, 48), noteOffAt (at, 48) }, 9600));
+        }
         // Inside those 128 frames, a choke of the key, All Notes Off and All Sound Off shut it at once, as a note off
         // there would; a choke of another key does not; a new note strikes as after a note off (no glide from it).
         const auto offAt64 = playHits (p, { noteOnAt (at, 48), noteOffAt (at + 64, 48) }, 9600, stoppedTransport, 1);

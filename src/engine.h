@@ -19,9 +19,10 @@
 //   Mode: Notes: MIDI notes play the voice instead of TB-3PO (whose count goes on, unheard, so switching back lands
 //     in time): a note over a held one glides to it with the 303's glide and keeps the gate open, a velocity of 100
 //     or more accents, and letting go of the newest note goes back to the one still held. A key played again while
-//     held is a new note, as if let go first (it strikes again, or glides over another key still held). A note let
-//     go on the frame it struck, before a sample sounded, keeps the gate open for shortGateFrames (a choke, All Notes
-//     Off, All Sound Off or a Mode switch in that time shuts it at once; a new note strikes as after a note off).
+//     held is a new note, as if let go first (it strikes again, or glides over another key still held). The last
+//     key let go on the frame it was played (struck, or glided to), before a sample of it sounded, keeps the gate
+//     open for shortGateFrames (a choke, All Notes Off, All Sound Off or a Mode switch in that time shuts it at once;
+//     a new note strikes as after a note off).
 //   Mode: Sequence's step pads: notes 36 .. 36 + max (16, Steps) - 1 play steps 1 .. (hdslaveOS's pads A01 - A16 at
 //     its default octave and key), host playing or not. A pad plays its step once, as the sequencer would play it
 //     (its pitch with the scale, root, octave and transposition, from the pattern its next clock plays; its accent,
@@ -54,8 +55,9 @@ namespace tbmpc
 constexpr double clockSlack = 1.0e-3;
 // The host's tempo is held to this range (see Engine::transport).
 constexpr double minBpm = 1.0, maxBpm = 1000.0;
-// Mode: Notes, a note let go on the very frame it struck (hdslaveOS sends a note shorter than its 128-frame block so:
-// its on and off both at frame 0) keeps the gate open this long, as a note a block long would.
+// Mode: Notes, the last key let go on the very frame it was played (hdslaveOS sends a note shorter than its 128-frame
+// block so: its on and off both at frame 0, struck or slid to) keeps the gate open this long, as a note a block long
+// would.
 constexpr uint32_t shortGateFrames = 128;
 
 class Engine
@@ -83,7 +85,6 @@ public:
         held = 0;
         padWanted = padHasVoice = padOffPending = false;
         shortOffPending = false;
-        struckAt = -1;
     }
 
     // First values, before anything plays: the applet's Start(), then every parameter.
@@ -175,9 +176,11 @@ public:
         shortOffPending = false; // a short note's gate held open: this note takes it (held is 0, so it strikes)
         const bool legato = held > 0;
         if (held == maxHeld)
-            std::copy (heldKeys + 1, heldKeys + maxHeld, heldKeys), std::copy (heldAccent + 1, heldAccent + maxHeld, heldAccent), --held;
+            std::copy (heldKeys + 1, heldKeys + maxHeld, heldKeys), std::copy (heldAccent + 1, heldAccent + maxHeld, heldAccent),
+                std::copy (heldAt + 1, heldAt + maxHeld, heldAt), --held;
         heldKeys[held] = (int8_t) key;
         heldAccent[held] = velocity >= accentVelocity - 1.0e-6f;
+        heldAt[held] = (int64_t) frameCount;
         ++held;
         const int32_t cv = (key - noteAtZeroVolts) * 128;
         if (legato)
@@ -186,7 +189,6 @@ public:
         {
             voice.pitch (cv, cv);
             voice.gate (false, false); // still open (the key played again): shut on this frame, so both envelopes start over
-            struckAt = (int64_t) frameCount;
         }
         voice.gate (true, heldAccent[held - 1]);
     }
@@ -262,14 +264,19 @@ public:
         if (! notesMode || held == 0)
             return;
         const bool wasTop = heldKeys[held - 1] == key;
+        int64_t playedAt = -1; // the frame this key was played (struck, or glided to)
+        for (int i = 0; i < held; ++i)
+            if (heldKeys[i] == key)
+                playedAt = heldAt[i];
         const int before = held;
         release (key);
         if (held == before)
             return; // not held
         if (held == 0)
         {
-            // Let go on the frame the gate opened, before a sample sounded: it stays open for a block's length first.
-            if (struckAt == (int64_t) frameCount)
+            // The last key let go on the frame it was played, before a sample of it sounded: the gate stays open for
+            // a block's length first.
+            if (playedAt == (int64_t) frameCount)
                 shortOffPending = true, shortOffIn = shortGateFrames, shortKey = key;
             else
                 voice.gate (false, false);
@@ -613,7 +620,7 @@ private:
         int n = 0;
         for (int i = 0; i < held; ++i)
             if (heldKeys[i] != key)
-                heldKeys[n] = heldKeys[i], heldAccent[n] = heldAccent[i], ++n;
+                heldKeys[n] = heldKeys[i], heldAccent[n] = heldAccent[i], heldAt[n] = heldAt[i], ++n;
         held = n;
     }
 
@@ -645,8 +652,8 @@ private:
     int8_t heldKeys[maxHeld] {};
     bool heldAccent[maxHeld] {};
     int held = 0;
-    int64_t struckAt = -1;        // the frame a note last opened the gate
-    bool shortOffPending = false; // a note let go on that frame: the gate shuts when shortOffIn runs out
+    int64_t heldAt[maxHeld] {};   // the frame each was played (struck, or glided to)
+    bool shortOffPending = false; // the last key let go on that frame: the gate shuts when shortOffIn runs out
     uint32_t shortOffIn = 0;
     int shortKey = -1;
     // Step pads (TB-3PO): the one asked for on this frame (the loudest; it plays at the next sound), and the one that

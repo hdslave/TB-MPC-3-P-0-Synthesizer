@@ -6,6 +6,8 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 [View the Windows panel at full size](assets/windows-preview.png)
 
+This desktop copy is versioned 0.8.1 with the MPC build, but its engine is older than the MPC's. From 0.8.1 it has the clean filter after a long note. It lacks the MPC build's Mode: Notes fix for a note whose on and off come on one frame, as it lacks the step pads and the MPC build's handling of chokes (a choke here is a note off) and All Sound Off. Desktop hosts send note offs at their own frames, so such a note is rare there.
+
 Slink 0.8.1 on macOS and Windows uses the SP-16 Razor Choir score. Each note has its own chrome letter with a separate sharp and octave. The plate beside the seed enlarges the current note. Click a step to inspect it there. Key and scale sit below the score beside the animated chrome whips, pitch contour and position rail. The counter offers **Play** and **Stop** in hosts that support CLAP transport requests. Other hosts show their transport state there.
 
 All 34 host parameters fit on one resizable panel down to 960 × 540. In **Tone**, click **TB-3PO** or **303** to select the slide mode and drag **303 Time** to set the glide speed. The pitch and cutoff LFO pairs sit together below the filter settings. **Voice** groups Accent with Accent Decay. **Sequencer** puts Gate Length beside Octave and Transpose.
