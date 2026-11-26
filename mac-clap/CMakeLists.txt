@@ -46,16 +46,16 @@ endif()
 set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
-    "${DESKTOP_DIR}/acid_motion.cpp"
     "${DESKTOP_DIR}/thorn_art.cpp"
 )
 if(SLINK_RAZOR_PANEL)
     if(WIN32)
-        target_compile_definitions(${SLUG}_inner PRIVATE TBMPC_VERSION="0.7.2")
+        target_compile_definitions(${SLUG}_inner PRIVATE TBMPC_VERSION="0.7.3")
     endif()
     list(APPEND SHELL_SRCS "${DESKTOP_DIR}/razor_panel.cpp")
     set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/razor/panel.bank")
 else()
+    list(APPEND SHELL_SRCS "${DESKTOP_DIR}/acid_motion.cpp")
     set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/thorn/panel.bank")
 endif()
 if(APPLE)

@@ -64,7 +64,9 @@ class PanelUI
     std::vector<uint32_t> frame_;
     tbmpc::PatternView score_{};
     uint64_t motionMs_ = 0;
+#ifndef SLINK_RAZOR_PANEL
     float accentLift_ = 0;
+#endif
     std::vector<double> displayed_;
     int w_ = kDefaultGuiWidth, h_ = kDefaultGuiHeight, scale_ = 1;
     bool dirty_ = true, fine_ = false, motion_ = true, playing_ = false, follow_ = true;
@@ -107,11 +109,16 @@ class PanelUI
     int hitStep (int x, int y) const;
     int hitParam (int x, int y) const;
 #ifdef SLINK_RAZOR_PANEL
-    Rect transport_, ribbon_, position_, contour_;
-    int facePose_ = 15;
+    Rect transport_, stormBox_, position_, contour_;
+    bool cameraHeld_ = false;
+    uint64_t facePulseEnd_ = 0;
+    int facePose_ = 17;
+    void advanceFace (bool onset);
+    int focusedStep () const;
     void layoutRazor (int y, int height);
     void drawRazorHeader ();
     void drawRazorFooter ();
+    void drawRazorTrace (Rect r);
     void drawPitch (Rect box, int step, bool live);
 #endif
     void drawHeader ();

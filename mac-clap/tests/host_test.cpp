@@ -346,7 +346,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         return false;
     }
 
-    // Both moving areas hold their exact frame. A manual camera cut changes
+    // Holding motion freezes the artwork. A manual camera cut changes
     // only the crest, and resuming motion advances the vector artwork again.
     click (950, 27);
     auto sampleArea = [&](int left, int top, int right, int bottom) {
@@ -356,29 +356,54 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
             for (int x = left * 2; x < right * 2; x += 3) sample.push_back (frame[y * width + x]);
         return sample;
     };
-    auto crest = [&] { return sampleArea (350, 65, 715, 150); };
-    auto ribbons = [&] { return sampleArea (18, 319, 998, 348); };
-    const auto heldCrest = crest(), heldRibbons = ribbons();
+    auto crest = [&] { return sampleArea (350, 65, 630, 150); };
+    auto strip = [&] { return sampleArea (278, 321, 465, 345); };
+    const auto heldCrest = crest(), heldStrip = strip();
+#ifdef SLINK_RAZOR_PANEL
+    auto face = [&] { return sampleArea (935, 58, 989, 119); };
+    const auto heldFace = face();
+#endif
     std::this_thread::sleep_for (std::chrono::milliseconds (110));
-    if (crest() != heldCrest || ribbons() != heldRibbons)
+    if (crest() != heldCrest || strip() != heldStrip)
     {
         std::fprintf (stderr, "FAIL: artwork moved while motion was held\n");
         return false;
     }
+#ifdef SLINK_RAZOR_PANEL
+    if (face() != heldFace) return false;
+#endif
     click (500, 82);
-    if (crest() == heldCrest || ribbons() != heldRibbons)
+    if (crest() == heldCrest || strip() != heldStrip)
     {
         std::fprintf (stderr, "FAIL: a camera cut must change only the crest\n");
         return false;
     }
     click (950, 27);
     std::this_thread::sleep_for (std::chrono::milliseconds (110));
-    if (ribbons() == heldRibbons)
+    if (strip() == heldStrip)
     {
-        std::fprintf (stderr, "FAIL: vector motion did not resume\n");
+        std::fprintf (stderr, "FAIL: footer motion did not resume\n");
         return false;
     }
 #ifdef SLINK_RAZOR_PANEL
+    auto holdCamera = [&] {
+        ui.ui_mouse (plug, 0, 500, 82, 0, 1, 0, 1);
+        ui.ui_mouse (plug, 2, 500, 82, 0, 1, 0, 1);
+    };
+    holdCamera();
+    const auto fixedCrest = crest(), movingStrip = strip(), movingFace = face();
+    bool faceAdvanced = false;
+    for (int i = 0; i < 6; ++i)
+    {
+        std::this_thread::sleep_for (std::chrono::milliseconds (100));
+        if (crest() != fixedCrest) return false;
+        faceAdvanced |= face() != movingFace;
+    }
+    if (strip() == movingStrip || !faceAdvanced) return false;
+    holdCamera();
+    std::this_thread::sleep_for (std::chrono::milliseconds (110));
+    if (crest() == fixedCrest) return false;
+
     // Switch banks through the toolbar and inspect their actual step numerals.
     ui.ui_mouse (plug, 0, 650, 448, 0, 0, 0, 1);
     ui.ui_mouse (plug, 1, 650, 100, 0, 0, 0, 1);

@@ -135,11 +135,14 @@ ThornArt::ThornArt ()
     counter.load (razor::counter);
 #endif
 }
-void ThornArt::animate (uint64_t elapsed)
+void ThornArt::animate (uint64_t cameraMs, uint64_t motionMs)
 {
-    camera.load (plates::cameraFirst + int (elapsed / 50 % plates::cameraCount));
-#ifndef SLINK_RAZOR_PANEL
-    shaft.load (thorn::shaftFirst + int (elapsed * 24 / 1000 % thorn::shaftCount));
+#ifdef SLINK_RAZOR_PANEL
+    camera.load (razor::cameraFirst + int (cameraMs * 12 / 1000 % razor::cameraCount));
+    storm.load (razor::stormFirst + int (motionMs * 12 / 1000 % razor::stormCount));
+#else
+    camera.load (thorn::cameraFirst + int (cameraMs / 50 % thorn::cameraCount));
+    shaft.load (thorn::shaftFirst + int (cameraMs * 24 / 1000 % thorn::shaftCount));
 #endif
 }
 

@@ -1,19 +1,21 @@
-"""Bake Windows plates from the SP-16 Thorn Crown art tools and crest film.
-Usage: bake_razor.py SP16_ART_DIRECTORY CREST_MOVIE CHROMIUM
-Normal builds use the committed bank. Requires Pillow, Playwright and FFmpeg.
+"""Bake Windows plates from the SP-16 Thorn Crown artwork and native animation bank.
+Usage: bake_razor.py SP16_CHECKOUT CHROMIUM
+Normal builds use the committed bank. Requires Pillow and Playwright.
 """
 import base64
 import io
 from pathlib import Path
 import re
-import subprocess
 import sys
-import tempfile
 
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-art, film, chromium = map(Path, sys.argv[1:])
+source, chromium = map(Path, sys.argv[1:])
+art = source / "tools/sp16_thorn"
+native = source / "assets/sp16-thorn"
+native_index = (native / "index.h").read_text()
+native_bank = (native / "panel.bank").read_bytes()
 assets = Path(__file__).resolve().parents[1] / "assets"
 out = assets / "razor"
 frames, names = [], {}
@@ -33,10 +35,39 @@ def strip(tiles):
     return sheet
 
 
+def native_frames(name):
+    """Read the per-frame BGRA palette and scanline packets in the instrument bank."""
+    group = re.search(rf'Images {name} {{(\d+), (\d+), (\d+), {name}Offsets, 0}}', native_index)
+    w, h, count = map(int, group.groups())
+    offsets = native_index.split(f'{name}Offsets[] = {{')[1].split('};')[0]
+    starts = list(map(int, re.findall(r'\d+', offsets)))
+    assert len(starts) == count
+    for start in starts:
+        palette = native_bank[start:start+1024]
+        indices = bytearray()
+        cursor = start + 1024
+        for y in range(h):
+            end = (y + 1) * w
+            while len(indices) < end:
+                code = native_bank[cursor]
+                cursor += 1
+                run = (code & 127) + 1
+                if code & 128:
+                    indices.extend(native_bank[cursor:cursor+1] * run)
+                    cursor += 1
+                else:
+                    indices.extend(native_bank[cursor:cursor+run])
+                    cursor += run
+            assert len(indices) == end
+        image = Image.frombytes("P", (w, h), bytes(indices))
+        image.putpalette(b"".join(palette[i:i+3][::-1] for i in range(0, 1024, 4)))
+        yield image
+
+
 add(Image.open(art / "media/wordmark.webp").convert("RGBA"))
-face = Image.open(art / "media/smiley.webp").convert("RGBA")
-side = face.width // 8
-add(strip([face.crop((i%8*side, i//8*side, (i%8+1)*side, (i//8+1)*side)) for i in range(33)]))
+faces = [frame.convert("RGB") for frame in native_frames("face")]
+names["faceCount"] = len(faces)
+add(strip(faces).convert("RGB"))
 # Share the desktop font masks and knob in their established slots.
 index = (assets / "thorn/index.h").read_text().split('offset[] = {')[1].split('};')[0]
 offset = list(map(int, re.findall(r'\d+', index)))
@@ -61,7 +92,7 @@ with sync_playwright() as browser_api:
             if (kind === 'counter') {
                 cv.width=273; cv.height=210;
                 g.setTransform(3,0,0,3,-528*3,-20*3);
-                makeCounter(g,value,.12);
+                makeCounter(g,value,1);
             } else if (kind === 'glass') {
                 cv.width=555; cv.height=270;
                 g.setTransform(3,0,0,3,-527*3,-6*3); drawStepGlass(g);
@@ -82,18 +113,17 @@ with sync_playwright() as browser_api:
 
     for kind, values in (("notes", "ABCDEFG"), ("pearl", "0123456789-#"), ("steel", "0123456789-#"),
                          ("steps", range(1,33)), ("labels", ["STEP","NOTE","GATE","ACC","SLD","PLAY","STOP","REGEN"]),
-                         ("glass", [0]), ("counter", range(1,33))):
+                         ("glass", [0]), ("counter", range(33))):
         names[kind] = len(frames)
         add(strip([tile(kind, v) for v in values]))
     browser.close()
 
-names["cameraFirst"] = len(frames)
-with tempfile.TemporaryDirectory() as tmp:
-    subprocess.run(["ffmpeg", "-v", "error", "-i", str(film), "-vf", "fps=20,scale=664:180:flags=lanczos",
-                    "-q:v", "5", "-pix_fmt", "yuvj444p", str(Path(tmp) / "%04d.jpg")], check=True)
-    frames.extend(p.read_bytes() for p in sorted(Path(tmp).glob("*.jpg")))
-names["cameraCount"] = len(frames) - names["cameraFirst"]
-assert names["cameraCount"] == 400
+for group, name in (("crest", "camera"), ("storm", "storm")):
+    first = len(frames)
+    for image in native_frames(group):
+        add(image)
+    names[name + "First"] = first
+    names[name + "Count"] = len(frames) - first
 offsets = [0]
 for f in frames:
     offsets.append(offsets[-1] + len(f))

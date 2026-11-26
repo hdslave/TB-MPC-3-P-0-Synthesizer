@@ -1,5 +1,6 @@
 #include "panel_ui.h"
 #include "../src/params.h"
+#include "../assets/razor/index.h"
 #include <cstdio>
 
 namespace hdslave_desktop
@@ -55,11 +56,11 @@ void PanelUI::layoutRazor (int y, int h)
         banks_[i] = {status_.x + status_.w - (3 - i) * 57, status_.y + 2, 54, status_.h - 4};
 
     const Rect strip = motionBounds_;
-    const int keyEnd = strip.x + strip.w * 23 / 100;
+    const int keyEnd = strip.x + strip.w * 24 / 100;
     root_ = {strip.x, strip.y, std::max (34, strip.w / 23), strip.h};
     scaleBox_ = {root_.x + root_.w, strip.y, keyEnd - root_.x - root_.w, strip.h};
-    ribbon_ = {keyEnd + gap, strip.y, strip.w * 34 / 100 - gap, strip.h};
-    const int contourX = ribbon_.x + ribbon_.w + gap, railX = strip.x + strip.w * 79 / 100;
+    stormBox_ = {keyEnd + gap, strip.y, strip.w * 22 / 100, strip.h};
+    const int contourX = stormBox_.x + stormBox_.w + gap, railX = strip.x + strip.w * 71 / 100;
     contour_ = {contourX, strip.y, railX - contourX - gap, strip.h};
     position_ = {railX, strip.y, x + w - railX, strip.h};
 }
@@ -82,10 +83,33 @@ void PanelUI::drawPitch (Rect box, int step, bool live)
                  octave[i] == '-' ? 10 : octave[i] - '0', 12);
 }
 
+// The SP-16 face sweeps over 4.8 seconds. Every fourth step and gated
+// accents add five short pose changes, with 144 ms between retriggers.
+void PanelUI::advanceFace (bool onset)
+{
+    const int step = score_.current;
+    if (!playing_ || !score_.running || step < 0 || step >= score_.steps || step >= 32)
+        facePulseEnd_ = 0;
+    else if (onset && motionMs_ >= facePulseEnd_)
+    {
+        const bool accent = (score_.gates & score_.accents) & (uint32_t (1) << step);
+        if (step % 4 == 0 || accent) facePulseEnd_ = motionMs_ + 144;
+    }
+    int pulse = 0;
+    if (facePulseEnd_ > motionMs_) pulse = 1 + int ((144 - (facePulseEnd_ - motionMs_)) * 5 / 144);
+    const double sway = .47 + .32 * std::sin ((motionMs_ % 4800) * (6.28318530718 / 4800.) + .18);
+    facePose_ = std::clamp (int (std::lround (32 * sway + 2 * pulse)), 0, razor::faceCount - 1);
+}
+
+int PanelUI::focusedStep () const
+{
+    if (playing_ && score_.running) return score_.current;
+    return inspected_ >= 0 ? inspected_ : (score_.steps ? 0 : -1);
+}
+
 void PanelUI::drawRazorHeader ()
 {
     const int n = score_.steps ? score_.steps : int (p_->displayValue (p_->findParamIndex (tbmpc::ParamId::steps)));
-    const int current = score_.current >= 0 && score_.current < score_.steps ? score_.current : -1;
     housing (c_, brand_, midnight);
     art_.logo.fit (c_, {brand_.x + 7, brand_.y + 5, brand_.w - 14, seed_.y - brand_.y - 12});
     c_.hline (brand_.x + 8, seed_.y, brand_.w - 16, rim);
@@ -96,7 +120,7 @@ void PanelUI::drawRazorHeader ()
     lettering (c_, {box.x, box.y, box.w, box.h / 3}, score_.steps && score_.seed != seed ? "NEXT SEED" : "SEED",
                14, secondary);
     lettering (c_, {box.x, box.y + box.h / 3, box.w, box.h * 2 / 3}, hex, 34, paper);
-    const int detail = inspected_ >= 0 ? inspected_ : current;
+    const int detail = inspected_ >= 0 ? inspected_ : focusedStep ();
     if (detail >= 0)
     {
         Rect key{seed_.x + seed_.w + 4, box.y + 2, brand_.x + brand_.w - seed_.x - seed_.w - 13, box.h - 4};
@@ -116,13 +140,10 @@ void PanelUI::drawRazorHeader ()
     const Rect r = counter_.inset (5);
     lettering (c_, {r.x + 4, r.y, r.w / 3, r.h / 6}, "STEP", 16, secondary);
     const Rect digits{r.x, r.y + r.h / 8, r.w * 53 / 100, r.h * 7 / 8};
-    if (current >= 0)
-        art_.counter.fit (c_, digits, current, 32);
-    else
-        lettering (c_, digits, "--", 72, secondary, Face::italic, 1);
+    art_.counter.fit (c_, digits, std::clamp (focusedStep () + 1, 0, 32), 33);
     lettering (c_, {digits.x + digits.w - 18, r.y + r.h * 4 / 5, 39, r.h / 5}, "/" + std::to_string (n),
                18, secondary);
-    trace ({transport_.x + 3, r.y + r.h / 8, transport_.w - 6, r.h / 4}, 0xff9cabe3);
+    drawRazorTrace ({transport_.x + 3, r.y + r.h / 8, transport_.w - 6, r.h / 4});
     const bool command = p_->hostTransport && p_->hostTransport->request_toggle_play;
     badge (c_, transport_, command || playing_);
     if (command)
@@ -132,12 +153,7 @@ void PanelUI::drawRazorHeader ()
 
     const int bh = regen_.h * 29 / 100;
     Rect face{regen_.x, regen_.y, regen_.w, regen_.h - bh - 5};
-    const double hit = playing_ && score_.running && updated_ >= pulseAt_
-                           ? std::max (0., 1. - (updated_ - pulseAt_) / 300.) : 0.;
-    // The motion clock holds both the face and crest when the artwork is paused.
-    const double angle = .47 + .34 * std::sin (motionMs_ * .00131) + (motion_ ? .18 * hit : 0.);
-    if (motion_) facePose_ = std::clamp (int (std::lround (32 * angle)), 0, 32);
-    art_.face.fit (c_, face, facePose_, 33);
+    art_.face.fit (c_, face, facePose_, razor::faceCount);
     Rect regen{regen_.x + 2, regen_.y + regen_.h - bh - 2, regen_.w - 4, bh};
     badge (c_, regen, hover_ == p_->findParamIndex (tbmpc::ParamId::regen));
     art_.labels.fit (c_, regen.inset (4), 7, 8);
@@ -154,6 +170,26 @@ void PanelUI::drawRazorHeader ()
     }
 }
 
+// Both miniature traces show the visible bank. Only slides bridge pitches.
+void PanelUI::drawRazorTrace (Rect r)
+{
+    const int first = bank_ * 16, count = std::clamp (score_.steps - first, 0, 16);
+    if (!count || r.empty ()) return;
+    const auto *pitch = score_.pitch + first;
+    const auto range = std::minmax_element (pitch, pitch + count);
+    const int span = std::max (128, int (*range.second) - *range.first);
+    int previous = 0;
+    for (int i = 0; i < count; ++i)
+    {
+        const int x = r.x + i * r.w / 16, end = r.x + (i + 1) * r.w / 16;
+        const int y = r.y + r.h - 2 - (pitch[i] - *range.first) * (r.h - 4) / span;
+        if (i && ((score_.slides >> (first + i - 1)) & 1))
+            c_.line (x - 1, previous, x, y, 1, 0xff7689c0);
+        c_.fill (x, y, std::max (1, end - x - 1), 2, i + first == focusedStep () ? 0xffcabaff : 0xff7c8cc6);
+        previous = y;
+    }
+}
+
 void PanelUI::drawRazorFooter ()
 {
     const Rect key = root_.unite (scaleBox_);
@@ -165,14 +201,14 @@ void PanelUI::drawRazorFooter ()
     for (int x : {r.x, r.x + r.w - 1})
         for (int y : {r.y, r.y + r.h - 5})
             c_.fill (x, y, 1, 5, rim);
-    trace (r.inset (4), 0xff8a9ace);
+    drawRazorTrace (r.inset (4));
     r = position_.inset (6);
     const int cy = r.y + r.h / 2;
     c_.hline (r.x, cy, r.w, rim);
     for (int i = 0; i < std::clamp (score_.steps - bank_ * 16, 0, 16); ++i)
     {
         const int x = r.x + i * (r.w - 6) / 15, h = r.h / (i % 4 == 0 ? 2 : 3);
-        if (playing_ && score_.running && score_.current == bank_ * 16 + i)
+        if (focusedStep () == bank_ * 16 + i)
             c_.fill (x, r.y + 1, 6, r.h - 2, 0xff94aaff);
         else
             c_.fill (x, cy - h / 2, i % 4 ? 1 : 2, h, secondary);

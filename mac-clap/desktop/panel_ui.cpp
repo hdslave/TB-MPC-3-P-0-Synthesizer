@@ -213,7 +213,11 @@ Rect PanelUI::update (uint64_t now)
     const auto next = p_->patternReader->read (p_->inner);
     const bool playing = p_->transportPlaying.load (std::memory_order_relaxed);
     const bool stepChanged = next.current != score_.current || next.seed != score_.seed;
+#ifdef SLINK_RAZOR_PANEL
+    const bool onset = stepChanged || !score_.running || !playing_;
+#else
     if (stepChanged && next.running) pulseAt_ = now;
+#endif
     const bool scoreChanged = !(next == score_) || playing != playing_;
     score_ = next;
     playing_ = playing;
@@ -228,11 +232,20 @@ Rect PanelUI::update (uint64_t now)
         dirty_ |= displayed_[i] != v;
         displayed_[i] = v;
     }
-    const uint64_t delta = motion_ && updated_ && now >= updated_ ? std::min<uint64_t> (now - updated_, 150) : 0;
+    const uint64_t elapsedSinceUpdate = motion_ && updated_ && now >= updated_ ? now - updated_ : 0;
+    const int oldCamera = art_.camera.index;
+#ifdef SLINK_RAZOR_PANEL
+    const uint64_t delta = elapsedSinceUpdate;
+    const int oldFace = facePose_, oldStorm = art_.storm.index;
+    if (!cameraHeld_) elapsed_ += delta;
+    motionMs_ += delta;
+    if (motion_) advanceFace (onset);
+#else
+    const uint64_t delta = std::min<uint64_t> (elapsedSinceUpdate, 150);
+    const int oldShaft = art_.shaft.index;
     elapsed_ += delta;
     const uint64_t oldMotionFrame = motionMs_ / 16;
     motionMs_ += delta;
-    const bool vectorMoved = oldMotionFrame != motionMs_ / 16;
     if (delta)
     {
         const bool accented = playing && next.running && next.current >= 0 && next.current < 32 &&
@@ -240,19 +253,23 @@ Rect PanelUI::update (uint64_t now)
         const float target = accented ? 1.f : 0.f;
         accentLift_ += (target - accentLift_) * float (-std::expm1 (-double (delta) / (accented ? 65. : 180.)));
     }
+#endif
     updated_ = now;
     const auto start = std::chrono::steady_clock::now ();
-    const int oldCamera = art_.camera.index, oldShaft = art_.shaft.index;
-    art_.animate (elapsed_);
+    art_.animate (elapsed_, motionMs_);
     const bool external = p_->screenRequested.exchange (false, std::memory_order_acq_rel);
     const bool repaintScore = dirty_ || scoreChanged || external;
-    const bool repaintHeader = repaintScore || oldCamera != art_.camera.index || oldShaft != art_.shaft.index;
-    if (!repaintHeader && !vectorMoved) return {};
 #ifdef SLINK_RAZOR_PANEL
-    const Rect movingStrip = ribbon_;
+    const bool headerMoved = oldFace != facePose_;
+    const bool stripMoved = oldStorm != art_.storm.index;
+    const Rect movingStrip = stormBox_;
 #else
+    const bool headerMoved = oldShaft != art_.shaft.index;
+    const bool stripMoved = oldMotionFrame != motionMs_ / 16;
     const Rect movingStrip = motionBounds_;
 #endif
+    const bool repaintHeader = repaintScore || oldCamera != art_.camera.index || headerMoved;
+    if (!repaintHeader && !stripMoved) return {};
     const Rect damage = repaintHeader ? Rect{0, 0, w_, dirty_ ? h_ : deck_.y} : movingStrip;
     c_.resetClip ();
     if (repaintHeader)
@@ -263,7 +280,7 @@ Rect PanelUI::update (uint64_t now)
     if (repaintScore) drawScore ();
 #ifdef SLINK_RAZOR_PANEL
     if (repaintScore) drawRazorFooter ();
-    if (vectorMoved || repaintScore) drawAcidMotion (c_, ribbon_, motionMs_ * .001, accentLift_);
+    if (stripMoved || repaintScore) art_.storm.fit (c_, stormBox_);
 #else
     drawAcidMotion (c_, motionBounds_, motionMs_ * .001, accentLift_);
 #endif
@@ -445,7 +462,12 @@ void PanelUI::drawScore ()
             Rect cell = column (k);
             cell.y = y;
             cell.h = height;
-            const bool exists = step < n, current = exists && playing_ && score_.running && step == score_.current;
+            const bool exists = step < n;
+#ifdef SLINK_RAZOR_PANEL
+            const bool current = exists && step == focusedStep ();
+#else
+            const bool current = exists && playing_ && score_.running && step == score_.current;
+#endif
             const bool selected = exists && step == inspected_;
             if (current)
                 c_.gradient (cell, note ? 0xff819eff : 0xff5e87f6, note ? 0xff476ce5 : 0xff293888);
@@ -926,6 +948,9 @@ void PanelUI::mouseDown (float x, float y, int buttonId, uint32_t mods, int clic
             break;
         case Item::Motion:
             motion_ = !motion_;
+#ifdef SLINK_RAZOR_PANEL
+            updated_ = nowMs ();
+#endif
             break;
         default:
             break;
@@ -955,6 +980,13 @@ void PanelUI::mouseDown (float x, float y, int buttonId, uint32_t mods, int clic
 #endif
     if (crown_.contains (x, y))
     {
+#ifdef SLINK_RAZOR_PANEL
+        if (mods & kModShift)
+        {
+            cameraHeld_ = !cameraHeld_;
+            return;
+        }
+#endif
         constexpr uint64_t shots[] = {0, 5000, 11000, 14000, 20000};
         const auto t = elapsed_ % 20000;
         for (auto next : shots)
