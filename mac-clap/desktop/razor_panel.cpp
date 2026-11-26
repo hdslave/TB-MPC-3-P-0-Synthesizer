@@ -83,22 +83,10 @@ void PanelUI::drawPitch (Rect box, int step, bool live)
                  octave[i] == '-' ? 10 : octave[i] - '0', 12);
 }
 
-// The SP-16 face sweeps over 4.8 seconds. Every fourth step and gated
-// accents add five short pose changes, with 144 ms between retriggers.
-void PanelUI::advanceFace (bool onset)
+void PanelUI::advanceFace ()
 {
-    const int step = score_.current;
-    if (!playing_ || !score_.running || step < 0 || step >= score_.steps || step >= 32)
-        facePulseEnd_ = 0;
-    else if (onset && motionMs_ >= facePulseEnd_)
-    {
-        const bool accent = (score_.gates & score_.accents) & (uint32_t (1) << step);
-        if (step % 4 == 0 || accent) facePulseEnd_ = motionMs_ + 144;
-    }
-    int pulse = 0;
-    if (facePulseEnd_ > motionMs_) pulse = 1 + int ((144 - (facePulseEnd_ - motionMs_)) * 5 / 144);
     const double sway = .47 + .32 * std::sin ((motionMs_ % 4800) * (6.28318530718 / 4800.) + .18);
-    facePose_ = std::clamp (int (std::lround (32 * sway + 2 * pulse)), 0, razor::faceCount - 1);
+    facePose_ = std::clamp (int (std::lround (32 * sway)), 0, razor::faceCount - 1);
 }
 
 int PanelUI::focusedStep () const

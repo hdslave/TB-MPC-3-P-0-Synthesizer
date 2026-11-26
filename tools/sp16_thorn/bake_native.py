@@ -1,6 +1,6 @@
 """Bake the SP-16 UI plates from the same vector lettering and motion study.
 
-Requires Pillow, Playwright with Chromium, and ffmpeg. The plug-in links the
+Requires Pillow and Playwright with a WebGL-capable Chromium. The plug-in links the
 built bank directly. Its UI thread only expands the affected rectangles.
 """
 import argparse
@@ -9,7 +9,6 @@ import io
 from pathlib import Path
 import re
 import struct
-import subprocess
 import tempfile
 
 from PIL import Image, ImageDraw
@@ -113,7 +112,8 @@ def main():
     with tempfile.TemporaryDirectory() as folder, sync_playwright() as pw:
         page_path=Path(folder)/'study.html'
         page_path.write_text('<meta charset="utf-8">'+build_fragment())
-        browser=pw.chromium.launch(executable_path=options.chromium)
+        browser=pw.chromium.launch(executable_path=options.chromium,
+                                   args=['--use-angle=swiftshader', '--enable-unsafe-swiftshader'])
         page=browser.new_page(reduced_motion='reduce')
         page.add_init_script('window.captureThornPlates = api => window.plates = api;')
         page.goto(page_path.as_uri())
@@ -125,15 +125,14 @@ def main():
         backdrop=grab('backdrop',0)
         bank.group('backdrop',[backdrop])
         for name,count in [('selected',1),('button',4),('counter',33),
-                           ('number',32),('pitch',513),('pitchSelected',513),('face',33),('storm',96)]:
+                           ('number',32),('pitch',513),('pitchSelected',513),('face',33),('storm',240)]:
             frames = (grab(name,i) for i in range(count))
             if name in ('number', 'pitch', 'pitchSelected'):
                 bank.score_group(name, frames)
             else:
                 bank.group(name, frames)
-        browser.close()
-        subprocess.run(['ffmpeg','-loglevel','error','-i',str(SOURCE/'media/crest.webm'),
-                        '-vf','fps=12,scale=332:90:flags=lanczos',str(Path(folder)/'%04d.png')],check=True)
+        labels = [grab('bankLabel', i) for i in range(6)]
+        titles = [grab('plotTitle', i) for i in range(5)]
         # Keep the screen plate visible outside the two chamfered corners.
         w,h=332,90
         mask=Image.new('L',(w*4,h*4))
@@ -141,8 +140,11 @@ def main():
                                       (7*4,h*4),(0,(h-7)*4)],fill=255)
         mask=mask.resize((w,h),Image.Resampling.LANCZOS)
         corner=backdrop.crop((186,6,518,96)).convert('RGB')
-        bank.group('crest',(Image.composite(Image.open(path).convert('RGB'),corner,mask)
-                            for path in sorted(Path(folder).glob('*.png'))))
+        bank.group('crest',(Image.composite(grab('crest', i).convert('RGB'),corner,mask)
+                            for i in range(600)))
+        browser.close()
+    bank.score_group('bankLabel', labels)
+    bank.score_group('plotTitle', titles)
     bank.write()
 
 

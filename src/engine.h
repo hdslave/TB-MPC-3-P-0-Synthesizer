@@ -136,6 +136,9 @@ public:
     }
 
     // For the screen: the pattern, and whether the host's clock is moving it (TB-3PO mode, the host playing).
+#ifdef TBMPC_SP16
+    void setStepEdits(const sp16::StepEdits& edits) { seq.setStepEdits(edits); }
+#endif
     const Tb3po& sequencer() const { return seq; }
     bool running() const { return playing && ! notesMode; }
 
@@ -313,6 +316,8 @@ public:
 
     void render (float* left, float* right, uint32_t frames)
     {
+        if (frames && !playing && !regenPressed && seq.currentSeed() != seq.playingSeed())
+            seq.regenerate();
         while (frames > 0)
         {
             if (regenPressed)

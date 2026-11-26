@@ -9,6 +9,9 @@
 #pragma once
 
 #include "scales.h"
+#ifdef TBMPC_SP16
+#include "sp16_step_edits.h"
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -311,9 +314,17 @@ public:
     int currentStep() const { return step; }
     uint16_t currentSeed() const { return seed; }
     uint16_t playingSeed() const { return patternSeed; } // the seed the pattern now playing was made from
+#ifdef TBMPC_SP16
+    void setStepEdits(const sp16::StepEdits& edits) { manual = edits; ++rev; }
+    uint16_t cellEdit(int s) const { return manual.seed == patternSeed ? manual.cells[s] : 0; }
+    bool gated (int s) const { return sp16::StepEdits::flag(cellEdit(s),sp16::StepLane::gate,(gates >> s) & 1u); }
+    bool slid (int s) const { return sp16::StepEdits::flag(cellEdit(s),sp16::StepLane::slide,(slides >> s) & 1u); }
+    bool accented (int s) const { return sp16::StepEdits::flag(cellEdit(s),sp16::StepLane::accent,(accents >> s) & 1u); }
+#else
     bool gated (int s) const { return (gates >> s) & 1u; }
     bool slid (int s) const { return (slides >> s) & 1u; }
     bool accented (int s) const { return (accents >> s) & 1u; }
+#endif
     bool octaveUp (int s) const { return (octUps >> s) & 1u; }
     bool octaveDown (int s) const { return (octDowns >> s) & 1u; }
     int note (int s) const { return notes[s]; }
@@ -399,7 +410,11 @@ private:
         else if (octaveDown (s))
             quantNote -= scaleSize;
         const int outNote = quantNote < 0 ? 0 : (quantNote > 127 ? 127 : quantNote);
-        return quantizer.lookup (outNote) + transposeCv;
+        int cv = quantizer.lookup (outNote) + transposeCv;
+#ifdef TBMPC_SP16
+        cv = std::clamp(cv + 128 * sp16::StepEdits::pitch(cellEdit(s)), -32768, 32767);
+#endif
+        return cv;
     }
 
     // Proportion(): numerator / denominator * max in the applet's 18.14 fixed point, truncated as it truncates.
@@ -500,6 +515,9 @@ private:
     uint8_t numSteps = 16;
     uint8_t step = 0;
     int32_t transposeCv = 0, transposeInput = 0;
+#ifdef TBMPC_SP16
+    sp16::StepEdits manual;
+#endif
     uint32_t rev = 0;
     uint32_t gates = 0, slides = 0, accents = 0, octUps = 0, octDowns = 0;
     uint8_t notes[maxSteps] {};

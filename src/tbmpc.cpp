@@ -59,6 +59,9 @@ struct Plugin
     PatternState patternState;
 #ifdef TBMPC_SP16
     sp16::Panel panel;
+    sp16::StepEdits manual; // main thread
+    sp16::StepEditExchange stepExchange;
+    uint32_t audioEditVersion = 0;
     std::atomic<bool> panelOpen { false };
     std::atomic<bool> previewRequested { false };
     bool previewRunning = false; // audio thread only
@@ -319,6 +322,9 @@ const clap_plugin_params paramsExtension { paramsCount, paramsInfo, paramsValue,
 constexpr char stateTag[4] = { 'T', 'B', '3', 'P' };
 // Version 2 (0.4): Cutoff calibrated over 7 octaves; a version 1 state's Cutoff is moved to the same frequency.
 constexpr uint32_t stateVersion = 2;
+#ifdef TBMPC_SP16
+constexpr uint32_t stepRecord = 0x534c0000; // private state IDs, skipped by older readers
+#endif
 
 bool writeAll (const clap_ostream* s, const void* data, uint64_t size)
 {
@@ -373,7 +379,12 @@ void setAll (Plugin& p, const float* values)
 bool stateSave (const clap_plugin* plugin, const clap_ostream* stream)
 {
     auto& p = of (plugin);
-    const uint32_t header[2] = { stateVersion, paramCount };
+    uint32_t records = paramCount;
+#ifdef TBMPC_SP16
+    const bool edited = std::any_of(p.manual.cells.begin(), p.manual.cells.end(), [](uint16_t w){ return w != 0; });
+    if (edited) records += 33;
+#endif
+    const uint32_t header[2] = { stateVersion, records };
     if (! writeAll (stream, stateTag, 4) || ! writeAll (stream, header, sizeof (header)))
         return false;
     for (uint32_t i = 0; i < paramCount; ++i)
@@ -382,6 +393,17 @@ bool stateSave (const clap_plugin* plugin, const clap_ostream* stream)
         if (! writeAll (stream, &pair, sizeof (pair)))
             return false;
     }
+#ifdef TBMPC_SP16
+    if (edited)
+    {
+        for (int i=-1; i<32; ++i)
+        {
+            const struct { uint32_t id; float value; } pair {
+                stepRecord + uint32_t(i+1), float(i<0 ? p.manual.seed : p.manual.cells[i]) };
+            if (!writeAll(stream,&pair,sizeof(pair))) return false;
+        }
+    }
+#endif
     return true;
 }
 
@@ -393,6 +415,9 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
     if (! readAll (stream, tag, 4) || std::memcmp (tag, stateTag, 4) != 0 || ! readAll (stream, header, sizeof (header))
         || header[0] == 0 || header[0] > stateVersion || header[1] > 4096)
         return false;
+#ifdef TBMPC_SP16
+    sp16::StepEdits edits;
+#endif
     float loaded[paramCount];
     for (uint32_t i = 0; i < paramCount; ++i)
         loaded[i] = paramTable[i].def;
@@ -401,6 +426,17 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
         struct { uint32_t id; float value; } pair {};
         if (! readAll (stream, &pair, sizeof (pair)))
             return false;
+#ifdef TBMPC_SP16
+        if (pair.id >= stepRecord && pair.id <= stepRecord+32)
+        {
+            const bool owner = pair.id == stepRecord;
+            if (!std::isfinite(pair.value) || pair.value != std::floor(pair.value)
+                || pair.value < 0 || pair.value > (owner ? 65535 : 16383)) return false;
+            if (owner) edits.seed = uint16_t(pair.value);
+            else edits.cells[pair.id-stepRecord-1] = uint16_t(pair.value);
+            continue;
+        }
+#endif
         const int index = paramIndex (pair.id);
         if (index < 0 || paramTable[index].kind == Kind::button)
             continue;
@@ -408,6 +444,10 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
             pair.value = cutoffFromVersion1 (pair.value);
         loaded[index] = clampParam (paramTable[index], pair.value);
     }
+#ifdef TBMPC_SP16
+    p.manual = edits;
+    p.stepExchange.publish(edits);
+#endif
     setAll (p, loaded);
     return true;
 }
@@ -429,6 +469,10 @@ bool presetFromLocation (const clap_plugin* plugin, uint32_t kind, const char*, 
     }
     float values[paramCount];
     presetValuesOf (*preset, values);
+#ifdef TBMPC_SP16
+    p.manual = {};
+    p.stepExchange.publish(p.manual);
+#endif
     setAll (p, values);
     if (const auto* hostParams = static_cast<const clap_host_params*> (p.host->get_extension (p.host, CLAP_EXT_PARAMS)))
         if (hostParams->rescan != nullptr)
@@ -550,6 +594,10 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
 {
     auto& p = of (plugin);
     FlushDenormals flush;
+#ifdef TBMPC_SP16
+    sp16::StepEdits edits;
+    if (p.stepExchange.readIfChanged(p.audioEditVersion,edits)) p.engine.setStepEdits(edits);
+#endif
     const uint32_t frames = process->frames_count;
     if (process->audio_outputs_count < 1 || process->audio_outputs[0].channel_count < 1)
         return CLAP_PROCESS_ERROR;
@@ -748,16 +796,18 @@ bool screenDraw (const void* plugin, const melodee_screen_frame_t* f)
     return drew;
 }
 
-bool screenInput (const void* plugin, const melodee_screen_input_t* e)
+bool applyScreenEdits (Plugin& p, const hdui::Edits& edits)
 {
-    if (plugin == nullptr || e == nullptr || e->kind > MELODEE_SCREEN_STEP)
-        return false;
-    auto& p = of (static_cast<const clap_plugin*> (plugin));
-    hdui::Edits edits;
-    auto* screen = p.openScreen();
-    if (!screen) return false;
-    const bool used = screen->input ((hdui::Key) e->kind, e->value, e->shift != 0, edits);
     bool changed = false, pressed = false;
+    auto set = [&](int index, float value) {
+        const auto& param = paramTable[index];
+        value = clampParam (param, value);
+        if (p.values[index].exchange (value, std::memory_order_relaxed) == value) return;
+        p.outgoing.fetch_or (1ull << index, std::memory_order_release);
+        p.mainChanged.store (true, std::memory_order_release);
+        textMoved (p, param.id);
+        changed = true;
+    };
     for (int i = 0; i < edits.count; ++i)
     {
         const auto& edit = edits.list[i];
@@ -766,18 +816,13 @@ bool screenInput (const void* plugin, const melodee_screen_input_t* e)
             continue;
         if (edit.press)
         {
+            if (edit.id == ParamId::regen && valueOf(p, ParamId::seedMode) >= .5f)
+                set(paramIndex(ParamId::seed), nextPanelSeed(uint16_t(valueOf(p, ParamId::seed))));
             p.pressedAt.store (steadyMs(), std::memory_order_release);
             p.presses.fetch_or (1ull << index, std::memory_order_release);
             pressed = true;
         }
-        else
-        {
-            p.values[index].store (clampParam (paramTable[index], edit.value), std::memory_order_relaxed);
-            p.outgoing.fetch_or (1ull << index, std::memory_order_release);
-            p.mainChanged.store (true, std::memory_order_release);
-            textMoved (p, edit.id);
-            changed = true;
-        }
+        else set(index, edit.value);
     }
     // The host's own copy of the values: read again now (this is a main-thread call), since a host may not run the
     // plug-in soon enough to hear them from process() (Melodee does not run a sleeping instrument, and its
@@ -792,8 +837,21 @@ bool screenInput (const void* plugin, const melodee_screen_input_t* e)
     // A press, or a value the engine should take: ask to be run (a host that put the plug-in to sleep wakes it).
     if ((changed || pressed) && p.host != nullptr && p.host->request_process != nullptr)
         p.host->request_process (p.host);
+    return changed || pressed;
+}
+
+bool screenInput (const void* plugin, const melodee_screen_input_t* e)
+{
+    if (plugin == nullptr || e == nullptr || e->kind > MELODEE_SCREEN_STEP)
+        return false;
+    auto& p = of (static_cast<const clap_plugin*> (plugin));
+    hdui::Edits edits;
+    auto* screen = p.openScreen();
+    if (!screen) return false;
+    const bool used = screen->input ((hdui::Key) e->kind, e->value, e->shift != 0, edits);
+    const bool active = applyScreenEdits (p, edits);
     if (used && p.hostScreen != nullptr)
-        p.hostScreen->redraw (p.host, (changed || pressed) ? MELODEE_SCREEN_RUN : 0);
+        p.hostScreen->redraw (p.host, active ? MELODEE_SCREEN_RUN : 0);
     return used;
 }
 
@@ -827,7 +885,7 @@ void panelClose(const void* plugin)
 {
     auto& p = panelPlugin(plugin);
     p.panelOpen.store(false, std::memory_order_release);
-    p.panel.finger = -1;
+    p.panel.release();
     p.previewRequested.store(false, std::memory_order_release);
     p.touchedStep.store(-1, std::memory_order_release);
 }
@@ -852,82 +910,210 @@ bool panelTurn(const void* plugin, int32_t delta) { return panelPlugin(plugin).p
 bool panelPush(const void* plugin)
 {
     auto& panel = panelPlugin(plugin).panel;
-    panel.bank = (panel.bank+1) % std::size(sp16::banks);
-    panel.dirty = true;
+    panel.select((panel.bank+1) % std::size(sp16::banks));
     return true;
 }
+void publishStepEdit(Plugin& p)
+{
+    // Commit an edited random pattern to its displayed seed, including during playback.
+    if (valueOf(p,ParamId::seedMode)<.5f)
+    {
+        hdui::Edits lock;
+        lock.set(ParamId::seed,float(p.manual.seed));
+        lock.set(ParamId::seedMode,1);
+        applyScreenEdits(p,lock);
+    }
+    p.stepExchange.publish(p.manual);
+    const auto* state=static_cast<const clap_host_state*>(p.host->get_extension(p.host,CLAP_EXT_STATE));
+    if (state && state->mark_dirty) state->mark_dirty(p.host);
+    wakePanel(p);
+}
+
+bool dragStep(Plugin& p,int x,int y,bool down)
+{
+    auto& panel=p.panel;
+    if (panel.shown.seed!=panel.gestureSeed) { panel.release(); return false; }
+    const auto lane=panel.lane;
+    // Keep the original lane and bank while the finger crosses a cell edge.
+    const int step=lane==sp16::StepLane::pitch ? panel.startStep : panel.stepAt(x,panel.startY);
+    if (step<0 || step>=panel.shown.steps) return true;
+    if (lane==sp16::StepLane::number && !down && y!=panel.startY)
+    {
+        // Only another numbered header may sound during a horizontal scrub.
+        if (panel.bank==sp16::patternPage ? (y<103 || y>=125)
+              : (y<panel.ribbonTop(step) || y>=panel.ribbonTop(step)+14)) return true;
+    }
+    const int previous=panel.finger;
+    panel.finger=step;
+    panel.thorn.selected=step;
+    panel.dirty |= previous!=step;
+    if (lane==sp16::StepLane::number)
+    {
+        if (down || previous!=step)
+        {
+            p.touchedAt.store(steadyMs(),std::memory_order_release);
+            p.touchedStep.store(step,std::memory_order_release);
+            wakePanel(p);
+        }
+        return true;
+    }
+    const int offset=std::clamp(panel.startOffset+int(std::round((panel.startY-y)/7.0)),-127,127);
+    if (lane==sp16::StepLane::pitch && (down || (offset==panel.startOffset && panel.gestureSeed!=p.manual.seed)))
+        return true;
+    if (p.manual.seed!=panel.gestureSeed)
+    {
+        p.manual={};
+        p.manual.seed=panel.gestureSeed;
+    }
+    if (lane==sp16::StepLane::pitch)
+    {
+        if (sp16::StepEdits::pitch(p.manual.cells[step])==offset) return true;
+        p.manual.setPitch(step,offset);
+    }
+    else
+    {
+        if (!down && previous==step) return true;
+        const int from=previous<0 ? step : previous;
+        for (int i=std::min(from,step);i<=std::max(from,step);++i)
+            p.manual.setFlag(i,lane,panel.paintOn);
+    }
+    publishStepEdit(p);
+    return true;
+}
+
+bool dragControl(Plugin& p,int x,int y)
+{
+    using Panel=sp16::Panel;
+    using namespace ParamId;
+    auto& panel=p.panel;
+    hdui::Edits edits;
+    if (panel.gesture==Panel::Gesture::filterXY)
+    {
+        edits.set(cutoff,float(std::clamp(x,Panel::plotLeft,Panel::plotRight)-Panel::plotLeft)/(Panel::plotRight-Panel::plotLeft));
+        edits.set(resonance,float(Panel::plotBottom-std::clamp(y,Panel::plotTop,Panel::plotBottom))/(Panel::plotBottom-Panel::plotTop));
+    }
+    else if (panel.gesture==Panel::Gesture::lfoXY)
+    {
+        const int left=24+382*panel.lfoLane;
+        const float u=float(std::clamp(x-left,0,348))/348.f;
+        edits.set(panel.lfoLane ? cutoffLfoSpeed : pitchLfoSpeed,lfoMinRate*std::pow(lfoMaxRate/lfoMinRate,u));
+        edits.set(panel.lfoLane ? cutoffLfoAmount : pitchLfoAmount,float(216-std::clamp(y,139,216))/77.f);
+    }
+    else if (panel.gesture==Panel::Gesture::parameter)
+    {
+        const auto& param=paramTable[paramIndex(panel.dragParam)];
+        const int dx=x-panel.startX, dy=panel.startY-y;
+        const int distance=std::abs(dx)>std::abs(dy) ? dx : dy;
+        const float delta=param.kind==Kind::continuous ? distance*(param.max-param.min)/140.f : std::round(distance/8.f);
+        edits.set(param.id,panel.startValue+delta);
+    }
+    else return false;
+    applyScreenEdits(p,edits);
+    return true;
+}
+
 bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
 {
+    using Panel=sp16::Panel;
     auto& p = panelPlugin(plugin);
     auto& panel = p.panel;
     if (phase == SIXTEEN_TOUCH_UP)
     {
-        const bool held = panel.finger >= 0;
-        panel.finger = -1;
+        const bool held=panel.gesture!=Panel::Gesture::none;
+        panel.release();
         panel.dirty |= held;
         return held;
     }
+    if (phase==SIXTEEN_TOUCH_MOVE)
+        return panel.gesture==Panel::Gesture::steps ? dragStep(p,x,y,false) : dragControl(p,x,y);
+    if (phase!=SIXTEEN_TOUCH_DOWN) return false;
+    panel.release();
+    panel.startX=x;
+    panel.startY=y;
     if (x < 0 || x >= SIXTEEN_SCREEN_WIDTH || y < 0 || y >= SIXTEEN_SCREEN_HEIGHT)
         return false;
-    if (phase == SIXTEEN_TOUCH_DOWN)
+    const int tab = sp16::Panel::tabAt(x,y);
+    if (tab >= 0)
     {
-        const bool crown=panel.bank==sp16::patternPage;
-        if (crown && panel.thorn.menu && y<sp16::tabTop)
-        {
-            panel.thorn.menu=false;panel.dirty=true;return true;
-        }
-        if (y>=sp16::tabTop && (!crown || panel.thorn.menu))
-        {
-            panel.bank=x/130;
-            panel.thorn.menu=false;panel.dirty=true;return true;
-        }
-        if (crown && x>=7 && x<192 && y>=253 && y<278)
-        {
-            panel.thorn.menu=true;panel.dirty=true;return true;
-        }
-        if (crown && x>=186 && x<518 && y>=6 && y<96)
-        {
-            panel.thorn.heldCamera=!panel.thorn.heldCamera;
-            return true;
-        }
-        if (crown && x>=528 && x<620 && y>=6 && y<96 && panel.shown.steps>16 && !panel.shown.running)
-        {
-            panel.thorn.selected=panel.thorn.selected>=16?0:16;
-            panel.dirty=true;return true;
-        }
-        if (crown && x>=622 && x<703 && y>=55 && y<84)
-        {
-            const bool preview=p.previewRequested.load(std::memory_order_acquire);
-            if ((panel.shown.running && !preview) || valueOf(p,ParamId::mode)>=.5f) return false;
-            p.previewRequested.store(!preview,std::memory_order_release);
-            wakePanel(p);return true;
-        }
-        const bool regen=crown ? (x>=719 && x<775 && y>=61 && y<91)
-                               : (x>=676 && x<768 && y>=9 && y<53);
-        const bool back=crown ? (x>=7 && x<179 && y>=50 && y<96)
-                              : (x>=594 && x<671 && y>=9 && y<53);
-        if (regen || back)
-        {
-            const uint32_t id=regen ? ParamId::regen : ParamId::seedBack;
-            p.pressedAt.store(steadyMs(), std::memory_order_release);
-            p.presses.fetch_or(1ull << paramIndex(id), std::memory_order_release);
-            wakePanel(p);
-            return true;
-        }
+        panel.select(tab);
+        return true;
     }
-    else if (phase != SIXTEEN_TOUCH_MOVE || panel.finger < 0) return false;
-    const int step = panel.stepAt(x,y);
-    if (step < 0 || valueOf(p, ParamId::mode) >= 0.5f) return false;
-    if (step != panel.finger || phase == SIXTEEN_TOUCH_DOWN)
+    if (x>=186 && x<518 && y>=6 && y<96)
     {
-        panel.finger = step;
-        if (panel.bank==sp16::patternPage) panel.thorn.selected=step;
-        panel.dirty = true;
-        p.touchedAt.store(steadyMs(), std::memory_order_release);
-        p.touchedStep.store(step, std::memory_order_release);
-        wakePanel(p);
+        panel.thorn.heldCamera=!panel.thorn.heldCamera;
+        return true;
     }
-    return true;
+    if (panel.bank==sp16::patternPage && x>=528 && x<620 && y>=6 && y<96 && panel.shown.steps>16 && !panel.shown.running)
+    {
+        panel.thorn.selected=panel.thorn.selected>=16?0:16;
+        panel.dirty=true;return true;
+    }
+    if (x>=622 && x<703 && y>=55 && y<84)
+    {
+        const bool preview=p.previewRequested.load(std::memory_order_acquire);
+        if ((panel.shown.running && !preview) || valueOf(p,ParamId::mode)>=.5f) return false;
+        p.previewRequested.store(!preview,std::memory_order_release);
+        wakePanel(p);return true;
+    }
+    const bool regen = x>=719 && x<775 && y>=61 && y<91;
+    const bool back = x>=7 && x<72 && y>=50 && y<96;
+    if (regen || back)
+    {
+        hdui::Edits edits;
+        edits.press(regen ? ParamId::regen : ParamId::seedBack);
+        applyScreenEdits(p,edits);
+        return true;
+    }
+    auto captureParam=[&](uint32_t id) {
+        panel.gesture=Panel::Gesture::parameter;
+        panel.dragParam=id;
+        panel.startValue=valueOf(p,id);
+        return true;
+    };
+    if (x>=72 && x<179 && y>=50 && y<96) return captureParam(ParamId::seed);
+    if (x>=7 && x<122 && y>=252 && y<279) return captureParam(x<37 ? ParamId::root : ParamId::scale);
+    if (panel.bank==sp16::voicePage)
+    {
+        if (y>=103 && y<137)
+        {
+            if (x>=16 && x<174) return captureParam(ParamId::filter);
+            if (x>=406 && x<756) return captureParam(x<590 ? ParamId::cutoff : ParamId::resonance);
+        }
+        if (x<Panel::plotLeft || x>Panel::plotRight || y<Panel::plotTop || y>Panel::plotBottom) return false;
+        panel.gesture=Panel::Gesture::filterXY;
+        return dragControl(p,x,y);
+    }
+    if (panel.bank==sp16::lfoPage)
+    {
+        const int lane=x>=394;
+        const int left=12+382*lane;
+        if (x<left || x>=left+373 || y<103 || y>=244) return false;
+        if (y<139) return captureParam(x<left+242 ? (lane ? ParamId::cutoffLfoSpeed : ParamId::pitchLfoSpeed)
+                                                   : (lane ? ParamId::cutoffLfoAmount : ParamId::pitchLfoAmount));
+        panel.gesture=Panel::Gesture::lfoXY;
+        panel.lfoLane=lane;
+        return dragControl(p,x,y);
+    }
+    if (panel.bank!=sp16::patternPage && y>=103 && y<128 && x>=8 && x<384 && (x-8)%190<186)
+        return captureParam(panel.ribbonParam((x-8)/190));
+    const int step=panel.stepAt(x,y);
+    if (step<0) return false;
+    panel.lane=panel.bank==sp16::patternPage ? Panel::patternLane(y)
+        : y<panel.ribbonTop(step)+14 ? sp16::StepLane::number : sp16::StepLane::pitch;
+    if (panel.lane==sp16::StepLane::number && valueOf(p,ParamId::mode)>=.5f) return false;
+    panel.gesture=Panel::Gesture::steps;
+    panel.startStep=step;
+    panel.gestureSeed=uint16_t(panel.shown.seed);
+    panel.startOffset=p.manual.seed==panel.gestureSeed ? sp16::StepEdits::pitch(p.manual.cells[step]) : 0;
+    panel.thorn.capturedBank=step/16*16;
+    const auto bits=panel.lane==sp16::StepLane::gate ? panel.shown.gates :
+                    panel.lane==sp16::StepLane::accent ? panel.shown.accents : panel.shown.slides;
+    // A second gesture can arrive before the next audio block publishes its view.
+    const bool generated=(bits>>step)&1;
+    panel.paintOn=!generated;
+    if (panel.lane>=sp16::StepLane::gate && p.manual.seed==panel.gestureSeed)
+        panel.paintOn=!sp16::StepEdits::flag(p.manual.cells[step],panel.lane,generated);
+    return dragStep(p,x,y,true);
 }
 const sixteen_plugin_screen_t panelExtension {panelOpen, panelClose, panelRender, panelTouch, panelTurn, panelPush, panelKnobs};
 #endif

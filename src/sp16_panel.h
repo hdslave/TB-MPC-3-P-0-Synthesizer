@@ -19,9 +19,10 @@ inline constexpr Bank banks[] = {
     {"Clock",   {mode, clockDiv, swing, reset, steps, octave}}
 };
 using hdui::Ink;
-constexpr Ink bg = 0xff080e15, cell = 0xff101923, grid = 0xff2c3947;
-constexpr Ink paper = 0xffedf2f4, muted = 0xffa0b3c5, steel = 0xff9fbfdf, ice = 0xffbadcff;
-constexpr int tabTop = 239, gridLeft = 12, gridWidth = 756, gridTop = 104, gridHeight = 125;
+constexpr Ink bg = 0xff080812, cell = 0xff100d1a, grid = 0xff302840;
+constexpr Ink paper = 0xfff1efff, muted = 0xffb9b1cb, steel = 0xffb6c8fa, ice = 0xff96b7ff;
+constexpr int bodyTop = 100, tabTop = 247, tabLeft = 300, tabWidth = 79, stormX = 127;
+constexpr int gridLeft = 8, gridWidth = 764, gridTop = 131, gridHeight = 113;
 
 struct Raster : hdui::Raster
 {
@@ -83,11 +84,23 @@ struct Raster : hdui::Raster
         { label(x,y,end,s,fg,large ? rave::large : rave::normal); }
     void text(int x,int y,const char* s,Ink fg) const { label(x,y,SIXTEEN_SCREEN_WIDTH,s,fg,rave::small); }
     void right(int end,int y,const char* s,Ink fg) const { label(end-measure(s,rave::small),y,end,s,fg,rave::small); }
-    void indexed(int x,int y,int width,int height,const unsigned char* source) const
+    // Cut opposite corners and shade the face towards its lower bevel.
+    void plate(int x,int y,int width,int height,Ink upper,Ink lower,Ink edge) const
     {
-        for (int j=0; j<height; ++j)
-            for (int i=0; i<width; ++i)
-                px[(y+j)*w+x+i] = rave::palette[*source++];
+        constexpr int bevel = 4;
+        for (int row=0; row<height; ++row)
+        {
+            const int left = std::max(0, bevel - (height-1-row));
+            const int right = std::max(0, bevel-row);
+            const int span = width-left-right;
+            box(x+left,y+row,span,1,edge);
+            if (row==0 || row==height-1) continue;
+            auto channel = [&](int shift) {
+                const int a=(upper>>shift)&255, b=(lower>>shift)&255;
+                return unsigned(a+(b-a)*row/(height-1))<<shift;
+            };
+            box(x+left+1,y+row,span-2,1,0xff000000u|channel(16)|channel(8)|channel(0));
+        }
     }
 };
 
@@ -100,18 +113,61 @@ class Panel
 public:
     int bank = patternPage;
     ThornPage thorn;
+    static constexpr int plotLeft=44, plotRight=729, plotTop=142, plotBottom=219;
+    enum class Gesture { none, filterXY, lfoXY, parameter, steps };
+    Gesture gesture = Gesture::none;
+    StepLane lane = StepLane::number;
+    int startX=0, startY=0, startStep=-1, startOffset=0, lfoLane=0;
+    uint16_t gestureSeed=0;
+    uint32_t dragParam=0;
+    float startValue=0;
+    bool paintOn=false;
+    float voiceCutoff=0, voiceRes=0;
+    uint32_t voiceMs=0;
+    bool voiceInitialized=false;
+    void release()
+    {
+        gesture=Gesture::none;
+        thorn.capturedBank=-1;
+        finger=-1;
+    }
+    uint32_t ribbonParam(int column) const
+    {
+        if (bank==performPage) return column ? resonance : cutoff;
+        if (bank==glidePage) return column ? slideTime : glide;
+        return column ? swing : clockDiv;
+    }
+    static StepLane patternLane(int y)
+    {
+        if (y<125) return StepLane::number;
+        if (y<166) return StepLane::pitch;
+        if (y<193) return StepLane::gate;
+        return y<219 ? StepLane::accent : StepLane::slide;
+    }
+    int ribbonTop(int step) const { return gridTop + (step/16)*gridHeight/(shown.steps>16 ? 2 : 1); }
     bool localPlay = false;
     int finger = -1;
     bool dirty = true;
     PatternView shown {};
     std::array<float, paramCount> values {};
 
+    void select(int page)
+    {
+        release();
+        voiceInitialized=false;
+        bank = page;
+        dirty = true;
+    }
     bool turn(int delta)
     {
         if (!delta) return false;
-        bank = std::clamp<int64_t>(int64_t(bank) + delta, 0, std::size(banks) - 1);
-        dirty = true;
+        select(std::clamp<int64_t>(int64_t(bank) + delta, 0, std::size(banks) - 1));
         return true;
+    }
+    static int tabAt(int x,int y)
+    {
+        if (y < tabTop+2 || y >= 283 || x < tabLeft || x >= tabLeft+6*tabWidth) return -1;
+        return (x-tabLeft)/tabWidth;
     }
 
     int stepAt(int x, int y) const
@@ -130,127 +186,90 @@ public:
     bool render(const sixteen_screen_surface_t& s, bool full, const PatternState& pattern, const std::atomic<float>* params)
     {
         const auto next = pattern.read();
-        const bool graphPage = bank == voicePage || bank == lfoPage;
-        bool changed = full || dirty || shown.seed != next.seed || (!graphPage && !(shown == next));
-        const int face = animationFrame(next, s.now_ms);
+        const bool layoutChanged = full || dirty;
+        const bool sequenceChanged = !(shown == next);
         shown = next;
+        bool paramsChanged=false;
         for (uint32_t i = 0; i < paramCount; ++i)
         {
             const float v = params[i].load(std::memory_order_relaxed);
-            changed |= v != values[i];
+            paramsChanged |= v != values[i];
             values[i] = v;
         }
-        Raster r{s.pixels, s.stride, s.height};
-        if (bank == patternPage)
-        {
-            if (!wasThorn) { thorn.enter(s.now_ms); changed=true; thorn.menu=false; }
-            wasThorn=true; dirty=false;
-            char tuning[72];
-            char name[48];
-            formatParam(paramTable[paramIndex(scale)],value(scale),name,sizeof(name),{});
-            std::snprintf(tuning,sizeof(tuning),"%s / %s",rootChoices[int(value(root))],name);
-            const int button=value(mode)>=.5f?3:shown.running?(localPlay?1:2):0;
-            const bool redraw=thorn.draw(r,shown,s.now_ms,changed,face,int(value(seed)),tuning,button);
-            if (changed && thorn.menu) drawTabs(r);
-            return redraw;
-        }
-        wasThorn=false;
-        if (!changed && face == lastFace) return false;
-        if (!changed)
-        {
-            paintFace(r, face);
-            return true;
-        }
         dirty = false;
-        r.box(0, 67, SIXTEEN_SCREEN_WIDTH, s.height-67, bg);
-        r.indexed(0, 0, 780, 67, rave::header);
-        paintFace(r, face);
-        char label[64];
-        const unsigned dialled = unsigned(value(seed));
-        const bool pending = shown.steps && dialled != unsigned(shown.seed);
-        std::snprintf(label, sizeof(label), "%04X", dialled);
-        r.text(510, 9, pending ? "SEED / PENDING" : value(seedMode) >= .5f ? "SEED / LOCKED" : "SEED / RANDOM", muted);
-        r.reading(510, 26, 590, label, pending ? ice : paper, true);
-        button(r, 594, 77, "Seed back");
-        button(r, 676, 92, "Regen");
-
-        if (bank == voicePage)
-            drawVoice(r);
-        else if (bank == lfoPage)
-            drawLfos(r);
-        else
+        Raster r{s.pixels, s.stride, s.height};
+        bool bodyChanged=layoutChanged || paramsChanged;
+        if (bodyChanged) drawFooter(r);
+        if (layoutChanged && bank!=patternPage) r.box(0,bodyTop,780,tabTop-bodyTop,bg);
+        if (bank==voicePage)
+        {
+            const uint32_t dt=s.now_ms-voiceMs;
+            const float weight=voiceInitialized ? -std::expm1(-float(dt)/30.f) : 1.f;
+            auto track=[weight](float& display,float target) {
+                const float before=display;
+                display+=(target-display)*weight;
+                if (std::abs(target-display)<.0005f) display=target;
+                return before!=display;
+            };
+            bodyChanged |= track(voiceCutoff,value(cutoff));
+            bodyChanged |= track(voiceRes,value(resonance));
+            voiceInitialized=true;
+            voiceMs=s.now_ms;
+            if (bodyChanged) drawVoice(r);
+        }
+        if (bank==lfoPage && bodyChanged) drawLfos(r);
+        if ((bodyChanged || sequenceChanged) && (bank==performPage || bank==glidePage || bank==clockPage))
             drawPattern(r);
-        drawTabs(r);
-        return true;
+        const int button=value(mode)>=.5f ? 3 : shown.running ? (localPlay?1:2) : 0;
+        const bool headerChanged=thorn.draw(r,shown,s.now_ms,layoutChanged || paramsChanged || sequenceChanged,
+                                           int(value(seed)),button,bank==patternPage);
+        return headerChanged || bodyChanged;
     }
 
 private:
-    bool wasThorn=false;
-    void drawTabs(const Raster& r) const
+    void drawFooter(const Raster& r) const
     {
         r.box(0,tabTop,780,285-tabTop,bg);
-        for (unsigned b = 0; b < std::size(banks); ++b)
+        r.plate(7,252,115,27,0xff291d39,0xff141021,0xff685d80);
+        char scaleName[64];
+        formatParam(paramTable[paramIndex(scale)],value(scale),scaleName,sizeof(scaleName),{});
+        char key[80];
+        std::snprintf(key,sizeof(key),"%s / %s",rootChoices[int(value(root))],scaleName);
+        r.label(13,259,120,key,paper,rave::small);
+        r.box(stormX,252,168,1,0xff514f70);
+        r.box(stormX,278,168,1,0xff514f70);
+        for (int i=0; i<int(std::size(banks)); ++i)
         {
-            const int x = int(b) * 130;
-            const bool selected = int(b) == bank;
-            if (selected) r.box(x+3, tabTop+4, 124, 34, ice);
-            else if (x) r.box(x, tabTop+9, 1, 22, grid);
-            const int w = Raster::readingWidth(banks[b].name, true);
-            r.reading(x + (130-w)/2, tabTop + 9, x+128, banks[b].name, selected ? bg : muted, true);
+            const int x = tabLeft+i*tabWidth;
+            const bool active = i==bank;
+            r.plate(x,tabTop+2,tabWidth-2,33,active?0xff4d75de:0xff2b203b,
+                    active?0xff202f7f:0xff100d1b,active?0xffb1c9ff:0xff675a79);
+            ThornPage::bankLabel(r,i,x,tabTop+8);
+            if (active) r.box(x+9,tabTop+30,tabWidth-20,2,0xffbbd1ff);
         }
     }
-    int lastFace = -1;
-    uint32_t pulseAt = 0;
-    bool pulsing = false;
-
-    int animationFrame(const PatternView& v, uint32_t now)
-    {
-        if (!v.running || v.current < 0 || v.current >= v.steps)
-        {
-            pulsing = false;
-            return 0;
-        }
-        const bool onset = !shown.running || shown.current != v.current || shown.seed != v.seed;
-        const bool accent = ((v.gates & v.accents) >> v.current) & 1u;
-        if (onset && (v.current%4 == 0 || accent) && (!pulsing || now-pulseAt >= 144))
-        {
-            pulsing = true;
-            pulseAt = now;
-        }
-        if (!pulsing) return 0;
-        const uint32_t age = now-pulseAt;
-        if (age < 144) return 1 + int(age*5/144);
-        pulsing = false;
-        return 0;
-    }
-
-    void paintFace(const Raster& r, int frame)
-    {
-        r.indexed(421,0,68,67,rave::faces+frame*68*67);
-        lastFace = frame;
-    }
-
     void drawPattern(const Raster& r) const
     {
-        char label[64];
-        formatParam(paramTable[paramIndex(scale)], value(scale), label, sizeof(label), {});
-        char info[100];
-        std::snprintf(info, sizeof(info), "%s   /   %s", rootChoices[int(value(root))], label);
-        r.reading(13, 72, 230, info, paper);
-        const bool notes = value(mode) >= .5f;
-        const char* status = notes ? "NOTES" : shown.running ? "PLAY" : "STOP";
-        for (int j=0; j<5; ++j) r.box(145+j, 77+j/2, 1, 8-j, shown.running ? ice : muted);
-        if (shown.running)
-            std::snprintf(info, sizeof(info), "%02d / %02d", shown.current + 1, shown.steps);
-        else
-            std::snprintf(info, sizeof(info), "%s   /   %d steps", status, shown.steps);
-        r.reading(162, 70, 410, info, muted);
-        r.box(514, 79, 14, 3, steel);
-        r.text(535, 75, "Gate", muted);
-        accentMark(r, 588, 76, paper);
-        r.text(602, 75, "Accent", muted);
-        slideMark(r, 685, 80, paper);
-        r.text(706, 75, "Slide", muted);
+        r.box(0,bodyTop,780,tabTop-bodyTop,bg);
+        // Each ribbon puts the current bank's two performance readings above the notes.
+        const TextContext ctx {value(resonance),value(filter),value(peakSpread)};
+        for (int i=0; i<2; ++i)
+        {
+            const uint32_t id = ribbonParam(i);
+            const auto& param = paramTable[paramIndex(id)];
+            char text[64];
+            formatParam(param,value(id),text,sizeof(text),ctx);
+            const int x = 8+i*190;
+            r.plate(x,103,186,25,0xff292036,0xff151121,0xff514761);
+            r.text(x+9,109,param.name,muted);
+            r.right(x+176,109,text,paper);
+        }
+        r.box(500,114,13,3,steel);
+        r.text(519,109,"Gate",muted);
+        accentMark(r,575,109,paper);
+        r.text(590,109,"Accent",muted);
+        slideMark(r,681,116,paper);
+        r.text(699,109,"Slide",muted);
 
         if (shown.steps <= 0) return;
         const int rows = shown.steps > 16 ? 2 : 1;
@@ -258,24 +277,30 @@ private:
         const int low = *bounds.first, range = std::max(128, int(*bounds.second)-low);
         for (int row = 0; row < rows; ++row)
         {
-            const int top = gridTop + row*gridHeight/rows;
+            const int numberTop = ribbonTop(row*16);
+            const int top = numberTop+14;
             const int bottom = gridTop + (row+1)*gridHeight/rows - 1;
-            const int plotEnd = bottom - (rows == 1 ? 35 : 20);
+            const int plotEnd = bottom - (rows == 1 ? 41 : 28);
             r.box(gridLeft, top, gridWidth, plotEnd-top, cell);
             const int focus = finger >= 0 ? finger : shown.running ? shown.current : -1;
             if (focus >= row*16 && focus < (row+1)*16)
             {
                 const int col = focus%16;
-                r.box(stepX(col), top, stepX(col+1)-stepX(col), plotEnd-top, 0xff23374e);
+                r.box(stepX(col), top, stepX(col+1)-stepX(col), plotEnd-top, 0xff293b80);
             }
             for (int line=0; line<4; ++line)
                 r.box(gridLeft, top+3+line*(plotEnd-top-6)/3, gridWidth, 1, grid);
             for (int col=0; col<16; ++col)
-                r.box(stepX(col), top, 1, plotEnd-top, col%4 ? grid : 0xff526271);
-            auto pitchY = [&](int i) { return plotEnd-7-(shown.pitch[i]-low)*(plotEnd-top-14)/range; };
+                r.box(stepX(col), top, 1, plotEnd-top, col%4 ? grid : 0xff655975);
+            const int pad=rows==1 ? 7 : 2;
+            auto pitchY = [&](int i) { return plotEnd-pad-(shown.pitch[i]-low)*(plotEnd-top-2*pad)/range; };
             for (int i=row*16; i<std::min((row+1)*16, int(shown.steps)); ++i)
             {
                 const int col = i%16, x = stepX(col), w = stepX(col+1)-x, y = pitchY(i);
+                char number[16];
+                std::snprintf(number,sizeof(number),"%02d",i+1);
+                r.box(x+1,numberTop,w-2,14,focus==i?0xff28396c:0xff181322);
+                r.text(x+(w-Raster::measure(number,rave::small))/2,numberTop,number,focus==i?paper:muted);
                 const bool hit = focus == i, gated = (shown.gates >> i) & 1u;
                 if (hit) r.box(x, top, w, 2, ice);
                 if ((shown.slides >> i) & 1u)
@@ -296,15 +321,10 @@ private:
                 if (gated) r.box(x+5, y-1, w-10, 4, hit ? paper : steel);
                 else r.frame(x+5, y-2, w-10, 4, muted);
                 if ((shown.accents >> i) & 1u) accentMark(r, x+w/2-4, top+3, ice);
-                char pitch[12];
-                plots::noteName(int(std::lround(shown.pitch[i]/128.0)), pitch);
-                r.reading(x+(w-Raster::readingWidth(pitch))/2, plotEnd, x+w, pitch, hit ? paper : muted);
-                if (rows == 1 && (col%4 == 0 || hit))
-                {
-                    char number[16];
-                    std::snprintf(number,sizeof(number),"%02d",i+1);
-                    r.text(x+(w-Raster::measure(number,rave::small))/2, plotEnd+18, number, muted);
-                }
+                r.plate(x+1,plotEnd,w-2,bottom-plotEnd+1,hit?0xff151c32:0xff09090e,
+                        hit?0xff080b16:0xff020204,hit?0xff8ca8fc:0xff292333);
+                ThornPage::pitchLabel(r,shown.pitch[i],hit,x+(w-42)/2,plotEnd+(rows==1?0:-3));
+
             }
         }
     }
@@ -321,25 +341,29 @@ private:
             const auto rate = value(lane ? cutoffLfoSpeed : pitchLfoSpeed);
             const auto* detent = lfoDetent(rate);
             const double cycles = detent ? detent->cyclesPerBeat : rate;
-            const Ink color = lane ? 0xff99b3c1 : paper;
-            r.box(x, 76, 373, 152, cell);
-            r.reading(x+12, 81, x+195, lane ? "Cutoff LFO" : "Pitch LFO", paper, true);
+            const Ink color = lane ? 0xffd1afff : steel;
+            r.plate(x,103,373,141,0xff20192d,0xff0d0c15,0xff706580);
+            ThornPage::plotTitle(r,3+lane,x+12,107);
             char depth[40];
             std::snprintf(depth, sizeof(depth), lane ? "%.2f oct" : "%.2f st",
                           amount * (lane ? cutoffLfoOctaves : 12 * pitchLfoOctaves));
-            r.reading(x+275, 85, x+367, depth, paper);
-            const int left = x+12, w = 348, mid = 158;
-            for (int k=0; k<=4; ++k) r.box(left + k*w/4, 114, 1, 88, grid);
+            char speed[40];
+            formatParam(paramTable[paramIndex(lane ? cutoffLfoSpeed : pitchLfoSpeed)],rate,speed,sizeof(speed),{});
+            r.text(x+154,114,speed,muted);
+            r.reading(x+275, 111, x+367, depth, paper);
+            const int left = x+12, w = 348, mid = 178;
+            for (int k=0; k<=4; ++k) r.box(left + k*w/4, 139, 1, 77, grid);
             r.box(left, mid, w, 1, grid);
             double prev = mid;
             for (int j=0; j<=w; ++j)
             {
-                const double y = mid - 41*amount*std::sin(6.283185307179586*cycles*j/w);
+                const double y = mid - 36*amount*std::sin(6.283185307179586*cycles*j/w);
+                r.trace(left+j, prev+2, y+2, 0xff51448a);
                 r.trace(left+j, prev, y, color);
                 prev = y;
             }
-            r.text(left, 207, "0", muted);
-            r.right(left+w, 207, "1 beat", muted);
+            r.text(left, 224, "0", muted);
+            r.right(left+w, 224, "1 beat", muted);
         }
     }
 
@@ -347,42 +371,76 @@ private:
     {
         const TextContext ctx {value(resonance), value(filter), value(peakSpread)};
         const int kind = int(ctx.filter);
-        const double nominal = nominalHz(kind, value(cutoff));
-        const double feedback = feedbackOf(kind, ctx.resonance);
-        r.box(12, 76, 756, 152, cell);
-        r.reading(24, 81, 311, filterChoices[kind], paper, true);
+        const double nominal = nominalHz(kind, voiceCutoff);
+        const double feedback = feedbackOf(kind, voiceRes);
+        const double minHz = cutoffHz(0,ctx);
+        constexpr int w=plotRight-plotLeft, h=plotBottom-plotTop;
+        auto dbY = [](double db) { return plotTop + (18-std::clamp(db,-36.,18.))*h/54.; };
+        r.plate(8,103,764,141,0xff241a32,0xff100c1a,0xff76678f);
+        ThornPage::plotTitle(r,kind,21,106);
+        r.text(182,114,"FILTER RESPONSE",muted);
         char readout[48];
         formatParam(paramTable[paramIndex(cutoff)], value(cutoff), readout, sizeof(readout), ctx);
-        r.reading(640, 84, 756, readout, paper);
-        const int left = 25, top = 110, bottom = 201, w = 728;
-        for (int k = 0; k <= 3; ++k) r.box(left+k*w/3, top, 1, bottom-top, grid);
-        r.box(left, top+30, w, 1, grid);
-        const double ref = filterGain2(kind, feedback, ctx.spread, kind == filterTwinPeak ? std::exp2(ctx.spread*.5) : 1e-3);
-        double prev = 0;
-        for (int j=0; j<=w; j+=2)
+        r.text(406,114,"X  CUTOFF",ice);
+        r.reading(472,109,583,readout,paper);
+        r.text(592,114,"Y  RES",0xffcfa7ff);
+        std::snprintf(readout,sizeof(readout),"%.0f %%",100.*ctx.resonance);
+        r.reading(650,109,754,readout,paper);
+        r.box(plotLeft,plotTop,w+1,h+1,0xff100d1c);
+        for (int db : {18, 0, -18, -36})
         {
-            const double hz = 20 * std::pow(1000.0, double(j)/w);
-            const double db = 10 * std::log10(filterGain2(kind, feedback, ctx.spread, hz/nominal)/ref + 1e-12);
-            const double y = top + (18 - std::clamp(db, -36.0, 18.0)) * (bottom-top)/54;
-            if (!j) prev = y;
-            const double halfway = (prev+y)*.5;
-            if (j) r.trace(left+j-1, prev, halfway, steel);
-            r.trace(left+j, halfway, y, steel);
-            prev = y;
+            const int y=int(std::lround(dbY(db)));
+            r.box(plotLeft,y,w+1,1,db==0?0xff5e5179:0xff31273e);
+            std::snprintf(readout,sizeof(readout),"%+d",db);
+            r.right(plotLeft-6,y-5,readout,muted);
         }
-        r.text(left, 207, "20 Hz", muted);
-        r.text(left+w/3, 207, "200 Hz", muted);
-        r.text(left+2*w/3, 207, "2 kHz", muted);
-        r.right(left+w, 207, "20 kHz", muted);
+        r.text(15,127,"dB",steel);
+        r.right(765,127,"RES %",0xffcfa7ff);
+        for (int n : {0,50,100})
+        {
+            std::snprintf(readout,sizeof(readout),"%d",n);
+            r.text(plotRight+7,plotBottom-n*h/100-5,readout,muted);
+        }
+        for (int hz : {10,20,50,100,200,500,1000,2000,5000,10000,20000,50000})
+        {
+            const double pos=std::log2(hz/minHz)/cutoffOctaves;
+            if (pos<0 || pos>1) continue;
+            const int x=plotLeft+int(std::lround(w*pos));
+            for (int y=plotTop; y<plotBottom; y+=4) r.box(x,y,1,2,0xff4a3d64);
+            if (hz>=1000) std::snprintf(readout,sizeof(readout),"%dk",hz/1000);
+            else std::snprintf(readout,sizeof(readout),"%d",hz);
+            r.text(x-5,225,readout,steel);
+        }
+        r.text(15,225,"Hz",steel);
+        const double ref = filterGain2(kind, feedback, ctx.spread, kind == filterTwinPeak ? std::exp2(ctx.spread*.5) : 1e-3);
+        double prev=0, hz=minHz;
+        const double ratio=std::exp2(double(cutoffOctaves)/w);
+        for (int j=0; j<=w; ++j,hz*=ratio)
+        {
+            const double gain=filterGain2(kind, feedback, ctx.spread, hz/nominal);
+            const double y=dbY(10*std::log10(gain/ref+1e-12));
+            if (!j) prev=y;
+            const int x=plotLeft+j;
+            if ((j%5)==0)
+                r.box(x,int(y)+2,1,plotBottom-int(y)-1,0xff333058);
+            r.trace(x,prev+1.5,y+1.5,0xff655bb8);
+            r.trace(x,prev,y,0xffd9e4ff);
+            prev=y;
+        }
+        const int cx=plotLeft+int(std::lround(w*voiceCutoff));
+        const int cy=plotBottom-int(std::lround(h*voiceRes));
+        for (int y=plotTop; y<=plotBottom; y+=5) r.box(cx,y,1,2,0xff8faaff);
+        for (int x=plotLeft; x<=plotRight; x+=7) r.box(x,cy,2,1,0xffa68bc9);
+        for (int d=-5; d<=5; ++d)
+        {
+            const int dy=5-std::abs(d);
+            r.box(cx+d,cy-dy,1,1,paper);
+            r.box(cx+d,cy+dy,1,1,paper);
+        }
+        r.box(cx-1,cy-1,3,3,0xffc4a8ff);
     }
 
     float value(uint32_t id) const { return values[paramIndex(id)]; }
-    static void button(const Raster& r, int x, int w, const char* text)
-    {
-        r.box(x, 9, w, 44, 0xff17232e);
-        r.box(x, 9, w, 1, 0xff66839a);
-        r.reading(x + (w - Raster::readingWidth(text)) / 2, 21, x+w, text, paper);
-    }
     static void accentMark(const Raster& r, int x, int y, Ink color)
     {
         for (int j=0; j<5; ++j) r.box(x+4-j, y+j, 1+2*j, 1, color);

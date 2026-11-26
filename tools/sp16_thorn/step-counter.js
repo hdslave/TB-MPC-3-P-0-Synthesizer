@@ -24,8 +24,8 @@ function drawStepGlass(g){
   g.stroke();g.restore();
 }
 
-function makeStepCounter(){
-  const font='66px SlinkItalic',colours=['#afbeff','#958cf5','#985fdf','#7043a7'];
+function makeStepCounter(font='66px SlinkItalic'){
+  const colours=['#afbeff','#958cf5','#985fdf','#7043a7'];
   const metrics=document.createElement('canvas').getContext('2d');metrics.font=font;
   const digitOrigins=Array.from({length:10},(_,i)=>{
     const ink=metrics.measureText(String(i));

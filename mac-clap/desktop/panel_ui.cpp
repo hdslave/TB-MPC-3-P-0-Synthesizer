@@ -212,10 +212,8 @@ Rect PanelUI::update (uint64_t now)
     if (wheelParam_ >= 0 && now >= wheelAt_ + 240) endWheelGesture ();
     const auto next = p_->patternReader->read (p_->inner);
     const bool playing = p_->transportPlaying.load (std::memory_order_relaxed);
+#ifndef SLINK_RAZOR_PANEL
     const bool stepChanged = next.current != score_.current || next.seed != score_.seed;
-#ifdef SLINK_RAZOR_PANEL
-    const bool onset = stepChanged || !score_.running || !playing_;
-#else
     if (stepChanged && next.running) pulseAt_ = now;
 #endif
     const bool scoreChanged = !(next == score_) || playing != playing_;
@@ -239,7 +237,7 @@ Rect PanelUI::update (uint64_t now)
     const int oldFace = facePose_, oldStorm = art_.storm.index;
     if (!cameraHeld_) elapsed_ += delta;
     motionMs_ += delta;
-    if (motion_) advanceFace (onset);
+    if (motion_) advanceFace ();
 #else
     const uint64_t delta = std::min<uint64_t> (elapsedSinceUpdate, 150);
     const int oldShaft = art_.shaft.index;
@@ -878,6 +876,11 @@ void PanelUI::edit (int param, Rect r, int buttonId, uint32_t mods, int clicks, 
     }
     if (tbmpc::paramTable[tbmpc::paramIndex (pr.id)].kind == tbmpc::Kind::button)
     {
+        if (pr.id == tbmpc::ParamId::regen && p_->displayValue (p_->findParamIndex (tbmpc::ParamId::seedMode)) >= .5)
+        {
+            const int seed = p_->findParamIndex (tbmpc::ParamId::seed);
+            p_->setValueOnce (seed, tbmpc::nextPanelSeed (uint16_t (p_->displayValue (seed))));
+        }
         p_->setValueOnce (param, pr.maxVal);
         return;
     }

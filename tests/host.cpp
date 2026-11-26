@@ -430,7 +430,7 @@ void testParameters()
     a.params->value_to_text (a.plugin, a.id ("Scale"), a.value ("Scale"), text, sizeof (text));
     CHECK (std::string (text) == "Gunakri");
     CHECK (a.valueOf ("Scale", "Aeolian") == 6 && a.valueOf ("Scale", "Semitone") == 0);
-    CHECK (a.value ("Seed Mode") == a.valueOf ("Seed Mode", "Random") && a.value ("Reset") == a.valueOf ("Reset", "Play"));
+    CHECK (a.value ("Seed Mode") == a.valueOf ("Seed Mode", "Locked") && a.value ("Reset") == a.valueOf ("Reset", "Play"));
 }
 
 void testState()
@@ -800,6 +800,7 @@ void testSeed()
     std::vector<float> l, r;
     // Random: each Play is a reset with a new seed, which the host hears as the Seed parameter's value.
     Instance a;
+    a.setup ({{"Seed Mode", 0.0}});
     OutEvents out;
     const double before = a.value ("Seed");
     a.render (48000, 128, l, r, [] (uint64_t at) {
@@ -821,6 +822,7 @@ void testSeed()
     CHECK (outB.values.empty() && b.value ("Seed") == 0x1234);
     // Regen: a reset now; it returns to 0, and in Random mode picks a new seed.
     Instance c;
+    c.setup ({{"Seed Mode", 0.0}});
     OutEvents outC;
     c.render (48000, 128, l, r, [] (uint64_t) { return Transport { false, 120.0, 0.0 }; }, [&] (uint64_t at, uint32_t, Events& e) {
         if (at == 128 * 10) c.set (e, "Regen", 1.0);
@@ -1084,6 +1086,7 @@ void testSeedBack()
     // Random: each Play picks a seed; Seed Back gives the first Play's one back, locked. Twice: further back.
     {
         Instance a;
+        a.setup ({{"Seed Mode", 0.0}});
         OutEvents out;
         a.render (48000 * 3, 128, l, r, [] (uint64_t at) {
             if (at < 24000) return playingFrom (0.0, 120.0, rate48, at);
@@ -1107,7 +1110,7 @@ void testSeedBack()
         a.render (4800, 128, l, r, [] (uint64_t) { return Transport { false, 120.0, 0.0 }; }, [&] (uint64_t at, uint32_t, Events& e) {
             if (at == 0) a.set (e, "Seed Back", 1.0);
         }, &out);
-        CHECK (reported (out, a.id ("Seed")).empty() && a.value ("Seed Mode") == 0.0);
+        CHECK (reported (out, a.id ("Seed")).empty() && a.value ("Seed Mode") == 1.0);
     }
 }
 
@@ -1357,8 +1360,7 @@ void testExtremes()
 void demos (const std::string& folder)
 {
     // 16 s of each factory preset at 120 BPM. Each preset (loaded by its key) must give exactly the values listed
-    // here and the same sound; the files are rendered from the preset. Default runs on its Random seed: a new
-    // pattern every Play.
+    // here and the same sound. The files are rendered from the preset.
     struct Demo { const char* file; const char* preset; std::vector<std::pair<std::string, double>> values; bool notes = false; };
     std::vector<Demo> list {
         { "demo-acid-line.wav", "acid-line", { { "Seed Mode", 1 }, { "Seed", 0x5a17 }, { "Scale", 6 }, { "Density", 5 }, { "Cutoff", 0.465 },
@@ -2745,12 +2747,20 @@ void testSp16Panel(const std::string& folder)
     uint32_t ids[6];
     char label[SIXTEEN_TAB_NAME_SIZE];
     std::vector<clap_id> reachable;
+    const char* bankNames[] = {"Perform","Voice","Glide","LFO","Pattern","Clock"};
+    auto openBank = [&](int bank) {
+        CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 339+bank*79, 264));
+        CHECK(ui->knobs(touch.plugin, ids, label) && std::string(label)==bankNames[bank]);
+        CHECK(ui->render(touch.plugin, &surface, false));
+    };
     for (int bank = 0; bank < 6; ++bank)
     {
-        if (bank==0 || bank==5) CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,35,264)); // Pattern bank picker
-        CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 65+bank*130, 260));
-        CHECK(ui->knobs(touch.plugin, ids, label) && *label);
-        CHECK(ui->render(touch.plugin, &surface, false));
+        for (int source=0; source<6; ++source)
+        {
+            openBank(source);
+            openBank(bank);
+        }
+        CHECK(writePng((folder+"/thorn-"+bankNames[bank]+".png").c_str(),pixels.data(),780,h,stride,1));
         for (auto id : ids)
         {
             double v;
@@ -2770,7 +2780,7 @@ void testSp16Panel(const std::string& folder)
     std::vector<float> left, right, expected, expectedR;
     for (const int step : {0, 15, 16, 31})
     {
-        CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 32+47*(step%16), step < 16 ? 122 : 202));
+        CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 32+47*(step%16), step < 16 ? 137 : 193));
         touch.render(1024,64,left,right,stopped);
         pad.render(1024,64,expected,expectedR,stopped,[step](uint64_t at,uint32_t,Events& e){
             if (!at) e.note(0, CLAP_EVENT_NOTE_ON, 60+step, 0.72);
@@ -2783,38 +2793,83 @@ void testSp16Panel(const std::string& folder)
     auto playing = [](uint64_t at) { return playingFrom(0,120,44100,at); };
     touch.render(8000,64,left,right,playing);
     const int original = int(touch.value("Seed"));
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,705,32));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,745,75));
     touch.render(8000,64,left,right,[](uint64_t at) { return playingFrom(0,120,44100,8000+at); });
     CHECK(int(touch.value("Seed")) != original);
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,598,32));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,30,74));
     touch.render(8000,64,left,right,[](uint64_t at) { return playingFrom(0,120,44100,16000+at); });
     CHECK(int(touch.value("Seed")) == original && touch.value("Seed Mode") == 1.0);
-    // An accent should move the face even on the LFO page, which has no playhead.
+    auto currentSeed = [&] { return int(touch.value("Seed")); };
+    for (int n=0; n<3; ++n)
+    {
+        const int last=currentSeed();
+        CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,745,75));
+        touch.render(256,64,left,right,stopped);
+        CHECK(currentSeed()!=last && touch.value("Seed Mode")==1);
+    }
+    openBank(4);
+    // Check the score itself after successive stopped edits, without clocking or reactivating.
+    auto notesRow = [&] {
+        std::vector<uint32_t> row;
+        for (int y=129; y<160; ++y)
+            row.insert(row.end(),pixels.begin()+stride*y+66,pixels.begin()+stride*y+766);
+        return row;
+    };
+    const int rolled=currentSeed();
+    const auto rolledNotes=notesRow();
+    for (int seed : {0x1234, 0x2345, rolled})
+    {
+        touch.render(256,64,left,right,stopped,[&](uint64_t at,uint32_t,Events& ev){
+            if (!at) touch.set(ev,"Seed",seed);
+        });
+        ui->render(touch.plugin,&surface,false);
+        CHECK(currentSeed()==seed);
+        CHECK((notesRow()==rolledNotes)==(seed==rolled));
+    }
+    openBank(1);
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,400,188));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,44,219));
+    CHECK(touch.value("Cutoff")==0 && touch.value("Resonance")==0);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,800,-20));
+    CHECK(touch.value("Cutoff")==1 && touch.value("Resonance")==1);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,387,181));
+    CHECK(std::abs(touch.value("Cutoff")-.5)<.01 && std::abs(touch.value("Resonance")-.5)<.01);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,800,-20));
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,44,142));
+    // The shared face animates on the LFO page during playback.
     CHECK(touch.loadPreset("root-pulse"));
     touch.setup({});
-    CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 460, 260));
+    openBank(3);
     ui->render(touch.plugin, &surface, true);
-    auto facePixels = [&] {
+    auto facePixels = [&](const std::vector<uint32_t>& data) {
         std::vector<uint32_t> tile;
-        for (int row = 0; row < 67; ++row)
-            tile.insert(tile.end(), pixels.begin()+stride*row+421, pixels.begin()+stride*row+489);
+        for (int row = 0; row < 58; ++row)
+            tile.insert(tile.end(), data.begin()+stride*row+717, data.begin()+stride*row+778);
         return tile;
     };
-    const auto resting = facePixels();
+    auto restingPixels=pixels;
+    auto restingSurface=surface;
+    restingSurface.pixels=restingPixels.data();
     std::vector<std::vector<uint32_t>> phases;
     for (int poll = 0; poll < 65; ++poll)
     {
         touch.render(882,64,left,right,[poll](uint64_t at) { return playingFrom(0,120,44100,at+poll*882); });
         surface.now_ms += 20;
         ui->render(touch.plugin, &surface, false);
-        auto frame = facePixels();
+        restingSurface.now_ms=surface.now_ms;
+        ui->render(pad.plugin,&restingSurface,true);
+        auto frame = facePixels(pixels);
+        CHECK(frame == facePixels(restingPixels));
         if (std::find(phases.begin(), phases.end(), frame) == phases.end())
             phases.push_back(frame);
     }
-    CHECK(phases.size() >= 5);
+    CHECK(phases.size() >= 48);
     touch.setup({});
     ui->render(touch.plugin, &surface, false);
-    CHECK(facePixels() == resting);
+    // At rest the face still sways. At an identical timestamp it is deterministic.
+    const auto resting = facePixels(pixels);
+    CHECK(ui->render(touch.plugin, &surface, true));
+    CHECK(facePixels(pixels) == resting);
     CHECK(!ui->render(touch.plugin, &surface, false));
     CHECK(ui->selector_turn(touch.plugin,1)); // LFO to Pattern
     CHECK(ui->render(touch.plugin,&surface,true));
@@ -2825,6 +2880,18 @@ void testSp16Panel(const std::string& folder)
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68)); // local Stop
     touch.render(1024,64,left,right,stopped);
     CHECK(ui->render(touch.plugin,&surface,false));
+    // Direct control drags update the same parameters the encoders expose.
+    openBank(0);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,75,112));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,220,112));
+    CHECK(touch.value("Cutoff")==1.0);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,220,112));
+    openBank(3);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,24,216));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,372,139));
+    CHECK(touch.value("Pitch LFO Amount")==1 && touch.value("Pitch LFO Speed")==tbmpc::lfoMaxRate);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,372,139));
+    openBank(4);
     // A host Play takes over a local preview. The screen becomes a sync
     // indicator, and the host Stop must not restart the preview.
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68));
@@ -2854,6 +2921,70 @@ void testSp16Panel(const std::string& folder)
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,345,44));
     surface.now_ms+=800;ui->render(touch.plugin,&surface,false);
     CHECK(held!=crestPixels());
+    // A silent note edit, painted switches, project recall and an audible header press.
+    Instance editor(44100), recalled(44100);
+    for (auto* a : {&editor,&recalled})
+    {
+        ui->on_open(a->plugin);
+        a->setup({{"Seed Mode",1},{"Seed",0x4321},{"Steps",32}});
+    }
+    auto editSurface=surface;
+    auto rendered=pixels;
+    editSurface.pixels=rendered.data();
+    auto repaint=[&](Instance& a) {
+        a.render(512,64,left,right,stopped);
+        ui->render(a.plugin,&editSurface,true);
+    };
+    repaint(editor);
+    auto press=[&](int x,int y){return ui->touch(editor.plugin,SIXTEEN_TOUCH_DOWN,x,y);};
+    auto drag=[&](int x,int y){return ui->touch(editor.plugin,SIXTEEN_TOUCH_MOVE,x,y);};
+    auto lift=[&](int x,int y){return ui->touch(editor.plugin,SIXTEEN_TOUCH_UP,x,y);};
+    CHECK(press(561,40)); // second bank
+    CHECK(press(85,145) && drag(85,117) && lift(85,117)); // step 17, +4 semitones
+    for (int y : {178,206,231})
+        CHECK(press(85,y) && drag(213,y) && lift(213,y)); // jump across four columns
+    repaint(editor);
+    CHECK(std::all_of(left.begin(),left.end(),[](float s){ return s==0; }));
+    auto writeState=[](Instance& a) {
+        std::vector<uint8_t> data;
+        clap_ostream out{&data,[](const clap_ostream* stream,const void* src,uint64_t n)->int64_t{
+            auto& bytes=*static_cast<std::vector<uint8_t>*>(stream->ctx);
+            const auto* ptr=static_cast<const uint8_t*>(src);
+            bytes.insert(bytes.end(),ptr,ptr+n);
+            return n;
+        }};
+        CHECK(a.state->save(a.plugin,&out));
+        return data;
+    };
+    auto saved=writeState(editor);
+    auto record=[&](int slot){
+        float value=-1;
+        const size_t pos=12+(tbmpc::paramCount+slot)*8+4;
+        if(pos+4<=saved.size()) std::memcpy(&value,saved.data()+pos,4);
+        return int(value);
+    };
+    CHECK(record(0)==0x4321);
+    CHECK((record(17)&255)==4 && (record(18)&255)==0);
+    for(int i=17;i<=20;++i) CHECK((record(i)&0x2a00)==0x2a00);
+    CHECK(record(16)==0 && record(21)==0);
+    struct Cursor{const std::vector<uint8_t>& data;size_t pos=0;} cursor{saved};
+    clap_istream input{&cursor,[](const clap_istream* stream,void* dst,uint64_t n)->int64_t{
+        auto& c=*static_cast<Cursor*>(stream->ctx);
+        const size_t count=std::min<size_t>(n,c.data.size()-c.pos);
+        std::memcpy(dst,c.data.data()+c.pos,count);
+        c.pos+=count;
+        return count;
+    }};
+    CHECK(recalled.state->load(recalled.plugin,&input));
+    repaint(recalled);
+    CHECK(writeState(recalled)==saved);
+    CHECK(press(85,113) && lift(85,113));
+    editor.render(1024,64,left,right,stopped);
+    recalled.render(1024,64,expected,expectedR,stopped,[](uint64_t at,uint32_t,Events& e){
+        if(!at) e.note(0,CLAP_EVENT_NOTE_ON,76,0.72);
+    });
+    CHECK(std::any_of(left.begin(),left.end(),[](float s){ return std::abs(s)>.001f; }));
+    CHECK(left==expected && right==expectedR);
     for(int row=0;row<h;++row)
         CHECK(pixels[row*stride+780]==0x12345678);
     CHECK(writePng((folder+"/thorn-pattern.png").c_str(),pixels.data(),780,285,stride,1));

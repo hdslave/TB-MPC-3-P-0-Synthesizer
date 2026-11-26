@@ -242,6 +242,8 @@ public:
 
     void render (float* left, float* right, uint32_t frames)
     {
+        if (frames && !playing && !regenPressed && seq.currentSeed() != seq.playingSeed())
+            seq.regenerate();
         while (frames > 0)
         {
             if (regenPressed)

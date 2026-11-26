@@ -138,8 +138,8 @@ ThornArt::ThornArt ()
 void ThornArt::animate (uint64_t cameraMs, uint64_t motionMs)
 {
 #ifdef SLINK_RAZOR_PANEL
-    camera.load (razor::cameraFirst + int (cameraMs * 12 / 1000 % razor::cameraCount));
-    storm.load (razor::stormFirst + int (motionMs * 12 / 1000 % razor::stormCount));
+    camera.load (razor::cameraFirst + int ((cameraMs % 20000) * razor::cameraCount / 20000));
+    storm.load (razor::stormFirst + int ((motionMs % 8000) * razor::stormCount / 8000));
 #else
     camera.load (thorn::cameraFirst + int (cameraMs / 50 % thorn::cameraCount));
     shaft.load (thorn::shaftFirst + int (cameraMs * 24 / 1000 % thorn::shaftCount));

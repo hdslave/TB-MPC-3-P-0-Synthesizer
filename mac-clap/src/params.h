@@ -205,6 +205,8 @@ constexpr double moduleTickRate = 1.0e6 / 60.0;
 
 inline const char* const waveChoices[] = { "Saw", "Square" };
 inline const char* const glideChoices[] = { "TB-3PO", "303" };
+// Full-period seed succession for an explicit roll while transport resets are locked.
+inline uint16_t nextPanelSeed(uint16_t seed) { return uint16_t(25173u * seed + 13849u); }
 inline const char* const seedModeChoices[] = { "Random", "Locked" };
 inline const char* const modeChoices[] = { "TB-3PO", "Notes" };
 // Mode: Notes: a note at this velocity or louder is accented (as 303-style synths read MIDI).
@@ -247,7 +249,7 @@ inline constexpr Param paramTable[] = {
     CHOICE (glide, "Slide", "Voice", glideChoices, 0.0f),
     CONT (slideTime, "Slide Time", "Voice", 0.0f, 1.0f, slideTimeDefault, slideTime),
     CHOICE (mode, "Mode", "TB-3PO", modeChoices, 0.0f),
-    CHOICE (seedMode, "Seed Mode", "TB-3PO", seedModeChoices, 0.0f),
+    CHOICE (seedMode, "Seed Mode", "TB-3PO", seedModeChoices, 1.0f),
     INT (seed, "Seed", "TB-3PO", 0.0f, 65535.0f, 12345.0f, seedHex),
     BUTTON (regen, "Regen", "TB-3PO"),
     BUTTON (seedBack, "Seed Back", "TB-3PO"),

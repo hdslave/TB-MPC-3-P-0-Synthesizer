@@ -1,6 +1,6 @@
 // The factory presets: the patches the demo renders play (tests/host.cpp checks they are the same values and the same
-// sound). A preset sets every parameter: the ones listed here, the rest to their defaults. All but Default lock their
-// seed, so they play the same pattern every time; Note Bass is played by MIDI notes instead.
+// sound). A preset sets every parameter: the ones listed here, the rest to their defaults. The sequence presets use locked
+// seeds. Note Bass is played by MIDI notes.
 #pragma once
 
 #include "params.h"
