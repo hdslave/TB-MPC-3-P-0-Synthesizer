@@ -14,9 +14,5 @@ struct PatternView
 };
 static_assert (sizeof (PatternView) == 92, "no padding: compared and copied as bytes");
 
-inline constexpr char patternViewId[] = "com.hdslave.slink.pattern-view/1";
-struct PatternReader
-{
-    PatternView (CLAP_ABI *read) (const clap_plugin_t*);
-};
+
 }

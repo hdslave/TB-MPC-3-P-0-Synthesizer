@@ -1,8 +1,6 @@
 #include <clap/clap.h>
 #include "../desktop/panel_presentation.h"
-#ifdef SLINK_RAZOR_PANEL
 #include <clap/ext/draft/transport-control.h>
-#endif
 
 #include <chrono>
 #include <cmath>
@@ -35,6 +33,10 @@ typedef struct hdslave_desktop_debug_api
     double (*ms_per_full_render) (const clap_plugin_t* plugin, int w, int h, int scale);
 } hdslave_desktop_debug_api_t;
 }
+
+#ifdef __APPLE__
+bool testCocoaWindow(const clap_plugin_t*,const clap_plugin_gui_t&);
+#endif
 
 namespace
 {
@@ -156,7 +158,6 @@ const void* CLAP_ABI hostGetExtension (const clap_host_t* h, const char* id)
 {
     checkHostPtr (h, "host.get_extension");
     if (!id) return nullptr;
-#ifdef SLINK_RAZOR_PANEL
     if (std::strcmp (id, CLAP_EXT_TRANSPORT_CONTROL) == 0)
     {
         static const clap_host_transport_control_t transport = [] {
@@ -169,7 +170,6 @@ const void* CLAP_ABI hostGetExtension (const clap_host_t* h, const char* id)
         }();
         return &transport;
     }
-#endif
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &kHostParams;
     if (std::strcmp (id, CLAP_EXT_PRESET_LOAD) == 0 || std::strcmp (id, CLAP_EXT_PRESET_LOAD_COMPAT) == 0) return &kHostPresetLoad;
     if (std::strcmp (id, CLAP_EXT_STATE) == 0) return &kHostState;
@@ -273,191 +273,260 @@ std::string resolveBinaryPath (const std::string& clapPath, std::string& baseOut
         base = base.substr (0, base.size() - 5);
     baseOut = base;
 #ifdef __APPLE__
-    return clapPath + "/Contents/MacOS/" + base;
+    return clapPath + "/Contents/MacOS/Slink";
 #else
     return clapPath;
 #endif
 }
 
-// Exercise all four sections of the compact panel through native mouse coordinates at 2x.
+// Exercise the shared 780x285 panel through desktop mouse events at minimum size and Retina scale.
 bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug_api_t& ui,
-                          const clap_plugin_params_t& params, clap_process_t& block)
+                          const clap_plugin_params_t& params, const clap_plugin_state_t& state,
+                          clap_process_t& block, const std::string& snapDir)
 {
-    int width = 0, height = 0;
-    auto render = [&] { return ui.ui_render (plug, 1016, 540, 2, &width, &height) != nullptr
-                               && width == 2032 && height == 1080; };
-    auto click = [&](int x, int y) {
-        ui.ui_mouse (plug, 0, x, y, 0, 0, 0, 1);
-        ui.ui_mouse (plug, 2, x, y, 0, 0, 0, 1);
+    constexpr int left=12, top=74, w=936, h=342, scale=2;
+    const auto px = [](int x){ return left+(x+.5f)*w/780; };
+    const auto py = [](int y){ return top+(y+.5f)*h/285; };
+    int width=0,height=0;
+    auto render=[&] { return ui.ui_render(plug,960,540,scale,&width,&height); };
+    auto mouse=[&](int kind,float x,float y,uint32_t mods=0,float delta=0,int button=0) {
+        ui.ui_mouse(plug,kind,x,y,button,mods,delta,1);
     };
-    auto process = [&] {
-        static_cast<StrictHostCtx*> (block.out_events->ctx)->lastOutTime = 0;
-        block.steady_time += block.frames_count;
-        plug->process (plug, &block);
+    auto click=[&](float x,float y,uint32_t mods=0) {
+        mouse(0,x,y,mods); mouse(2,x,y,mods);
     };
-    auto drag = [&](int x, int y, const char* name) {
-        for (uint32_t i = 0; i < params.count (plug); ++i)
+    auto bodyClick=[&](int x,int y,uint32_t mods=0) {
+        click(px(x),py(y),mods);
+        render();
+    };
+    auto bodyDrag=[&](int x,int y,int x1,int y1) {
+        mouse(0,px(x),py(y)); mouse(1,px(x1),py(y1)); mouse(2,px(x1),py(y1));
+    };
+    auto& ctx=*static_cast<StrictHostCtx*>(block.out_events->ctx);
+    auto process=[&] {
+        ctx.lastOutTime=0;
+        block.steady_time+=block.frames_count;
+        plug->process(plug,&block);
+        plug->on_main_thread(plug);
+    };
+    auto find=[&](const char* name) {
+        for(uint32_t i=0;i<params.count(plug);++i)
         {
             clap_param_info_t info {};
-            if (!params.get_info (plug, i, &info) || std::strcmp (name, info.name) != 0) continue;
-            double before, after;
-            if (!params.get_value (plug, info.id, &before)) return false;
-            ui.ui_mouse (plug, 0, x, y, 0, 0, 0, 1);
-            ui.ui_mouse (plug, 1, x, y-24, 0, 0, 0, 1);
-            ui.ui_mouse (plug, 2, x, y-24, 0, 0, 0, 1);
-            process();
-            if (params.get_value (plug, info.id, &after) && after > before) return true;
-            break;
+            if(params.get_info(plug,i,&info) && !std::strcmp(name,info.name)) return info;
         }
-        std::fprintf (stderr, "FAIL: Slink dial at %d,%d did not raise %s\n", x, y, name);
-        return false;
+        clap_param_info_t info {};
+        info.id=CLAP_INVALID_ID;
+        return info;
     };
-
-    if (!render() || !drag (80, 394, "Cutoff") || !drag (230, 394, "Resonance")
-        || !drag (80, 514, "Cutoff LFO Amt") || !drag (230, 514, "Cutoff LFO Speed")
-        || !drag (380, 484, "Pitch LFO Amount") || !drag (515, 484, "Pitch LFO Speed")
-        || !drag (950, 394, "Mutate") || !drag (797, 506, "Swing")
-        || !drag (60, 143, "Seed")) return false;
-
-    auto idOf = [&](const char* name) {
-        for (uint32_t i = 0; i < params.count (plug); ++i)
-        {
-            clap_param_info_t info {};
-            if (params.get_info (plug, i, &info) && std::strcmp (info.name, name) == 0) return info.id;
-        }
-        return clap_id (CLAP_INVALID_ID);
-    };
-    auto value = [&](const char* name) {
-        double v = -1;
-        params.get_value (plug, idOf (name), &v);
+    auto value=[&](const char* name) {
+        double v=-1;
+        params.get_value(plug,find(name).id,&v);
         return v;
     };
-    const double previous = value ("Seed");
-    click (966, 139);
-    process();
-    if (value ("Seed") == previous)
-    {
-        std::fprintf (stderr, "FAIL: Regen did not change the seed\n");
-        return false;
-    }
-
-    // Both axes must reach host automation and the instrument.
-    auto& reported = static_cast<StrictHostCtx*> (block.out_events->ctx)->edited;
-    reported.clear();
-    const double beforeCutoff = value ("Cutoff"), beforeResonance = value ("Resonance");
-    ui.ui_mouse (plug, 0, 440, 510, 0, 0, 0, 1);
-    ui.ui_mouse (plug, 1, 397, 532, 0, 0, 0, 1);
-    ui.ui_mouse (plug, 2, 397, 532, 0, 0, 0, 1);
-    process();
-    if (!reported.count (idOf ("Cutoff")) || !reported.count (idOf ("Resonance"))
-        || value ("Cutoff") >= beforeCutoff || value ("Resonance") >= beforeResonance)
-    {
-        std::fprintf (stderr, "FAIL: filter XY drag did not automate both axes\n");
-        return false;
-    }
-
-    // The scale selector scrolls through the entire host choice range.
-#ifdef SLINK_RAZOR_PANEL
-    click (875, 137);
-    if (static_cast<StrictHostCtx*> (block.out_events->ctx)->transportRequests != 1)
-    {
-        std::fprintf (stderr, "FAIL: host transport button did not request playback\n");
-        return false;
-    }
-    click (155, 335);
-    ui.ui_mouse (plug, 3, 155, 205, 0, 0, -1000, 0);
-    click (155, 302);
-#else
-    click (235, 144);
-    ui.ui_mouse (plug, 3, 235, 219, 0, 0, -1000, 0);
-    click (235, 461);
-#endif
-    process();
-    clap_param_info_t scaleInfo {};
-    for (uint32_t i=0; i<params.count (plug); ++i)
-        if (params.get_info (plug,i,&scaleInfo) && scaleInfo.id == idOf ("Scale")) break;
-    if (value ("Scale") != scaleInfo.max_value)
-    {
-        std::fprintf (stderr, "FAIL: last scale is unreachable from the menu\n");
-        return false;
-    }
-
-    // Holding motion freezes the artwork. A manual camera cut changes
-    // only the crest, and resuming motion advances the vector artwork again.
-    click (950, 27);
-    auto sampleArea = [&](int left, int top, int right, int bottom) {
-        const auto* frame = ui.ui_render (plug, 1016, 540, 2, &width, &height);
+    auto set=[&](const char* name,double value) {
+        clap_event_param_value_t event {};
+        event.header={sizeof(event),0,CLAP_CORE_EVENT_SPACE_ID,CLAP_EVENT_PARAM_VALUE,0};
+        event.param_id=find(name).id;
+        event.note_id=event.port_index=event.channel=event.key=-1;
+        event.value=value;
+        clap_input_events_t events {&event.header,[](const clap_input_events_t*) -> uint32_t { return 1; },
+            [](const clap_input_events_t* e,uint32_t) { return static_cast<const clap_event_header_t*>(e->ctx); }};
+        const auto* before=block.in_events;
+        block.in_events=&events;
+        process();
+        block.in_events=before;
+        render();
+    };
+    auto area=[&](int x0,int y0,int x1,int y1) {
+        const auto* data=render();
         std::vector<uint32_t> sample;
-        for (int y = top * 2; y < bottom * 2; y += 3)
-            for (int x = left * 2; x < right * 2; x += 3) sample.push_back (frame[y * width + x]);
+        for(int y=int(py(y0)*scale);y<int(py(y1)*scale);y+=3)
+            for(int x=int(px(x0)*scale);x<int(px(x1)*scale);x+=3) sample.push_back(data[y*width+x]);
         return sample;
     };
-    auto crest = [&] { return sampleArea (350, 65, 630, 150); };
-    auto strip = [&] { return sampleArea (278, 321, 465, 345); };
-    const auto heldCrest = crest(), heldStrip = strip();
-#ifdef SLINK_RAZOR_PANEL
-    auto face = [&] { return sampleArea (935, 58, 989, 119); };
-    const auto heldFace = face();
-#endif
-    std::this_thread::sleep_for (std::chrono::milliseconds (110));
-    if (crest() != heldCrest || strip() != heldStrip)
-    {
-        std::fprintf (stderr, "FAIL: artwork moved while motion was held\n");
-        return false;
-    }
-#ifdef SLINK_RAZOR_PANEL
-    if (face() != heldFace) return false;
-#endif
-    click (500, 82);
-    if (crest() == heldCrest || strip() != heldStrip)
-    {
-        std::fprintf (stderr, "FAIL: a camera cut must change only the crest\n");
-        return false;
-    }
-    click (950, 27);
-    std::this_thread::sleep_for (std::chrono::milliseconds (110));
-    if (strip() == heldStrip)
-    {
-        std::fprintf (stderr, "FAIL: footer motion did not resume\n");
-        return false;
-    }
-#ifdef SLINK_RAZOR_PANEL
-    auto holdCamera = [&] {
-        ui.ui_mouse (plug, 0, 500, 82, 0, 1, 0, 1);
-        ui.ui_mouse (plug, 2, 500, 82, 0, 1, 0, 1);
+    auto snap=[&](const char* page) {
+        if (snapDir.empty()) return;
+        int sw=0,sh=0;
+        const auto* frame=ui.ui_render(plug,1352,708,1,&sw,&sh);
+        writePpm(snapDir+"/Slink-"+page+".ppm",frame,sw,sh);
+        render();
     };
-    holdCamera();
-    const auto fixedCrest = crest(), movingStrip = strip(), movingFace = face();
-    bool faceAdvanced = false;
-    for (int i = 0; i < 6; ++i)
-    {
-        std::this_thread::sleep_for (std::chrono::milliseconds (100));
-        if (crest() != fixedCrest) return false;
-        faceAdvanced |= face() != movingFace;
-    }
-    if (strip() == movingStrip || !faceAdvanced) return false;
-    holdCamera();
-    std::this_thread::sleep_for (std::chrono::milliseconds (110));
-    if (crest() == fixedCrest) return false;
+    auto check=[](bool ok,const char* name) {
+        if (!ok) std::fprintf(stderr,"FAIL: desktop panel: %s\n",name);
+        return ok;
+    };
+    auto page=[&](int i) { bodyClick(338+79*i,268); };
+    if (!check(render() && width==1920 && height==1080,"Retina buffer")) return false;
+    if (!check(area(190,8,512,90)!=area(190,11,512,93),"artwork bank rendered")) return false;
 
-    // Switch banks through the toolbar and inspect their actual step numerals.
-    ui.ui_mouse (plug, 0, 650, 448, 0, 0, 0, 1);
-    ui.ui_mouse (plug, 1, 650, 100, 0, 0, 0, 1);
-    ui.ui_mouse (plug, 2, 650, 100, 0, 0, 0, 1);
-    process();
-    if (value ("Steps") != 32 || !render()) return false;
-    auto stepNumbers = [&] { return sampleArea (80, 171, 245, 189); };
-    const auto firstBank = stepNumbers();
-    click (570, 27);
-    if (stepNumbers() == firstBank)
+    constexpr const char* names[]{"perform","voice","glide","lfo","pattern","clock"};
+    std::set<std::vector<uint32_t>> pages;
+    for(int i=0;i<6;++i)
     {
-        std::fprintf (stderr, "FAIL: 17-32 score bank did not appear\n");
-        return false;
+        page(i);
+        pages.insert(area(10,108,764,243));
+        snap(names[i]);
     }
-    click (518, 27);
-    if (stepNumbers() != firstBank) return false;
-#endif
-    return render();
+    if (!check(pages.size()==6,"all six unique page bodies")) return false;
+    page(0);
+    const double cutoff=value("Cutoff");
+    mouse(0,85,446); mouse(1,85,416); mouse(2,85,416);
+    process();
+    if (!check(value("Cutoff")>cutoff && ctx.edited.count(find("Cutoff").id),"perform strip control automates")) return false;
+
+    click(705,25); // MIDI Learn
+    click(85,446); // Cutoff in the Perform strip
+    clap_event_midi_t cc {};
+    cc.header={sizeof(cc),0,CLAP_CORE_EVENT_SPACE_ID,CLAP_EVENT_MIDI,0};
+    cc.data[0]=0xb0; cc.data[1]=74; cc.data[2]=95;
+    clap_input_events_t midi {&cc.header,[](const clap_input_events_t*) -> uint32_t { return 1; },
+        [](const clap_input_events_t* e,uint32_t) { return static_cast<const clap_event_header_t*>(e->ctx); }};
+    const auto* input=block.in_events;
+    block.in_events=&midi;
+    process(); // learn
+    cc.data[2]=102;
+    process(); // control
+    block.in_events=input;
+    if (!check(std::abs(value("Cutoff")-102.0/127.0)<.0001,"MIDI learn still controls desktop parameters")) return false;
+
+    page(1);
+    ctx.edited.clear();
+    bodyDrag(390,175,700,153);
+    process();
+    if (!check(value("Cutoff")>.94 && value("Resonance")>.8 &&
+        ctx.edited.count(find("Cutoff").id) && ctx.edited.count(find("Resonance").id),"filter XY automation")) return false;
+    page(3);
+    ctx.edited.clear();
+    bodyDrag(75,207,350,153);
+    bodyDrag(480,207,734,148);
+    process();
+    if (!check(value("Pitch LFO Amount")>.75 && value("Cutoff LFO Amt")>.8 &&
+        ctx.edited.count(find("Pitch LFO Speed").id) && ctx.edited.count(find("Cutoff LFO Speed").id),"both LFO XY plots automate")) return false;
+
+    page(4);
+    const double initialSeed=value("Seed");
+    bodyClick(749,75);
+    process();
+    if (!check(initialSeed!=value("Seed"),"Regen rolls a locked seed")) return false;
+    const double beforeBarcode=value("Seed");
+    bodyDrag(100,70,155,70);
+    process();
+    if (!check(beforeBarcode!=value("Seed"),"seed barcode drag")) return false;
+    // Choices remain keyboard/wheel reachable through the desktop six-control strip.
+    click(714,452);
+    mouse(3,750,180,0,-1000);
+    click(714,400);
+    process();
+    if (!check(value("Scale")==find("Scale").max_value,"last scale reachable from desktop menu")) return false;
+
+    set("Steps",32);
+    const auto numbers=[&] { return area(65,104,205,124); };
+    const auto first=numbers();
+    bodyClick(565,43);
+    const auto second=numbers();
+    bodyClick(565,43);
+    if (!check(second!=first && numbers()==first,"stopped counter switches pattern halves")) return false;
+    set("Seed Mode",0);
+    const auto pitchBefore=area(68,127,104,164);
+    const int marks=ctx.stateDirtyCalls;
+    bodyDrag(85,140,85,119); // +3 semitones
+    bodyDrag(85,177,219,177); // paint Gate across four columns
+    bodyClick(85,205);
+    bodyClick(85,232);
+    process();
+    const auto pitchEdited=area(68,127,104,164);
+    if (!check(value("Seed Mode")==1 && ctx.stateDirtyCalls>marks && pitchEdited!=pitchBefore,
+               "step edits lock random seed, notify host and repaint pitch")) return false;
+
+    MemStream saved;
+    clap_ostream_t out {&saved,MemStream::write};
+    if (!check(state.save(plug,&out),"save edited project")) return false;
+    auto word=[&](size_t offset) {
+        uint32_t v=0;
+        if(offset+4<=saved.data.size()) std::memcpy(&v,saved.data.data()+offset,4);
+        return v;
+    };
+    auto record=[&](uint32_t id) -> int {
+        for(size_t off=24;off+8<=12+word(8);off+=8)
+            if(word(off)==id) { float f; const auto v=word(off+4);std::memcpy(&f,&v,4);return int(f); }
+        return -1;
+    };
+    const int step=record(0x534c0001);
+    if (!check(step>=0 && (step&255)==3 && (step&0x2a00)==0x2a00 &&
+             (record(0x534c0004)&0x300)==(step&0x300),"pitch, gate paint, accent and slide persist as SP-16 records")) return false;
+    if (!ui.preset_load(plug,0)) return false;
+    process();
+    clap_istream_t in {&saved,MemStream::read};
+    if (!state.load(plug,&in)) return false;
+    process();
+    if (!check(area(68,127,104,164)==pitchEdited,"edited pattern restored after preset load")) return false;
+    auto raw=saved;
+    raw.readPos=0;
+    raw.data=std::vector<uint8_t>(saved.data.begin()+12,saved.data.begin()+12+word(8));
+    clap_istream_t rawIn {&raw,MemStream::read};
+    if (!check(state.load(plug,&rawIn),"raw SP-16 state import")) return false;
+    process();
+
+    auto peak=[&] {
+        double peak=0;
+        for(uint32_t i=0;i<block.frames_count;++i)
+            peak=std::max(peak,std::abs(double(block.audio_outputs[0].data32[0][i])));
+        return peak;
+    };
+    plug->reset(plug);
+    process();
+    if (!check(peak()==0,"idle is silent before audition")) return false;
+    bodyClick(85,110);
+    process();
+    if (!check(peak()>.0001,"numbered step audibly auditions while stopped")) return false;
+
+    clap_event_transport_t transport {};
+    transport.flags=CLAP_TRANSPORT_HAS_TEMPO|CLAP_TRANSPORT_HAS_BEATS_TIMELINE;
+    transport.tempo=120;
+    block.transport=&transport;
+    plug->reset(plug);
+    process();
+    render();
+    const auto stopped=area(625,58,700,82);
+    bodyClick(660,67,1);
+    if (!check(ctx.transportRequests==1,"Shift-Play requests DAW transport when supported")) return false;
+    bodyClick(660,67);
+    double previewPeak=0;
+    for(int i=0;i<72;++i) { process(); previewPeak=std::max(previewPeak,peak()); }
+    const auto preview=area(625,58,700,82);
+    if (!check(preview!=stopped && previewPeak>.0001,"local Play sends audio and shows Stop without running host")) return false;
+    bodyClick(660,67);
+    process();
+    if (!check(area(625,58,700,82)==stopped,"local Stop releases preview control")) return false;
+    bodyClick(660,67);
+    process();
+    transport.flags|=CLAP_TRANSPORT_IS_PLAYING;
+    transport.song_pos_beats=8ull*CLAP_BEATTIME_FACTOR;
+    process();
+    const auto synced=area(625,58,700,82);
+    if (!check(synced!=preview && synced!=stopped,"DAW start replaces preview and displays Sync")) return false;
+    transport.flags&=~CLAP_TRANSPORT_IS_PLAYING;
+    process();
+    if (!check(area(625,58,700,82)==stopped,"host stop does not resume preview")) return false;
+    block.transport=nullptr;
+
+    const auto crest=[&] { return area(186,6,518,96); };
+    const auto storm=[&] { return area(127,253,295,278); };
+    bodyClick(350,52);
+    const auto held=crest(), moving=storm();
+    std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    if (!check(crest()==held && storm()!=moving,"crest hold is independent of storm")) return false;
+    bodyClick(350,52);
+    std::this_thread::sleep_for(std::chrono::milliseconds(80));
+    if (!check(crest()!=held,"crest resumes")) return false;
+    click(900,25);
+    const auto frozenCrest=crest(), frozenStorm=storm();
+    std::this_thread::sleep_for(std::chrono::milliseconds(130));
+    if (!check(crest()==frozenCrest && storm()==frozenStorm,"global motion hold")) return false;
+    bodyClick(350,52,1);
+    if (!check(crest()!=frozenCrest && storm()==frozenStorm,"manual cut while global motion is held")) return false;
+    return true;
 }
 
 #ifdef _WIN32
@@ -487,8 +556,8 @@ bool testWin32Window (const clap_plugin_t* plug, const clap_plugin_gui_t& gui,
         }
         double before = 0, after = 0;
         ok = params.get_value (plug, seed, &before);
-        SendMessageW (child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (910, 140));
-        SendMessageW (child, WM_LBUTTONUP, 0, MAKELPARAM (910, 140));
+        SendMessageW (child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (910, 164));
+        SendMessageW (child, WM_LBUTTONUP, 0, MAKELPARAM (910, 164));
         static_cast<StrictHostCtx*> (block.out_events->ctx)->lastOutTime = 0;
         block.steady_time += block.frames_count;
         plug->process (plug, &block);
@@ -564,6 +633,21 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
     // 2. Verify CLAP_EXT_PARAMS
     const auto* params = static_cast<const clap_plugin_params_t*> (plug->get_extension (plug, CLAP_EXT_PARAMS));
     if (!params) return false;
+    struct OldChoice { const char* param;const char* text;double value; };
+    constexpr OldChoice legacy[] {{"Filter","303",0},{"Slide","303",1},{"Slide","TB-3PO",0},{"Mode","TB-3PO",0}};
+    for (const auto& choice : legacy)
+    {
+        bool parsed=false;
+        for (uint32_t i=0;i<params->count(plug);++i)
+        {
+            clap_param_info_t info {};
+            if (!params->get_info(plug,i,&info) || std::strcmp(info.name,choice.param)!=0) continue;
+            double v=-1;
+            parsed=params->text_to_value(plug,info.id,choice.text,&v) && v==choice.value;
+            break;
+        }
+        if (!parsed) { std::fprintf(stderr,"FAIL: legacy %s choice %s\n",choice.param,choice.text); return false; }
+    }
     const uint32_t pCount = params->count (plug);
     std::set<std::string> modules;
     for (uint32_t i = 0; i < pCount; ++i)
@@ -714,10 +798,12 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
             writePpm (snapDir + "/" + baseName + ".ppm", px, pw, ph);
 
         if (std::strcmp (desc->id, "com.hdslave.tb-mpc-3-p-0") == 0
-            && !testIntegratedPanel (plug, *dbg, *params, proc)) return false;
+            && !testIntegratedPanel (plug, *dbg, *params, *state, proc, snapDir)) return false;
 
         dbg->ui_close (plug);
-#ifdef _WIN32
+#ifdef __APPLE__
+        if (!testCocoaWindow(plug,*gui)) return false;
+#elif defined(_WIN32)
         if (!testWin32Window (plug, *gui, *params, proc)) return false;
 #endif
     }

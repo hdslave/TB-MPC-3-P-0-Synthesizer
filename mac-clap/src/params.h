@@ -14,7 +14,7 @@
 #include "../../src/lfo.h"
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.7.3"
+#define TBMPC_VERSION "0.8.0"
 #endif
 
 namespace tbmpc
@@ -57,7 +57,7 @@ constexpr float voiceBaseHz = 65.406391f;
 // between them, a resonant peak at each edge); 18 dB, three equal stages in a loop that rings into oscillation at the
 // top of Resonance.
 enum Filter : int { filter303 = 0, filterTwinPeak = 1, filter18dB = 2 };
-inline const char* const filterChoices[] = { "303", "Twin Peak", "18 dB" };
+inline const char* const filterChoices[] = { "Diode", "Twin Peak", "18 dB" };
 
 // Cutoff: 7 octaves, exponential. Each filter is calibrated as the 303's service notes set the 303's: with Cutoff at
 // its middle and Resonance full (Env Mod at 0), the resonant peak sits at 500 Hz. That fixes each filter's nominal
@@ -204,11 +204,11 @@ constexpr float driveOctaves = 5.0f;
 constexpr double moduleTickRate = 1.0e6 / 60.0;
 
 inline const char* const waveChoices[] = { "Saw", "Square" };
-inline const char* const glideChoices[] = { "TB-3PO", "303" };
+inline const char* const glideChoices[] = { "Tick", "Glide" };
 // Full-period seed succession for an explicit roll while transport resets are locked.
 inline uint16_t nextPanelSeed(uint16_t seed) { return uint16_t(25173u * seed + 13849u); }
 inline const char* const seedModeChoices[] = { "Random", "Locked" };
-inline const char* const modeChoices[] = { "TB-3PO", "Notes" };
+inline const char* const modeChoices[] = { "Sequence", "Notes" };
 // Mode: Notes: a note at this velocity or louder is accented (as 303-style synths read MIDI).
 constexpr float accentVelocity = 100.0f / 127.0f;
 // 0 V is C2: in Mode: Notes, MIDI note 36 (C2) plays the pitch the sequencer's 0 V does.
@@ -340,6 +340,11 @@ inline bool parseParam (const Param& p, const char* text, float& v, const TextCo
 {
     if (p.kind == Kind::choice)
     {
+        // Keep old desktop text accepted when importing automation or typed values.
+        if ((p.id == ParamId::mode || p.id == ParamId::glide) && strcasecmp(text,"TB-3PO") == 0)
+            return v = 0.0f, true;
+        if ((p.id == ParamId::filter || p.id == ParamId::glide) && strcasecmp(text,"303") == 0)
+            return v = p.id == ParamId::filter ? 0.0f : 1.0f, true;
         const int n = (int) (p.max - p.min) + 1;
         for (int i = 0; i < n; ++i)
             if (strcasecmp (text, p.choices[i]) == 0)

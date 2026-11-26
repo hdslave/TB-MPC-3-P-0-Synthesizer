@@ -9,6 +9,7 @@
 #pragma once
 
 #include "scales.h"
+#include "../../src/sp16_step_edits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -195,18 +196,19 @@ public:
         scale = index < 0 ? 0 : (index >= scaleCount ? scaleCount - 1 : index);
         quantizer.configure (scaleTable[scale]);
         scaleSize = (uint8_t) scaleTable[scale].count;
+        ++rev;
     }
     // Root: the applet constrains it to the scale (a short scale has fewer roots). Differs: the plug-in keeps the
     // knob where it is and uses the constrained value; the applet moves its setting (so going back to a longer scale
     // keeps the lower root).
-    void setRoot (int r) { rootSetting = r < 0 ? 0 : (r > 11 ? 11 : r); }
-    void setOctave (int o) { octaveOffset = (int8_t) (o < -3 ? -3 : (o > 3 ? 3 : o)); }
-    void setDensity (int d) { density = (uint8_t) (d < 0 ? 0 : (d > 14 ? 14 : d)); } // 0..14, shown as -7..+7
-    void setSteps (int n) { numSteps = (uint8_t) (n < 1 ? 1 : (n > 32 ? 32 : n)); }
-    void setSeed (uint16_t s) { seed = s; }
+    void setRoot (int r) { rootSetting = r < 0 ? 0 : (r > 11 ? 11 : r); ++rev; }
+    void setOctave (int o) { octaveOffset = (int8_t) (o < -3 ? -3 : (o > 3 ? 3 : o)); ++rev; }
+    void setDensity (int d) { density = (uint8_t) (d < 0 ? 0 : (d > 14 ? 14 : d)); ++rev; } // 0..14, shown as -7..+7
+    void setSteps (int n) { numSteps = (uint8_t) (n < 1 ? 1 : (n > 32 ? 32 : n)); ++rev; }
+    void setSeed (uint16_t s) { seed = s; ++rev; }
     void setLocked (bool on) { locked = on; }
     // CV 1 (transpose), in 1/128 semitone: DetentedIn() then quantized to the scale, always from C.
-    void setTransposeInput (int32_t cv) { transposeCv = (cv > 64 || cv < -64) ? quantizer.process (cv, 0, 0) : 0; }
+    void setTransposeInput (int32_t cv) { transposeCv = (cv > 64 || cv < -64) ? quantizer.process (cv, 0, 0) : 0; ++rev; }
 
     // --- Inputs ---
     // The Regen input (or the encoder turned past the die or the lock): a new seed unless it is locked, the pattern
@@ -255,10 +257,12 @@ public:
     {
         // The applet regenerates when density or the scale's size changed. Differs: a new seed does too (on the
         // module a seed typed in waits for the next Regen pulse); the module's later firmware does the same.
-        if (density != patternDensity || scaleSize != patternScaleSize || seed != patternSeed)
+        if (patternWaiting())
             regenerate();
         advance();
     }
+
+    bool patternWaiting() const { return density!=patternDensity || scaleSize!=patternScaleSize || seed!=patternSeed; }
 
     // Where the pattern would be `clocks` clocks after a reset (a Play or a jump between bar resets).
     void place (int64_t clocks) { step = (uint8_t) (clocks < 0 ? 0 : clocks % numSteps); }
@@ -292,11 +296,14 @@ public:
 
     // --- What the pattern is (for the tests and the screen) ---
     int currentStep() const { return step; }
+    uint32_t revision() const { return rev; }
     uint16_t currentSeed() const { return seed; }
     uint16_t playingSeed() const { return patternSeed; } // the seed the pattern now playing was made from
-    bool gated (int s) const { return (gates >> s) & 1u; }
-    bool slid (int s) const { return (slides >> s) & 1u; }
-    bool accented (int s) const { return (accents >> s) & 1u; }
+    void setStepEdits(const sp16::StepEdits& edits) { manual = edits; ++rev; }
+    uint16_t cellEdit(int s) const { return manual.seed == patternSeed ? manual.cells[s] : 0; }
+    bool gated (int s) const { return sp16::StepEdits::flag(cellEdit(s),sp16::StepLane::gate,(gates >> s) & 1u); }
+    bool slid (int s) const { return sp16::StepEdits::flag(cellEdit(s),sp16::StepLane::slide,(slides >> s) & 1u); }
+    bool accented (int s) const { return sp16::StepEdits::flag(cellEdit(s),sp16::StepLane::accent,(accents >> s) & 1u); }
     bool octaveUp (int s) const { return (octUps >> s) & 1u; }
     bool octaveDown (int s) const { return (octDowns >> s) & 1u; }
     int note (int s) const { return notes[s]; }
@@ -321,6 +328,7 @@ public:
                 applyDensity (phase);
         }
         patternSeed = seed;
+        ++rev;
     }
 
 private:
@@ -377,7 +385,9 @@ private:
         else if (octaveDown (s))
             quantNote -= scaleSize;
         const int outNote = quantNote < 0 ? 0 : (quantNote > 127 ? 127 : quantNote);
-        return quantizer.lookup (outNote) + transposeCv;
+        const int cv = quantizer.lookup (outNote) + transposeCv;
+        const int offset = sp16::StepEdits::pitch(cellEdit(s));
+        return offset ? std::clamp(cv+128*offset,-32768,32767) : cv;
     }
 
     // Proportion(): numerator / denominator * max in the applet's 18.14 fixed point, truncated as it truncates.
@@ -478,6 +488,8 @@ private:
     uint8_t numSteps = 16;
     uint8_t step = 0;
     int32_t transposeCv = 0;
+    sp16::StepEdits manual;
+    uint32_t rev = 0;
     uint32_t gates = 0, slides = 0, accents = 0, octUps = 0, octDowns = 0;
     uint8_t notes[maxSteps] {};
     uint8_t scaleSize = 0, patternScaleSize = 0;

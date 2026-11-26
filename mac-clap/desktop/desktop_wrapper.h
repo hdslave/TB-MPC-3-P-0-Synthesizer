@@ -1,9 +1,7 @@
 #pragma once
 
 #include <clap/clap.h>
-#ifdef SLINK_RAZOR_PANEL
 #include <clap/ext/draft/transport-control.h>
-#endif
 
 #include <atomic>
 #include <cstdint>
@@ -12,7 +10,7 @@
 
 #define HDSLAVE_DESKTOP_SHELL 1
 #include "melodee_screen.h"
-#include "../src/pattern_view.h"
+#include "slink_panel_access.h"
 
 namespace hdslave_desktop
 {
@@ -119,15 +117,13 @@ struct DesktopPlugin
     const clap_plugin_params_t* innerParams = nullptr;
     const clap_plugin_state_t* innerState = nullptr;
     const clap_plugin_preset_load_t* innerPresetLoad = nullptr;
-    const tbmpc::PatternReader* patternReader = nullptr;
+    const tbmpc::DesktopPanelAccess* panel = nullptr;
 
     // The real host's extensions, always called with realHost.
     const clap_host_params_t* hostParams = nullptr;
     const clap_host_preset_load_t* hostPresetLoad = nullptr;
     const clap_host_state_t* hostState = nullptr;
-#ifdef SLINK_RAZOR_PANEL
     const clap_host_transport_control_t* hostTransport = nullptr;
-#endif
     const clap_host_log_t* hostLog = nullptr;
     const clap_host_thread_check_t* hostThreadCheck = nullptr;
     bool hostExtsResolved = false;
@@ -155,7 +151,6 @@ struct DesktopPlugin
     std::vector<uint64_t> uiHoldUntil;
 
     std::atomic<bool> screenRequested { true };
-    std::atomic<bool> transportPlaying { false };
     PanelUI* ui = nullptr;
     PlatformGui* platformGui = nullptr;
     uint32_t guiWidth = kDefaultGuiWidth;

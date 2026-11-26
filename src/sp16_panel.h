@@ -1,6 +1,5 @@
 // SP-16 touch panel. The host paints the six encoder values below this canvas.
 #pragma once
-#include "screen.h"
 #include "sixteen_screen.h"
 #include "sp16_graphics.h"
 #include <array>

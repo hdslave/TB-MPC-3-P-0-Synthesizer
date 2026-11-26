@@ -18,7 +18,7 @@ set(SLUG "tb_mpc_3p0")
 add_library(${SLUG}_inner OBJECT
     "${CMAKE_SOURCE_DIR}/src/tbmpc.cpp"
 )
-target_compile_definitions(${SLUG}_inner PRIVATE clap_entry=hdslave_inner_clap_entry)
+target_compile_definitions(${SLUG}_inner PRIVATE clap_entry=hdslave_inner_clap_entry SLINK_DESKTOP=1 CLAP_EXPORT=)
 target_include_directories(${SLUG}_inner PRIVATE
     "${CLAP_INCLUDE_DIR}"
     "${CMAKE_SOURCE_DIR}/src"
@@ -44,10 +44,8 @@ endif()
 set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
-    "${DESKTOP_DIR}/razor_panel.cpp"
-    "${DESKTOP_DIR}/thorn_art.cpp"
 )
-set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/razor/panel.bank")
+set(THORN_BANK "${CMAKE_SOURCE_DIR}/../assets/sp16-thorn/panel.bank")
 if(APPLE)
     enable_language(ASM)
     set(BANK_SRC "${CMAKE_BINARY_DIR}/thorn_bank.S")
@@ -57,7 +55,10 @@ elseif(WIN32)
     enable_language(RC)
     set(BANK_SRC "${CMAKE_BINARY_DIR}/thorn_bank.rc")
     configure_file("${DESKTOP_DIR}/thorn_bank.rc.in" "${BANK_SRC}" @ONLY)
-    list(APPEND SHELL_SRCS "${DESKTOP_DIR}/gui_win32.cpp" "${DESKTOP_DIR}/win32/clap.def")
+    file(SIZE "${THORN_BANK}" THORN_BANK_SIZE)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${THORN_BANK}")
+    list(APPEND SHELL_SRCS "${DESKTOP_DIR}/gui_win32.cpp" "${DESKTOP_DIR}/thorn_resource.cpp"
+        "${DESKTOP_DIR}/win32/clap.def")
 endif()
 set_source_files_properties("${BANK_SRC}" PROPERTIES OBJECT_DEPENDS "${THORN_BANK}")
 list(APPEND SHELL_SRCS "${BANK_SRC}")
@@ -102,6 +103,7 @@ if(APPLE)
 elseif(WIN32)
     target_compile_definitions(${TARGET_NAME} PRIVATE
         HDSLAVE_WIN32_CLASS_NAME=L"HdslaveDesktopClapView_${SLUG}"
+        SLINK_THORN_BANK_SIZE=${THORN_BANK_SIZE}
         UNICODE
         _UNICODE
     )
@@ -123,8 +125,13 @@ endif()
 
 add_executable(host_test "${CMAKE_SOURCE_DIR}/tests/host_test.cpp")
 target_include_directories(host_test PRIVATE "${CLAP_INCLUDE_DIR}")
-target_compile_definitions(${TARGET_NAME} PRIVATE SLINK_RAZOR_PANEL=1)
-target_compile_definitions(host_test PRIVATE SLINK_RAZOR_PANEL=1)
 if(APPLE)
-    target_link_libraries(host_test PRIVATE dl)
+    target_sources(host_test PRIVATE tests/cocoa_window.mm)
+    target_link_libraries(host_test PRIVATE dl "-framework Cocoa")
+endif()
+
+if(MINGW)
+    # Match the dependency-free CLAP distribution of the MSVC build.
+    target_link_options(${TARGET_NAME} PRIVATE -static -static-libgcc -static-libstdc++)
+    target_link_options(host_test PRIVATE -static -static-libgcc -static-libstdc++)
 endif()

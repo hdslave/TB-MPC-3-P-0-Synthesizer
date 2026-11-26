@@ -2,26 +2,29 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink’s Razor Choir panel playing the Default preset on macOS](assets/desktop-preview.gif)
+![Slink’s Thorn Crown Pattern page on macOS](assets/thorn-crown-desktop.png)
 
-[View the Windows panel at full size](assets/windows-preview.png)
+[See all six desktop pages](assets/thorn-crown-desktop-pages.jpg)
 
-Slink 0.7.3 on macOS and Windows uses the SP-16 Razor Choir score. Each note has its own chrome letter with a separate sharp and octave. The plate beside the seed enlarges the current note. Click a step to inspect it there. Key and scale sit below the score beside the animated chrome whips, pitch contour and position rail. The counter offers **Play** and **Stop** in hosts that support CLAP transport requests. Other hosts show their transport state there.
+Slink **0.8.0** for macOS and Windows uses the same **Thorn Crown** panel, artwork and pointer gestures as the [freesp16 build](../README.md#freesp16-on-sp-16). The editor resizes down to 960 × 540. The six-control strip below the panel follows the selected page; it replaces the hardware encoder strip.
 
-All 34 host parameters fit on one resizable panel down to 960 × 540.
+| Page | What you can edit directly | Desktop strip |
+| --- | --- | --- |
+| Perform | Audition headers, pitch ribbon, cutoff and resonance readouts | Cutoff, Resonance, Env Mod, Decay, Accent, Volume |
+| Voice | Filter response: drag across for cutoff and up for resonance | Waveform, Tuning, Filter, Peak Spread, Drive, Volume |
+| Glide | Audition headers, pitch ribbon, slide and slide time readouts | Slide, Slide Time, Accent Decay, Gate, Accent, Decay |
+| LFO | Pitch and cutoff plots: drag across for rate and up for depth | Pitch Amount, Pitch Speed, Cutoff Amount, Cutoff Speed, Tuning, Transpose |
+| Pattern | Full Razor Choir score, with editable pitches and Gate, Accent and Slide lanes | Seed Mode, Seed, Mutate, Density, Scale, Root |
+| Clock | Audition headers, pitch ribbon, division and swing readouts | Mode, Clock Div, Swing, Reset, Steps, Octave |
 
-- Start playback in the host to advance the cobalt playhead. The chrome face turns on its own 4.8-second cycle. The lower strip loops two metal whips and forked lightning. Click a step to inspect it. New instances start with a locked seed. Click Regen to roll another seed and keep it for the next Play. Patterns longer than 16 steps have two banks and a **Follow** switch.
-- Click the enamel **Regen** button for a new pattern. Drag the seed under the Slink wordmark to set a seed. Click **Key** or **Scale** to choose from a list.
-- Drag or scroll a control to edit it. Hold Shift or enable **Fine** for small adjustments. Clicking a choice opens its menu. Double-click a control to reset it, or right-click for reset and MIDI mapping.
-- Drag the filter response horizontally for cutoff and vertically for resonance. Drag across the score for transpose and vertically for density. These gestures send both parameters to the host for automation.
-- Click the crest to jump to a different camera angle. Shift-click it to pause or resume the camera independently. **Motion off** holds the artwork while playback and parameter displays continue to update.
+- **Edit the score:** Click or scrub across numbered headers to audition. Drag a pitch up or down in semitones. Click a Gate, Accent or Slide cell to toggle it, or drag across its row to paint the same setting. The first edit to a random pattern locks its displayed seed; the project saves edits with that seed. Long patterns follow playback into steps 17–32. When stopped, click the large counter to switch halves.
+- **Play and seed:** Click **Play** to preview through the plug-in while the DAW is stopped; click **Stop** to end the preview. The DAW takes over on transport start and the button reads **Sync**. Shift-click that button to control the DAW in hosts that expose CLAP transport control. Click **Regen** for a fresh seed, click the seed number to recall a previous played seed, or drag the barcode to set the seed.
+- **Motion:** Click the crest to pause or resume its camera without stopping the smiley and whip storm. Shift-click the crest for a manual camera cut. **Motion off** holds all artwork without freezing the controls or playhead.
+- **Desktop controls:** Drag or scroll the strip; hold Shift or enable **Fine** for smaller adjustments. Click a choice for its menu, double-click to reset, or right-click for reset and MIDI mapping. Presets and MIDI learn remain in the toolbar. Left and Right switch pages; Up and Down adjust the last selected parameter.
 
-Build from this checkout to use the updated editor. The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) contains the earlier desktop downloads.
+The CLAP ID, parameter IDs and choice order, factory preset keys, MIDI note behavior, and desktop state envelope stay compatible with previous builds. Older projects load without manual step edits. A raw state from the freesp16 build can also carry the shared step-edit records.
 
-Slink 0.6.0 is the new name of TB-MPC-3-P-0. Existing projects use the same CLAP ID and factory preset keys. On upgrade, replace the previous plug-in in place, keeping its installed filename if the host stores paths. Install one copy per host.
-
-Version 0.5.5 added a sine pitch LFO on **Tone** and a separate sine cutoff LFO at the bottom of **Voice**.
-Both Speed controls follow the host BPM and snap to 1/1, 3/4, 1/2, and 1/3 beat per cycle.
+Build from this checkout for the new editor. The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) contains the older desktop downloads. On upgrade, keep the installed filename if the host stores plug-ins by path. Install one copy per host.
 
 ## Build & Install (macOS)
 
@@ -45,10 +48,10 @@ cd mac-clap
 Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\CLAP\`.
 
 
-## Desktop artwork
+## Shared artwork and validation
 
-Both builds embed the same SP-16 artwork bank, including 600 crest frames, 240 whip-storm frames and 33 poses of the chrome Regen face. The crest and storm play at 30 frames per second. The score, filter curve and controls follow the instrument.
+Both desktop targets embed the same `assets/sp16-thorn/panel.bank` as freesp16. That bank holds the chrome lettering, crest, counter, face poses and storm. The shared renderer draws the score and plots, while Cocoa and Win32 add their host window, toolbar, six-control strip and popup menus. The older desktop artwork banks are retained as design references, not loaded by current builds.
 
-Normal builds use the committed bank. To repack the desktop artwork, run `mac-clap/tools/bake_razor.py` with the SP-16 checkout containing `assets/sp16-thorn/panel.bank` and `tools/sp16_thorn`, followed by a Chromium executable. The baker uses Python, Pillow and Playwright.
+Normal builds use the committed bank. Rebuild it with `tools/sp16_thorn/bake_native.py` from the repository root. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md).
 
-The interface uses Barlow SemiBold and Barlow Condensed Bold Italic under the SIL Open Font License. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md). The embedded PNG and JPEG decoder is Sean Barrett’s stb_image 2.30 under the MIT license. [Source and license](third_party/stb/stb_image.h)
+The desktop host test exercises all six pages, parameter automation, MIDI learn, step audition and state, transport takeover, motion holds and window resizing. Use `host_test --snap <directory> <plugin>` to capture the six desktop pages.

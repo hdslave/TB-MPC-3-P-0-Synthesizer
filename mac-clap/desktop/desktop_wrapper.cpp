@@ -828,12 +828,15 @@ void CLAP_ABI guiSuggestTitle (const clap_plugin_t*, const char*) {}
 bool CLAP_ABI guiShow (const clap_plugin_t* p)
 {
     auto& dp = of (p);
-    return dp.platformGui && platformGuiShow (dp.platformGui);
+    if (!dp.platformGui || !dp.ui) return false;
+    dp.ui->setVisible(true);
+    return platformGuiShow(dp.platformGui);
 }
 
 bool CLAP_ABI guiHide (const clap_plugin_t* p)
 {
     auto& dp = of (p);
+    if (dp.ui) dp.ui->setVisible(false);
     return dp.platformGui && platformGuiHide (dp.platformGui);
 }
 
@@ -856,8 +859,8 @@ bool CLAP_ABI wrapInit (const clap_plugin_t* p)
     dp.innerPresetLoad = static_cast<const clap_plugin_preset_load_t*> (dp.inner->get_extension (dp.inner, CLAP_EXT_PRESET_LOAD));
     if (!dp.innerPresetLoad)
         dp.innerPresetLoad = static_cast<const clap_plugin_preset_load_t*> (dp.inner->get_extension (dp.inner, CLAP_EXT_PRESET_LOAD_COMPAT));
-    dp.patternReader = static_cast<const tbmpc::PatternReader*> (dp.inner->get_extension (dp.inner, tbmpc::patternViewId));
-    if (!dp.patternReader) return false;
+    dp.panel = static_cast<const tbmpc::DesktopPanelAccess*> (dp.inner->get_extension (dp.inner,tbmpc::desktopPanelAccessId));
+    if (!dp.panel) return false;
 
     dp.resolveHostExtensions();
 
@@ -919,7 +922,6 @@ bool CLAP_ABI wrapActivate (const clap_plugin_t* p, double sr, uint32_t minF, ui
 void CLAP_ABI wrapDeactivate (const clap_plugin_t* p)
 {
     auto& dp = of (p);
-    dp.transportPlaying.store (false, std::memory_order_relaxed);
     dp.processing.store (false, std::memory_order_release);
     dp.active.store (false, std::memory_order_release);
     dp.openGestureParamId = CLAP_INVALID_ID;
@@ -937,7 +939,6 @@ bool CLAP_ABI wrapStartProcessing (const clap_plugin_t* p)
 void CLAP_ABI wrapStopProcessing (const clap_plugin_t* p)
 {
     auto& dp = of (p);
-    dp.transportPlaying.store (false, std::memory_order_relaxed);
     dp.processing.store (false, std::memory_order_release);
     if (dp.inner) dp.inner->stop_processing (dp.inner);
 }
@@ -956,7 +957,6 @@ clap_process_status CLAP_ABI wrapProcess (const clap_plugin_t* p, const clap_pro
     dp.inAudioCall.store (true, std::memory_order_release);
     dp.lastProcessMs.store (nowMs(), std::memory_order_relaxed);
 
-    dp.transportPlaying.store (proc->transport && (proc->transport->flags & CLAP_TRANSPORT_IS_PLAYING), std::memory_order_relaxed);
 
     const uint32_t maxTime = proc->frames_count > 0 ? proc->frames_count - 1 : 0;
     SafeOutputEvents safeOut { &dp, proc->out_events, maxTime, 0 };
@@ -1183,10 +1183,8 @@ void DesktopPlugin::resolveHostExtensions()
     if (hostExtsResolved || !realHost || !realHost->get_extension)
         return;
     hostExtsResolved = true;
-#ifdef SLINK_RAZOR_PANEL
     hostTransport = static_cast<const clap_host_transport_control_t*> (
         realHost->get_extension (realHost, CLAP_EXT_TRANSPORT_CONTROL));
-#endif
     hostParams = static_cast<const clap_host_params_t*> (realHost->get_extension (realHost, CLAP_EXT_PARAMS));
     hostPresetLoad = static_cast<const clap_host_preset_load_t*> (realHost->get_extension (realHost, CLAP_EXT_PRESET_LOAD));
     if (!hostPresetLoad)

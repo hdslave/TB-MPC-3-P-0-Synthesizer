@@ -2,7 +2,11 @@
 #pragma once
 #include "../assets/sp16-thorn/index.h"
 
+#if defined(SLINK_DESKTOP) && defined(_WIN32)
+const unsigned char* desktopThornBank();
+#else
 extern "C" const unsigned char slink_sp16_thorn_bank[];
+#endif
 namespace tbmpc::sp16
 {
 class ThornPage
@@ -10,6 +14,16 @@ class ThornPage
 public:
     int selected = 0, capturedBank = -1;
     bool heldCamera = false;
+#ifdef SLINK_DESKTOP
+    bool heldMotion = false;
+    void nextCameraCut()
+    {
+        constexpr uint32_t cuts[]{0,5000,11000,14000,20000};
+        const auto phase=cameraMs%20000;
+        for (const auto cut:cuts)
+            if (cut>phase) { cameraMs+=cut-phase; break; }
+    }
+#endif
 
     static int columnX(int i) { return 65 + (i*693+8)/16 + (i/4)*5; }
 
@@ -48,14 +62,25 @@ public:
     {
         const uint32_t elapsed=lastCamera < 0 ? 0 : now-lastMs;
         lastMs=now;
+        const auto* bytes=bank();
+        if (!bytes) return false;
+#ifdef SLINK_DESKTOP
+        if (!heldMotion)
+        {
+            motionMs+=elapsed;
+            if (!heldCamera) cameraMs+=elapsed;
+        }
+        now=motionMs;
+#else
         if (!heldCamera) cameraMs+=elapsed;
+#endif
         const int camera=int(uint64_t(cameraMs % 20000)*thorn::crest.count/20000);
         const int storm=int(uint64_t(now % 8000)*thorn::storm.count/8000);
         const double sway=.47+.32*std::sin((now%4800)*(6.28318530718/4800)+.18);
         const int face=int(std::lround(256*(thorn::face.count-1)*sway));
         if (full)
         {
-            const auto* plate=slink_sp16_thorn_bank+thorn::backdropOffsets[0];
+            const auto* plate=bytes+thorn::backdropOffsets[0];
             const int height = score ? tabTop : bodyTop;
             for (int y=0; y<height; ++y)
                 std::memcpy(r.px+y*r.w,plate+4*y*thorn::backdrop.w,4*thorn::backdrop.w);
@@ -98,7 +123,19 @@ public:
 
 private:
     uint32_t lastMs=0,cameraMs=0;
+#ifdef SLINK_DESKTOP
+    uint32_t motionMs=0;
+#endif
     int lastFace=-1,lastCamera=-1,lastStorm=-1;
+
+    static const unsigned char* bank()
+    {
+#if defined(SLINK_DESKTOP) && defined(_WIN32)
+        return desktopThornBank();
+#else
+        return slink_sp16_thorn_bank;
+#endif
+    }
 
     static constexpr int facePixels=thorn::face.w*thorn::face.h;
     std::array<Ink,facePixels> poses[2];
@@ -161,9 +198,11 @@ private:
     // The opaque animation frames carry their own palette before the packets.
     static void image(const Raster& r,const thorn::Images& img,int frame,int x,int y)
     {
-        const auto* data=slink_sp16_thorn_bank+img.offsets[frame];
+        const auto* bytes=bank();
+        if (!bytes) return;
+        const auto* data=bytes+img.offsets[frame];
         const auto* palette=reinterpret_cast<const uint32_t*>(
-            img.paletteOffset ? slink_sp16_thorn_bank+img.paletteOffset : data);
+            img.paletteOffset ? bytes+img.paletteOffset : data);
         if (!img.paletteOffset) data+=1024;
         for (int row=0;row<img.h;++row)
         {

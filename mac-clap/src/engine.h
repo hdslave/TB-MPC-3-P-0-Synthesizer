@@ -65,6 +65,8 @@ public:
         clockedAt = -(int64_t (1) << 40); // no clock played yet
         clockedReset = false;
         held = 0;
+        auditionStep = -1;
+        auditionHasVoice = auditionOffPending = false;
     }
 
     // First values, before anything plays: the applet's Start(), then every parameter.
@@ -101,6 +103,8 @@ public:
                     held = 0;
                     seq.stop();
                     gateOffPending = false;
+                    auditionStep = -1;
+                    auditionHasVoice = auditionOffPending = false;
                     voice.gate (false, false);
                 }
                 break;
@@ -123,6 +127,8 @@ public:
     }
 
     // For the screen: the pattern, and whether the host's clock is moving it (TB-3PO mode, the host playing).
+    void setStepEdits(const sp16::StepEdits& edits) { seq.setStepEdits(edits); }
+    void audition(int step) { if (!notesMode) auditionStep=step; }
     const Tb3po& sequencer() const { return seq; }
     bool running() const { return playing && ! notesMode; }
 
@@ -210,7 +216,7 @@ public:
     // The host's transport at the start of a process call of `frames`. barBeats: quarter notes in a bar.
     void transport (bool isPlaying, double beats, double bpm, double barBeats, uint32_t frames)
     {
-        perFrame = bpm / 60.0 / rate;
+        perFrame = (std::isnan(bpm) ? 120.0 : std::clamp(bpm,1.0,1000.0)) / 60.0 / rate;
         bar = barBeats > 0.0 ? barBeats : 4.0;
         const double window = (double) std::max (frames, lastBlock);
         lastBlock = frames;
@@ -224,7 +230,7 @@ public:
             {
                 // Stopped: the sequencer's gate shuts (the note releases); notes played by hand go on.
                 seq.stop();
-                if (! notesMode)
+                if (! notesMode && !auditionHasVoice)
                     voice.gate (false, false);
                 gateOffPending = false;
             }
@@ -268,19 +274,35 @@ public:
                 if (untilClock < (double) run)
                     run = (uint32_t) untilClock;
             }
+            if (auditionStep >= 0)
+            {
+                playAudition(auditionStep);
+                auditionStep = -1;
+            }
             if (gateOffPending)
             {
                 if (gateOffIn == 0)
                 {
                     gateOffPending = false;
                     seq.halfStepPassed();
-                    voice.gate (seq.gateCv > 0, seq.gateCv == Tb3po::gateAccent);
+                    if (!auditionHasVoice) voice.gate (seq.gateCv > 0, seq.gateCv == Tb3po::gateAccent);
                     TBMPC_TRACE (1);
                     continue;
                 }
                 run = std::min (run, gateOffIn);
             }
+            if (auditionOffPending)
+            {
+                if (auditionOffIn == 0)
+                {
+                    auditionOffPending = false;
+                    voice.gate(false,false);
+                    continue;
+                }
+                run = std::min(run,auditionOffIn);
+            }
             voice.render (left, right, run, frameCount);
+            if (auditionOffPending) auditionOffIn -= run;
             frameCount += run;
             if (gateOffPending)
                 gateOffIn -= run;
@@ -388,10 +410,17 @@ private:
         clockedReset = resetClock (k);
         if (clockedReset)
             resetPulse();
+        const int32_t gateBefore = seq.gateCv;
         seq.clock();
         remember();
+        auditionStep = -1; // an actual clock takes priority at the same sample
         if (notesMode)
             return; // the count goes on; the notes play the voice
+        if (auditionHasVoice)
+        {
+            auditionHasVoice = auditionOffPending = false;
+            voice.gate(gateBefore>0,gateBefore==Tb3po::gateAccent);
+        }
         voice.pitch (seq.slideStart, seq.slideEnd);
         voice.gate (seq.gateCv > 0, seq.gateCv == Tb3po::gateAccent);
         if (seq.opened)
@@ -402,6 +431,27 @@ private:
             gateOffIn = (uint32_t) std::max (1.0, std::floor ((double) knob[ParamId::gate] * length / perFrame));
         }
         TBMPC_TRACE (0);
+    }
+
+    // One-shot UI audition uses the displayed step without moving the playhead or the MIDI transpose.
+    void playAudition(int step)
+    {
+        if (step >= seq.stepCount()) return;
+        const Tb3po* from=&seq;
+        Tb3po next;
+        if (!playing && seq.patternWaiting())
+        {
+            next=seq;
+            next.regenerate();
+            from=&next;
+        }
+        const int32_t cv=from->pitchOfStep(step);
+        voice.pitch(cv,cv);
+        voice.gate(false,false);
+        voice.gate(true,from->accented(step));
+        const double beatsPerFrame=perFrame>0.0 ? perFrame : 2.0/rate;
+        auditionOffIn=uint32_t(std::clamp(std::floor(knob[ParamId::gate]*stepBeats()/beatsPerFrame),1.0,4.0e9));
+        auditionOffPending=auditionHasVoice=true;
     }
 
     // Seed Back's memory: when a clock plays a pattern from a new seed, the seed before goes in, if its pattern played.
@@ -484,6 +534,9 @@ private:
     uint16_t shownSeed = 0;
     bool shownPlayed = false, goingBack = false;
     int64_t lastClock = -1;
+    int auditionStep = -1;
+    bool auditionHasVoice = false, auditionOffPending = false;
+    uint32_t auditionOffIn = 0;
     uint32_t gateOffIn = 0, lastBlock = 0, draws = 0;
     uint64_t frameCount = 0; // frames rendered since prepare()
     int64_t clockedAt = 0;   // the frame the last clock came on

@@ -1,6 +1,7 @@
 #pragma once
 #include "desktop_wrapper.h"
-#include "thorn_art.h"
+#include "panel_renderer.h"
+#include <array>
 
 namespace hdslave_desktop
 {
@@ -28,6 +29,7 @@ class PanelUI
   public:
     explicit PanelUI (DesktopPlugin *);
     ~PanelUI ();
+    void setVisible(bool visible);
     void setSize (int w, int h, int scale);
     Rect update (uint64_t now);
     void invalidateAll () { dirty_ = true; }
@@ -52,36 +54,25 @@ class PanelUI
     bool key (int k);
 
   private:
-    struct Control
-    {
-        Rect rect;
-        int param;
-        const char *label;
-    };
-    DesktopPlugin *p_;
+    DesktopPlugin* p_;
     Canvas c_;
-    ThornArt art_;
-    std::vector<uint32_t> frame_;
-    tbmpc::PatternView score_{};
-    uint64_t motionMs_ = 0;
-#ifndef SLINK_RAZOR_PANEL
-    float accentLift_ = 0;
-#endif
-    std::vector<double> displayed_;
-    int w_ = kDefaultGuiWidth, h_ = kDefaultGuiHeight, scale_ = 1;
-    bool dirty_ = true, fine_ = false, motion_ = true, playing_ = false, follow_ = true;
-    uint64_t updated_ = 0, elapsed_ = 0, pulseAt_ = 0;
-    double renderMs_ = 0;
-    int bank_ = 0, inspected_ = -1, lastTouched_ = -1, hover_ = -1;
-    Rect items_[size_t (Item::Count)]{}, groupTitles_[4]{}, banks_[3]{};
-    Rect brand_, crown_, counter_, regen_, seed_, root_, scaleBox_, scoreBox_, motionBounds_, filter_, deck_, status_;
-    std::vector<Control> controls_;
-    int dragParam_ = -1, dragY_ = -1, wheelParam_ = -1;
-    bool moved_ = false;
-    float downX_ = 0, downY_ = 0;
-    double start_ = 0, startY_ = 0, wheelAccum_ = 0;
-    uint64_t wheelAt_ = 0;
-    Rect dragRect_{};
+    std::vector<uint32_t> frame_,bodyPixels_,previousBody_;
+    std::array<int,6> cardParams_ {-1,-1,-1,-1,-1,-1}, ccs_ {};
+    std::array<double,6> displayed_ {};
+    std::array<std::string,6> readings_;
+    std::array<Rect,6> cards_ {};
+    uint32_t lastLearn_=CLAP_INVALID_ID;
+    int w_=kDefaultGuiWidth,h_=kDefaultGuiHeight,scale_=1;
+    bool visible_=false,dirty_=true,stripDirty_=true,fullBody_=true,fine_=false,motion_=true;
+    double renderMs_=0;
+    int lastTouched_=-1,hover_=-1;
+    Rect items_[size_t(Item::Count)]{},body_,strip_,status_;
+    int dragParam_=-1,wheelParam_=-1;
+    bool moved_=false,bodyDrag_=false;
+    float downX_=0,downY_=0;
+    double start_=0,wheelAccum_=0;
+    uint64_t wheelAt_=0;
+    Rect dragRect_ {};
 
     enum class PopupKind
     {
@@ -105,26 +96,13 @@ class PanelUI
     void drawPopup ();
 
     void layout ();
-    Rect column (int slot) const;
-    int hitStep (int x, int y) const;
-    int hitParam (int x, int y) const;
-#ifdef SLINK_RAZOR_PANEL
-    Rect transport_, stormBox_, position_, contour_;
-    bool cameraHeld_ = false;
-    int facePose_ = 17;
-    void advanceFace ();
-    int focusedStep () const;
-    void layoutRazor (int y, int height);
-    void drawRazorHeader ();
-    void drawRazorFooter ();
-    void drawRazorTrace (Rect r);
-    void drawPitch (Rect box, int step, bool live);
-#endif
-    void drawHeader ();
-    void drawScore ();
-    void drawDeck ();
-    void trace (Rect r, uint32_t ink);
-    void edit (int param, Rect rect, int button, uint32_t mods, int clicks, int second = -1);
+    int hitCard(int x,int y) const;
+    int bodyX(float x) const;
+    int bodyY(float y) const;
+    int bodyParam(int x,int y) const;
+    void paintToolbar();
+    void paintStrip();
+    void edit(int param,Rect anchor,int button,uint32_t mods,int clicks);
     void finishDrag ();
     void endWheelGesture ();
     double norm (int param) const;

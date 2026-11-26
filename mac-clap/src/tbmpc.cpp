@@ -8,6 +8,8 @@
 #include "presets.h"
 #include "screen.h"
 #include "melodee_screen.h"
+#include "../../src/sp16_panel.h"
+#include "../desktop/slink_panel_access.h"
 
 #include <clap/clap.h>
 
@@ -52,12 +54,22 @@ struct Plugin
     // act at the next block (presses).
     const melodee_screen_host_t* hostScreen = nullptr;
     PatternState patternState;
+    sp16::Panel panel;
+    sp16::StepEdits manual; // main thread
+    sp16::StepEditExchange stepExchange;
+    uint32_t audioEditVersion = 0;
+    std::atomic<bool> panelOpen { false };
+    std::atomic<bool> previewRequested { false };
+    bool previewRunning = false; // audio thread only
+    std::atomic<int> touchedStep { -1 };
+    std::atomic<uint64_t> touchedAt { 0 };
     Screen screen { values, patternState };
     std::atomic<uint64_t> outgoing { 0 }, presses { 0 };
     std::atomic<uint64_t> pressedAt { 0 }; // when the page last pressed (steady ms): a press kept waiting is dropped
     std::atomic<bool> screenAnimating { false };
     bool valuesMoved = false; // the host moved a value in this block (audio thread): the page is painted again
     PatternView shownPattern {};
+    uint32_t shownRevision = 0xffffffffu;
 };
 static_assert (paramCount <= 64, "the screen keeps a bit a row");
 
@@ -250,18 +262,34 @@ void handle (Plugin& p, const clap_event_header* e, const clap_output_events* ou
 // Called by the thread that currently owns the engine. The editor reads only the published copy.
 bool publishPattern (Plugin& p)
 {
-    PatternView v {};
-    const Tb3po& seq = p.engine.sequencer();
-    v.steps = seq.stepCount();
-    v.current = seq.currentStep();
-    v.seed = seq.playingSeed();
-    v.running = p.engine.running() ? 1 : 0;
-    for (int s = 0; s < 32; ++s)
+    const auto& live=p.engine.sequencer();
+    const bool running=p.engine.running();
+    PatternView v=p.shownPattern;
+    v.running=running;
+    v.current=live.currentStep();
+    if (live.revision()!=p.shownRevision || running!=bool(p.shownPattern.running))
     {
-        v.pitch[s] = (int16_t) std::clamp<int32_t> (seq.pitchOfStep (s), -32768, 32767);
-        v.gates |= (uint32_t) seq.gated (s) << s;
-        v.slides |= (uint32_t) seq.slid (s) << s;
-        v.accents |= (uint32_t) seq.accented (s) << s;
+        // Preview changes to seed/density/scale while stopped. Don't replace the
+        // previous played pattern: Mutate can still use it at a real reset.
+        const Tb3po* seq=&live;
+        Tb3po next;
+        if (!running && live.patternWaiting())
+        {
+            next=live;
+            next.regenerate();
+            seq=&next;
+        }
+        p.shownRevision=live.revision();
+        v.steps=seq->stepCount();
+        v.seed=seq->playingSeed();
+        v.gates=v.accents=v.slides=0;
+        for (int i=0;i<32;++i)
+        {
+            v.pitch[i]=int16_t(std::clamp(seq->pitchOfStep(i),-32768,32767));
+            v.gates|=uint32_t(seq->gated(i))<<i;
+            v.accents|=uint32_t(seq->accented(i))<<i;
+            v.slides|=uint32_t(seq->slid(i))<<i;
+        }
     }
     if (v == p.shownPattern) return false;
     p.shownPattern = v;
@@ -272,7 +300,7 @@ bool publishPattern (Plugin& p)
 void paramsFlush (const clap_plugin* plugin, const clap_input_events* in, const clap_output_events* out)
 {
     auto& p = of (plugin);
-    const uint32_t count = in->size (in);
+    const uint32_t count = in ? in->size (in) : 0;
     for (uint32_t i = 0; i < count; ++i)
     {
         const auto* e = in->get (in, i);
@@ -314,6 +342,7 @@ const clap_plugin_params paramsExtension { paramsCount, paramsInfo, paramsValue,
 constexpr char stateTag[4] = { 'T', 'B', '3', 'P' };
 // Version 2 (0.4): Cutoff calibrated over 7 octaves; a version 1 state's Cutoff is moved to the same frequency.
 constexpr uint32_t stateVersion = 2;
+constexpr uint32_t stepRecord = 0x534c0000; // SP-16-compatible private state IDs
 
 bool writeAll (const clap_ostream* s, const void* data, uint64_t size)
 {
@@ -353,6 +382,7 @@ void setAll (Plugin& p, const float* values)
     {
         for (uint32_t i = 0; i < paramCount; ++i)
             p.applied[i] = values[i], p.engine.set (paramTable[i].id, values[i]);
+        p.engine.setStepEdits(p.manual);
         publishPattern (p);
     }
     // Cutoff's text may read differently now, and the screen shows the new values.
@@ -366,7 +396,10 @@ void setAll (Plugin& p, const float* values)
 bool stateSave (const clap_plugin* plugin, const clap_ostream* stream)
 {
     auto& p = of (plugin);
-    const uint32_t header[2] = { stateVersion, paramCount };
+    uint32_t records = paramCount;
+    const bool edited = std::any_of(p.manual.cells.begin(),p.manual.cells.end(),[](uint16_t w){ return w != 0; });
+    if (edited) records += 33;
+    const uint32_t header[2] = { stateVersion, records };
     if (! writeAll (stream, stateTag, 4) || ! writeAll (stream, header, sizeof (header)))
         return false;
     for (uint32_t i = 0; i < paramCount; ++i)
@@ -374,6 +407,15 @@ bool stateSave (const clap_plugin* plugin, const clap_ostream* stream)
         const struct { uint32_t id; float value; } pair { paramTable[i].id, p.values[i].load (std::memory_order_relaxed) };
         if (! writeAll (stream, &pair, sizeof (pair)))
             return false;
+    }
+    if (edited)
+    {
+        for (int i=-1; i<32; ++i)
+        {
+            const struct { uint32_t id; float value; } pair {
+                stepRecord + uint32_t(i+1), float(i<0 ? p.manual.seed : p.manual.cells[i]) };
+            if (!writeAll(stream,&pair,sizeof(pair))) return false;
+        }
     }
     return true;
 }
@@ -386,6 +428,7 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
     if (! readAll (stream, tag, 4) || std::memcmp (tag, stateTag, 4) != 0 || ! readAll (stream, header, sizeof (header))
         || header[0] == 0 || header[1] > 4096)
         return false;
+    sp16::StepEdits edits;
     float loaded[paramCount];
     for (uint32_t i = 0; i < paramCount; ++i)
         loaded[i] = paramTable[i].def;
@@ -394,6 +437,15 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
         struct { uint32_t id; float value; } pair {};
         if (! readAll (stream, &pair, sizeof (pair)))
             return false;
+        if (pair.id >= stepRecord && pair.id <= stepRecord+32)
+        {
+            const bool owner = pair.id == stepRecord;
+            if (!std::isfinite(pair.value) || pair.value != std::floor(pair.value)
+                || pair.value < 0 || pair.value > (owner ? 65535 : 16383)) return false;
+            if (owner) edits.seed = uint16_t(pair.value);
+            else edits.cells[pair.id-stepRecord-1] = uint16_t(pair.value);
+            continue;
+        }
         const int index = paramIndex (pair.id);
         if (index < 0 || paramTable[index].kind == Kind::button)
             continue;
@@ -401,6 +453,8 @@ bool stateLoad (const clap_plugin* plugin, const clap_istream* stream)
             pair.value = cutoffFromVersion1 (pair.value);
         loaded[index] = clampParam (paramTable[index], pair.value);
     }
+    p.manual = edits;
+    p.stepExchange.publish(edits);
     setAll (p, loaded);
     return true;
 }
@@ -422,6 +476,8 @@ bool presetFromLocation (const clap_plugin* plugin, uint32_t kind, const char*, 
     }
     float values[paramCount];
     presetValuesOf (*preset, values);
+    p.manual = {};
+    p.stepExchange.publish(p.manual);
     setAll (p, values);
     if (const auto* hostParams = static_cast<const clap_host_params*> (p.host->get_extension (p.host, CLAP_EXT_PARAMS)))
         if (hostParams->rescan != nullptr)
@@ -499,10 +555,24 @@ bool pluginActivate (const clap_plugin* plugin, double rate, uint32_t, uint32_t 
     return true;
 }
 
-void pluginDeactivate (const clap_plugin* plugin) { of (plugin).active = false; }
+void pluginDeactivate (const clap_plugin* plugin)
+{
+    auto& p=of(plugin);
+    p.active=false;
+    p.previewRequested.store(false,std::memory_order_release);
+    p.previewRunning=false;
+    p.touchedStep.store(-1,std::memory_order_release);
+}
 bool pluginStart (const clap_plugin*) { return true; }
 void pluginStop (const clap_plugin*) {}
-void pluginReset (const clap_plugin* plugin) { of (plugin).engine.reset(); }
+void pluginReset (const clap_plugin* plugin)
+{
+    auto& p=of(plugin);
+    p.engine.reset();
+    p.previewRequested.store(false,std::memory_order_release);
+    p.previewRunning=false;
+    p.touchedStep.store(-1,std::memory_order_release);
+}
 
 // Denormals: flush them to zero for the block (the filter and envelopes decay into them), as the FPU had it after.
 struct FlushDenormals
@@ -522,6 +592,8 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
 {
     auto& p = of (plugin);
     FlushDenormals flush;
+    sp16::StepEdits edits;
+    if (p.stepExchange.readIfChanged(p.audioEditVersion,edits)) p.engine.setStepEdits(edits);
     const uint32_t frames = process->frames_count;
     if (process->audio_outputs_count < 1 || process->audio_outputs[0].channel_count < 1)
         return CLAP_PROCESS_ERROR;
@@ -558,21 +630,36 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
                     p.engine.press (paramTable[i].id);
     }
 
-    // The host's transport. Without a song position (Melodee always sends one), the sequence counts its own from
-    // Play, so the first clock is the one Play lands on.
-    if (const auto* t = process->transport)
+    const int audition=p.touchedStep.exchange(-1,std::memory_order_acquire);
+    if (audition>=0 && steadyMs()-p.touchedAt.load(std::memory_order_acquire)<=pressFreshMs)
+        p.engine.audition(audition);
+    // Use the host's beat position when supplied. Otherwise the engine counts from Play.
+    const auto* transport = process->transport;
+    bool playing = transport && (transport->flags & CLAP_TRANSPORT_IS_PLAYING);
+    const bool placed = transport && (transport->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE);
+    double beats = placed ? double(transport->song_pos_beats) / CLAP_BEATTIME_FACTOR
+                          : transport ? p.engine.ownPosition() : 0.0;
+    const double bpm = transport && (transport->flags & CLAP_TRANSPORT_HAS_TEMPO) && transport->tempo>0
+                       ? transport->tempo : 120.0;
+    double bar = 4.0;
+    if (transport && (transport->flags & CLAP_TRANSPORT_HAS_TIME_SIGNATURE)
+        && transport->tsig_num>0 && transport->tsig_denom>0)
+        bar = 4.0 * transport->tsig_num / transport->tsig_denom;
+
+    // Local Play uses the same sample clock as the host. A host start ends the
+    // preview and relocates immediately, including when both start at beat zero.
+    if (playing || p.applied[paramIndex(ParamId::mode)] >= .5f)
+        p.previewRequested.store(false, std::memory_order_release);
+    const bool preview = !playing && p.previewRequested.load(std::memory_order_acquire);
+    if (playing && p.previewRunning)
+        p.engine.transport(false, 0, bpm, bar, frames);
+    if (preview)
     {
-        const bool playing = (t->flags & CLAP_TRANSPORT_IS_PLAYING) != 0;
-        const bool placed = (t->flags & CLAP_TRANSPORT_HAS_BEATS_TIMELINE) != 0;
-        const double bpm = (t->flags & CLAP_TRANSPORT_HAS_TEMPO) && t->tempo > 0.0 ? t->tempo : 120.0;
-        const double beats = placed ? (double) t->song_pos_beats / (double) CLAP_BEATTIME_FACTOR : p.engine.ownPosition();
-        double bar = 4.0;
-        if ((t->flags & CLAP_TRANSPORT_HAS_TIME_SIGNATURE) && t->tsig_num > 0 && t->tsig_denom > 0)
-            bar = 4.0 * t->tsig_num / t->tsig_denom;
-        p.engine.transport (playing, beats, bpm, bar, frames);
+        playing=true;
+        beats=p.previewRunning ? p.engine.ownPosition() : 0.0;
     }
-    else
-        p.engine.transport (false, 0.0, 120.0, 4.0, frames);
+    p.previewRunning=preview;
+    p.engine.transport(playing, beats, bpm, bar, frames);
 
     uint32_t done = 0;
     while (done < frames)
@@ -659,50 +746,17 @@ bool screenDraw (const void* plugin, const melodee_screen_frame_t* f)
     return drew;
 }
 
+#include "../../src/ui/apply_edits.h"
+
 bool screenInput (const void* plugin, const melodee_screen_input_t* e)
 {
-    if (plugin == nullptr || e == nullptr || e->kind > MELODEE_SCREEN_STEP)
-        return false;
-    auto& p = of (static_cast<const clap_plugin*> (plugin));
+    if (!plugin || !e || e->kind>MELODEE_SCREEN_STEP) return false;
+    auto& p=of(static_cast<const clap_plugin*>(plugin));
     hdui::Edits edits;
-    const bool used = p.screen.input ((hdui::Key) e->kind, e->value, e->shift != 0, edits);
-    bool changed = false, pressed = false;
-    for (int i = 0; i < edits.count; ++i)
-    {
-        const auto& edit = edits.list[i];
-        const int index = paramIndex (edit.id);
-        if (index < 0)
-            continue;
-        if (edit.press)
-        {
-            p.pressedAt.store (steadyMs(), std::memory_order_release);
-            p.presses.fetch_or (1ull << index, std::memory_order_release);
-            pressed = true;
-        }
-        else
-        {
-            p.values[index].store (clampParam (paramTable[index], edit.value), std::memory_order_relaxed);
-            p.outgoing.fetch_or (1ull << index, std::memory_order_release);
-            p.mainChanged.store (true, std::memory_order_release);
-            textMoved (p, edit.id);
-            changed = true;
-        }
-    }
-    // The host's own copy of the values: read again now (this is a main-thread call), since a host may not run the
-    // plug-in soon enough to hear them from process() (Melodee does not run a sleeping instrument, and its
-    // request_flush waits for the next block). The output events still follow for hosts that record them.
-    if (changed && p.hostParams != nullptr)
-    {
-        if (p.hostParams->rescan != nullptr)
-            p.hostParams->rescan (p.host, CLAP_PARAM_RESCAN_VALUES);
-        if (p.hostParams->request_flush != nullptr)
-            p.hostParams->request_flush (p.host);
-    }
-    // A press, or a value the engine should take: ask to be run (a host that put the plug-in to sleep wakes it).
-    if ((changed || pressed) && p.host != nullptr && p.host->request_process != nullptr)
-        p.host->request_process (p.host);
+    const bool used=p.screen.input((hdui::Key)e->kind,e->value,e->shift!=0,edits);
+    const bool changed=applyScreenEdits(p,edits);
     if (used && p.hostScreen != nullptr)
-        p.hostScreen->redraw (p.host, (changed || pressed) ? MELODEE_SCREEN_RUN : 0);
+        p.hostScreen->redraw (p.host, changed ? MELODEE_SCREEN_RUN : 0);
     return used;
 }
 
@@ -728,12 +782,16 @@ namespace tbmpc
 namespace
 {
 
-PatternView CLAP_ABI readPattern (const clap_plugin_t* plugin) { return of (plugin).patternState.read(); }
-const PatternReader desktopPattern { readPattern };
+#include "../../src/sp16_panel_callbacks.h"
+
+void holdPanelMotion(const clap_plugin_t* plug, bool hold) { of(plug).panel.thorn.heldMotion=hold; }
+bool panelLocalPlay(const clap_plugin_t* plug) { return of(plug).previewRequested.load(std::memory_order_acquire); }
+void cutPanelCamera(const clap_plugin_t* plug) { of(plug).panel.thorn.nextCameraCut(); }
+const DesktopPanelAccess panelAccess { &panelExtension, holdPanelMotion, cutPanelCamera, panelLocalPlay };
 
 const void* pluginExtension (const clap_plugin*, const char* id)
 {
-    if (std::strcmp (id, patternViewId) == 0) return &desktopPattern;
+    if (std::strcmp (id, desktopPanelAccessId) == 0) return &panelAccess;
     if (std::strcmp (id, MELODEE_SCREEN_CLAP) == 0) return &screenExtension;
     if (std::strcmp (id, CLAP_EXT_HDSLAVE_TILES) == 0) return &tilesExtension;
     if (std::strcmp (id, CLAP_EXT_PARAMS) == 0) return &paramsExtension;
@@ -836,4 +894,4 @@ const void* entryFactory (const char* id)
 } // namespace
 } // namespace tbmpc
 
-extern "C" CLAP_EXPORT const clap_plugin_entry clap_entry { CLAP_VERSION, tbmpc::entryInit, tbmpc::entryDeinit, tbmpc::entryFactory };
+extern "C" const clap_plugin_entry clap_entry { CLAP_VERSION, tbmpc::entryInit, tbmpc::entryDeinit, tbmpc::entryFactory };
