@@ -268,6 +268,7 @@ void PanelUI::setVisible(bool visible)
 {
     if (visible_ == visible) return;
     visible_ = visible;
+    footerPrint_.resetClock();
     if (visible)
     {
         p_->panel->open(p_->inner);
@@ -361,7 +362,7 @@ Rect PanelUI::update(uint64_t now)
         paintRibbon();
         damage = damage.unite(layout_.caption);
     }
-    if (full || bankChanged || changed[id::root] || changed[id::scale])
+    if (full || changed[id::root] || changed[id::scale])
     {
         paintFooter();
         damage = damage.unite(layout_.footer);
@@ -372,6 +373,7 @@ Rect PanelUI::update(uint64_t now)
         damage = damage.unite(layout_.score);
     }
     damage = damage.unite(paintArt(full, refreshHeader, now));
+    damage = damage.unite(footerPrint_.paint(c_, layout_.print, now, motion_, full));
     for (size_t i = 0; i < std::size(sections); ++i)
     {
         if (full || (bankChanged && (int(i) == paintedBank_ || int(i) == bank_)))
@@ -509,6 +511,7 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
             break;
         case Item::Motion:
             motion_ = !motion_;
+            footerPrint_.resetClock();
             p_->panel->holdMotion(p_->inner, !motion_);
             break;
         default:
@@ -516,13 +519,6 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
         }
         return;
     }
-    if (buttonId == 0)
-        for (size_t i = 0; i < layout_.bankKeys.size(); ++i)
-            if (layout_.bankKeys[i].contains(x, y))
-            {
-                bank_ = int(i);
-                return;
-            }
     if (layout_.play.contains(x, y) && buttonId == 0)
     {
         if ((mods & kModShift) && !p_->panel->localPlay(p_->inner) && p_->hostTransport &&
@@ -542,9 +538,8 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
         selected_ = selected_ >= 16 ? 0 : 16;
         return;
     }
-    if (hover_ >= 0)
-        for (size_t i = 0; i < layout_.groups.size(); ++i)
-            if (layout_.groups[i].contains(x, y)) bank_ = int(i);
+    const int group = layout_.groupAt(x, y);
+    if (group >= 0 && (buttonId == 0 || hover_ >= 0)) bank_ = group;
     if (hover_ >= 0 && hover_ < int(id::count))
     {
         const bool special = buttonId != 0 || clicks >= 2 || (mods & (kModCmd | kModAlt)) ||
@@ -649,6 +644,8 @@ void PanelUI::wheel(float x, float y, float, float dy, bool precise, uint32_t mo
     }
     const int slot = layout_.hitSlot(x, y, bank_);
     if (slot < 0 || slot >= int(id::count) || slot == int(id::regen) || slot == int(id::seedBack)) return;
+    const int group = layout_.groupAt(x, y);
+    if (group >= 0) bank_ = group;
     const int param = paramIndex_[slot];
     if (param < 0) return;
     lastTouched_ = param;

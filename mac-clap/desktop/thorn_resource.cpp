@@ -28,3 +28,9 @@ const uint32_t* desktopWordmark()
     static const auto* pixels = static_cast<const uint32_t*>(bitmapResource(102, 680 * 108 * sizeof(uint32_t)));
     return pixels;
 }
+
+const uint8_t* desktopFooterBank()
+{
+    static const auto* bytes = static_cast<const uint8_t*>(bitmapResource(103, SLINK_FOOTER_BANK_SIZE));
+    return bytes;
+}

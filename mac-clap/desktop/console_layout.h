@@ -49,10 +49,9 @@ struct ConsoleLayout
     std::array<Rect, size_t(Item::Count)> tools{};
     std::array<Rect, std::size(sections)> groups{};
     std::array<Rect, slotCount> slots{};
-    std::array<Rect, std::size(sections)> bankKeys{};
     std::array<Rect, 2> ribbon{}, keyFields{};
     Rect toolbar, status, mast, logo, crest, face, counter, play;
-    Rect caption, score, grid, footer, keyScale, storm, legend;
+    Rect caption, score, grid, footer, keyScale, storm, print, legend;
     int headerHeight = 0, gutter = 0;
 
     // Keep the seed and transport panels at the hardware aspect ratio. The camera bay takes
@@ -116,20 +115,15 @@ struct ConsoleLayout
         gutter = std::clamp(usable * 74 / 1000, 66, 104);
         grid = {margin + gutter, score.y, usable - gutter, score.h};
 
-        const int footerH = std::clamp(height / 18, 29, 53);
+        const int footerH = std::clamp(height / 16, 33, 60);
         footer = {margin, score.y + score.h + 3, usable, footerH};
-        const int tabsLeft = margin + usable * 38 / 100, keyW = usable * 15 / 100;
+        const int printLeft = margin + usable * 38 / 100, keyW = usable * 15 / 100;
         keyScale = {margin, footer.y + 3, keyW - 4, footerH - 6};
         const int rootW = std::clamp(keyScale.w / 4, 34, 45);
         keyFields[0] = {keyScale.x, keyScale.y, rootW, keyScale.h};
         keyFields[1] = {keyScale.x + rootW, keyScale.y, keyScale.w - rootW, keyScale.h};
-        storm = {margin + keyW, footer.y + 4, tabsLeft - margin - keyW - 6, footerH - 8};
-        const int bankCount = int(bankKeys.size()), tabsW = margin + usable - tabsLeft;
-        for (int i = 0; i < bankCount; ++i)
-        {
-            const int left = tabsLeft + tabsW * i / bankCount, right = tabsLeft + tabsW * (i + 1) / bankCount;
-            bankKeys[i] = {left, footer.y, right - left - (i + 1 == bankCount ? 0 : 3), footerH};
-        }
+        storm = {margin + keyW, footer.y + 4, printLeft - margin - keyW - 6, footerH - 8};
+        print = {printLeft, footer.y + 1, margin + usable - printLeft, footerH - 2};
 
         const int deskY = footer.y + footer.h + gap;
         headerHeight = std::clamp((height - margin - deskY) / 11, 20, 36);
@@ -152,6 +146,17 @@ struct ConsoleLayout
         }
     }
 
+    Rect heading(size_t bank) const
+    {
+        const Rect group = groups[bank];
+        return {group.x + 1, group.y, group.w - 2, headerHeight - 1};
+    }
+    int groupAt(int x, int y) const
+    {
+        for (size_t i = 0; i < groups.size(); ++i)
+            if (groups[i].contains(x, y)) return int(i);
+        return -1;
+    }
     int hitSlot(int x, int y, int bank = 0, Rect* anchor = nullptr) const
     {
         const auto hit = [&](int slot, Rect r) {

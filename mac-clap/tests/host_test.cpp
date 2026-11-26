@@ -414,11 +414,11 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         snap("compact",960,540,2);
         if (captureMotion)
         {
-            // Run the 48 kHz host alongside the artwork clock for four seconds.
+            // Run the 48 kHz host through one complete five-second desktop print loop.
             constexpr int fps=25;
             int64_t rendered=0;
             const auto start=std::chrono::steady_clock::now();
-            for (int i=0;i<4*fps;++i)
+            for (int i=0;i<5*fps;++i)
             {
                 std::this_thread::sleep_until(start+std::chrono::microseconds(1000000LL*i/fps));
                 while (rendered<48000LL*i/fps) { process(); rendered+=block.frames_count; }
@@ -439,7 +439,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         process();
         render();
     }
-    // All six hardware bank keys keep the same score and point the ribbon at real automation targets.
+    // Each visible section header focuses the readouts, and the print has no input targets.
     if (!ui.preset_load(plug,0)) return false;
     process(); render();
     const int oldCutoff=int(value("Cutoff")*1000);
@@ -447,7 +447,13 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     {
         mouse(1,0,0);
         const auto scoreBefore=area(desk.grid);
-        press(desk.bankKeys[bank]);
+        press(desk.heading(bank));
+        ctx.edited.clear();
+        const int printX=desk.print.x+desk.print.w*(2*bank+1)/12;
+        click(printX,desk.print.y+desk.print.h/2);
+        process();
+        if (!check(ctx.edited.empty() && desk.hitSlot(printX,desk.print.y+desk.print.h/2)==-1,
+                   "clicking the artwork leaves the focused bank and parameters alone")) return false;
         if (!check(area(desk.grid)==scoreBefore,"changing bank preserves the single score")) return false;
         for (int j=0;j<2;++j)
         {
@@ -474,7 +480,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     }
     if (!ui.preset_load(plug,0)) return false;
     process(); render();
-    press(desk.bankKeys[0]);
+    press(desk.heading(0));
     // Every non-momentary parameter can send an automation event directly from this screen.
     for (int i=0;i<int(id::count);++i)
     {
@@ -655,9 +661,21 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     const auto crest=[&] { return area(desk.crest); };
     const auto storm=[&] { return area(desk.storm); };
     const auto smile=[&] { return area(desk.face); };
+    const auto prints=[&] {
+        std::array<std::vector<uint32_t>,3> result;
+        constexpr int samples[][2]={{5,38},{46,68},{76,97}};
+        for (size_t i=0;i<result.size();++i)
+            result[i]=area({desk.print.x+desk.print.w*samples[i][0]/100,desk.print.y,
+                            desk.print.w*(samples[i][1]-samples[i][0])/100,desk.print.h});
+        return result;
+    };
     press(desk.crest);
     const auto held=crest(), moving=storm(), turning=smile(), nextCap=area(cell(1,0));
+    const auto movingPrints=prints();
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
+    const auto laterPrints=prints();
+    for (size_t i=0;i<laterPrints.size();++i)
+        if (!check(laterPrints[i]!=movingPrints[i],"each print animates independently of the camera hold")) return false;
     if (!check(crest()==held && storm()!=moving && smile()!=turning && area(cell(1,0))==nextCap,
                "the held crest, turning smiley and moving footer have independent regions")) return false;
     press(desk.crest);
@@ -665,6 +683,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(crest()!=held,"crest resumes")) return false;
     press(desk.tools[size_t(Item::Motion)]);
     const auto frozenCrest=crest(), frozenStorm=storm(), frozenFace=smile();
+    const auto frozenPrints=prints();
     set("Resonance",.28);
     mouse(1,0,0);
     const auto* partial=render();
@@ -672,9 +691,9 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     ui.ms_per_full_render(plug,960,540,scale);
     if (!check(std::equal(expected.begin(),expected.end(),render()),"partial and full paints match at Retina scale")) return false;
     std::this_thread::sleep_for(std::chrono::milliseconds(130));
-    if (!check(crest()==frozenCrest && storm()==frozenStorm && smile()==frozenFace,"global motion hold")) return false;
+    if (!check(crest()==frozenCrest && storm()==frozenStorm && smile()==frozenFace && prints()==frozenPrints,"global motion hold")) return false;
     press(desk.crest,1);
-    if (!check(crest()!=frozenCrest && storm()==frozenStorm,"manual cut while global motion is held")) return false;
+    if (!check(crest()!=frozenCrest && storm()==frozenStorm && prints()==frozenPrints,"manual cut while global motion is held")) return false;
     const auto lastCap=area(cell(31,0)), firstCap=area(cell(0,0)), firstCounter=area(desk.counter);
     press(cell(31,0)); mouse(1,0,0);
     if (!check(storm()==frozenStorm && area(cell(31,0))!=lastCap && area(desk.counter)!=firstCounter,
@@ -687,6 +706,9 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(area(cell(16,0))!=step17 && area(desk.counter)!=firstCounter,"step counter jumps to the second half")) return false;
     press(desk.counter);
     if (!check(area(cell(16,0))==step17 && area(desk.counter)==firstCounter,"step counter returns to the first half")) return false;
+    press(desk.tools[size_t(Item::Motion)]);
+    std::this_thread::sleep_for(std::chrono::milliseconds(140));
+    if (!check(prints()!=frozenPrints,"the print resumes after a global motion hold")) return false;
     return true;
 }
 

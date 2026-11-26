@@ -325,15 +325,6 @@ void PanelUI::paintFooter()
     controlText(c_, scale.inset(3), readings_[id::scale].text, font::normal, light, .94f);
     c_.hline(l.storm.x, l.storm.y - 1, l.storm.w, 0xff514f70);
     c_.hline(l.storm.x, l.storm.y + l.storm.h, l.storm.w, 0xff514f70);
-    for (size_t i = 0; i < l.bankKeys.size(); ++i)
-    {
-        const Rect key = l.bankKeys[i];
-        const bool active = int(i) == bank_;
-        faceplate(c_, key, active ? 0xff4d75de : 0xff2b203b, active ? 0xff202f7f : 0xff100d1b,
-                  active ? 0xffb1c9ff : 0xff675a79, 5);
-        controlText(c_, key.inset(2), sections[i].name, font::normal, light, key.h >= 34 ? 1.05f : .94f, 1);
-        if (active) c_.fill(key.x + 9, key.y + key.h - 4, key.w - 18, 2, 0xffbbd1ff);
-    }
 }
 
 void PanelUI::paintScore()
@@ -460,7 +451,7 @@ void PanelUI::paintSection(size_t index)
     c_.fill(group, ground);
     const int hh = layout_.headerHeight;
     const bool active = int(index) == bank_;
-    const Rect heading{group.x + 1, group.y, group.w - 2, hh - 1};
+    const Rect heading = layout_.heading(index);
     faceplate(c_, heading, active ? 0xff323358 : 0xff292034, active ? 0xff1b203d : 0xff161121,
               active ? 0xff8099d7 : 0xff544a65);
     controlText(c_, {heading.x + 9, heading.y, heading.w - 17, heading.h}, section.name, font::normal,
