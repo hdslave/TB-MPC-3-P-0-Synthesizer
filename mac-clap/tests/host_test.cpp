@@ -311,7 +311,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     };
     auto sweepPlot=[&](int slot) {
         const auto p=desk.plotArea(slot);
-        drag(p.x+2,p.y+p.h-2,p.x+p.w-2,p.y+2);
+        drag(p.x,p.y+p.h-1,p.x+p.w-1,p.y);
     };
     auto& ctx=*static_cast<StrictHostCtx*>(block.out_events->ctx);
     auto process=[&] {
@@ -380,6 +380,12 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         int pw=0,ph=0;
         const auto* resized=ui.ui_render(plug,size.first,size.second,1,&pw,&ph);
         if (!check(resized && pw==size.first && ph==size.second,"the faceplate renders at each tested aspect ratio")) return false;
+        for (int slot : {filterPlot, pitchPlot, cutoffPlot})
+        {
+            const Rect pad=layout.plotArea(slot);
+            if (!check(pad.w>=120 && pad.h>=12 && layout.hitSlot(pad.x,pad.y)==slot &&
+                       layout.hitSlot(pad.x+pad.w-1,pad.y+pad.h-1)==slot,"full usable XY pad at each size")) return false;
+        }
         const Rect regen=layout.slots[id::regen];
         if (!check(regen.contains(layout.face.x,layout.face.y) &&
                    regen.contains(layout.face.x+layout.face.w-1,layout.face.y+layout.face.h-1) &&
@@ -489,7 +495,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         const double before=value(spec.name);
         const int dy=before>(spec.min+spec.max)/2?24:-24;
         ctx.edited.clear();
-        dragSlot(i,0,dy);
+        dragSlot(i,0,i==int(id::filter)?-8:dy); // Select Twin Peak before exercising its spread.
         process();
         if (!check(value(spec.name)!=before && ctx.edited.count(i),spec.name)) return false;
     }
@@ -497,12 +503,62 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!ui.preset_load(plug,0)) return false;
     process();
     render();
+    auto brightText=[&](Rect r) {
+        const auto pixels=area(r);
+        return std::any_of(pixels.begin(),pixels.end(),[](uint32_t px) {
+            return ((px>>16)&255)>185 && ((px>>8)&255)>185 && (px&255)>185;
+        });
+    };
+    auto tryInactive=[&](Rect r) {
+        const int x=r.x+r.w/2,y=r.y+r.h/2;
+        drag(x,y,x,y-20);
+        mouse(3,x,y,0,2);
+        ui.ui_mouse(plug,0,x,y,0,0,0,2);
+        mouse(2,x,y);
+        process();
+    };
+    set("Peak Spread",2.25);
+    for (auto filter : {tbmpc::filter303,tbmpc::filter18dB,tbmpc::filterTwinPeak})
+    {
+        set("Filter",filter);
+        const Rect spread=desk.slots[id::peakSpread];
+        const bool active=filter==tbmpc::filterTwinPeak;
+        if (!check(brightText(spread)==active,"Peak Spread follows the filter model")) return false;
+        ctx.edited.clear();
+        if (active) { dragSlot(id::peakSpread,0,-12); process(); }
+        else tryInactive(spread);
+        if (!check(bool(ctx.edited.count(id::peakSpread))==active && (active || value("Peak Spread")==2.25),
+                   "only Twin Peak admits direct spread edits")) return false;
+    }
+    press(desk.heading(2));
+    set("Slide Time",.625);
+    for (int mode : {0,1})
+        for (int slide : {0,1})
+        {
+            set("Mode",mode);
+            set("Slide",slide);
+            const bool active=mode==1 || slide==1;
+            const Rect time=desk.slots[id::slideTime], readout=desk.ribbon[1];
+            if (!check(brightText(time)==active && brightText(readout)==active,
+                       "both 303 Time readouts follow the slide and note modes")) return false;
+            if (!active)
+            {
+                ctx.edited.clear();
+                tryInactive(time);
+                tryInactive(readout);
+                if (!check(!ctx.edited.count(id::slideTime) && value("Slide Time")==.625,
+                           "inactive time retains its automated value")) return false;
+            }
+        }
+    if (!ui.preset_load(plug,0)) return false;
+    process(); render();
     const auto glide=desk.slots[id::glide];
     click(glide.x+glide.w*3/4,glide.y+glide.h*3/4); process();
     if (!check(value("Slide")==1,"303 slide has a direct button")) return false;
     click(glide.x+glide.w/4,glide.y+glide.h*3/4); process();
     if (!check(value("Slide")==0,"TB-3PO slide has a direct button")) return false;
     press(desk.tools[size_t(Item::Learn)]);
+    press(desk.slots[id::slideTime]);
     press(desk.slots[id::cutoff]);
     clap_event_midi_t cc {};
     cc.header={sizeof(cc),0,CLAP_CORE_EVENT_SPACE_ID,CLAP_EVENT_MIDI,0};

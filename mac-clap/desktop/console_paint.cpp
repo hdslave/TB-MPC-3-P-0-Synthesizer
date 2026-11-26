@@ -18,6 +18,7 @@ namespace
 {
 constexpr uint32_t ground = 0xff080812, glass = 0xff21192e, edge = 0xff685d80, light = 0xfff1efff,
                    muted = 0xffb9b1cb, steel = 0xffb6c8fa, ice = 0xff96b7ff, lilac = 0xffd1afff, quiet = 0xff938aa8;
+constexpr uint32_t disabledLabel = 0xff84848e, disabledValue = 0xff9999a3;
 
 // The hardware faceplates cut the upper-right and lower-left corners.
 void faceplate(Canvas& c, Rect r, uint32_t top, uint32_t bottom, uint32_t outline, int cut = 4)
@@ -36,6 +37,10 @@ void faceplate(Canvas& c, Rect r, uint32_t top, uint32_t bottom, uint32_t outlin
 void plate(Canvas& c, Rect r, uint32_t fill = glass, uint32_t outline = edge)
 {
     faceplate(c, r, fill, mix(fill, ground, .45f), outline);
+}
+void disabledPlate(Canvas& c, Rect r, int cut)
+{
+    faceplate(c, r, 0xff1a1a21, 0xff121219, 0xff3b3b45, cut);
 }
 // Use the same antialiased Barlow lettering as the panel for desktop control cards.
 namespace font = tbmpc::rave;
@@ -212,7 +217,10 @@ void PanelUI::paintToolbar()
         status = "Click to hold or resume the crest   /   Shift-click to cut";
     else if (hover_ >= 0 && hover_ < int(id::count))
     {
-        if (hover_ == int(id::regen)) status = "Roll a new pattern seed";
+        if (!readings_[hover_].enabled)
+            status = hover_ == int(id::peakSpread) ? "Select Twin Peak to edit Peak spread" :
+                                                     "Select 303 slide or Notes mode to edit 303 time";
+        else if (hover_ == int(id::regen)) status = "Roll a new pattern seed";
         else if (hover_ == int(id::seedBack)) status = "Click the seed number to recall a previously played seed";
         else if (hover_ == int(id::seed)) status = "Drag the barcode to set the pattern seed";
         else status = std::string(tbmpc::paramTable[tbmpc::paramIndex(hover_)].name) + "   /   " + readings_[hover_].text;
@@ -290,14 +298,18 @@ void PanelUI::paintRibbon()
     for (int i = 0; i < 2; ++i)
     {
         const int slot = ribbonParams[bank_][i];
+        const bool enabled = readings_[slot].enabled;
         const Rect r = layout_.ribbon[i];
-        faceplate(c_, r, 0xff292036, 0xff151121, hover_ == slot ? ice : 0xff554962);
+        if (enabled) faceplate(c_, r, 0xff292036, 0xff151121, hover_ == slot ? ice : 0xff554962);
+        else disabledPlate(c_, r, 4);
         const int pad = std::clamp(r.w / 22, 6, 12);
         const int valueW = std::min(r.w * 54 / 100, textWidth(readings_[slot].text, font::normal) + 2);
         const char* label = slot == int(id::pitchLfoAmount) ? "Pitch depth" :
                             slot == int(id::cutoffLfoAmount) ? "Cutoff depth" : fieldName(slot);
-        controlText(c_, {r.x + pad, r.y, r.w - 2 * pad - valueW - 3, r.h}, label, font::normal, muted, .92f);
-        controlText(c_, {r.x + r.w - pad - valueW, r.y, valueW, r.h}, readings_[slot].text, font::normal, light, .96f, 2);
+        controlText(c_, {r.x + pad, r.y, r.w - 2 * pad - valueW - 3, r.h}, label, font::normal,
+                    enabled ? muted : disabledLabel, .92f);
+        controlText(c_, {r.x + r.w - pad - valueW, r.y, valueW, r.h}, readings_[slot].text, font::normal,
+                    enabled ? light : disabledValue, .96f, 2);
     }
     const Rect r = layout_.legend;
     faceplate(c_, r, 0xff241c34, 0xff141020, 0xff4a405c);
@@ -464,12 +476,15 @@ void PanelUI::paintSection(size_t index)
 void PanelUI::paintSlot(int slot, uint32_t ink)
 {
     const Rect r = layout_.slots[slot];
-    const bool hot =
-        slot == hover_ || (slot < int(id::count) && paramIndex_[slot] == dragParam_) || slot == dragPlot_;
+    const bool enabled = slot >= filterPlot || readings_[slot].enabled;
+    const bool hot = enabled &&
+        (slot == hover_ || (slot < int(id::count) && paramIndex_[slot] == dragParam_) || slot == dragPlot_);
     c_.fill(r, ground);
     const Rect key{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
-    faceplate(c_, key, hot ? 0xff362e49 : 0xff251d32, hot ? 0xff1e1c31 : 0xff13101e,
-              hot ? ice : 0xff51465f, 3);
+    if (enabled)
+        faceplate(c_, key, hot ? 0xff362e49 : 0xff251d32, hot ? 0xff1e1c31 : 0xff13101e, hot ? ice : 0xff51465f, 3);
+    else
+        disabledPlate(c_, key, 3);
     if (slot >= filterPlot)
     {
         paintPlot(slot, ink);
@@ -481,18 +496,21 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
     const int pad = std::clamp(r.w / 15, 5, 11), left = r.x + pad;
     const bool choice = param.kind == tbmpc::Kind::choice;
     const bool compact = r.h < 40;
-    const int labelH = std::clamp(r.h * 38 / 100, 12, 24), top = r.y + std::max(2, (r.h - 60) / 4);
+    const bool shallow = r.h < 34;
+    const int labelH = shallow ? std::clamp(r.h / 3, 9, 11) : std::clamp(r.h * 38 / 100, 12, 24);
+    const int top = r.y + (shallow ? 1 : std::max(2, (r.h - 60) / 4));
     const int badgeW = reading.cc >= 0 ? 34 : 0;
     const char* label = fieldName(slot);
     const int labelW = r.w - 2 * pad - badgeW;
     const auto& face = textWidth(label, font::normal) <= labelW && labelH >= 18 ? font::normal : font::small;
     const float labelZoom = std::min(.96f, float(labelH + 1) / face.height);
-    controlText(c_, {left, top, labelW, labelH}, label, face, muted, labelZoom);
+    controlText(c_, {left, top, labelW, labelH}, label, face, enabled ? muted : disabledLabel, labelZoom);
     if (reading.cc >= 0)
     {
         char badge[10];
         std::snprintf(badge, sizeof(badge), "CC %d", reading.cc);
-        controlText(c_, {r.x + r.w - pad - badgeW, top + 1, badgeW, labelH}, badge, font::small, lilac, .82f, 2);
+        controlText(c_, {r.x + r.w - pad - badgeW, top + 1, badgeW, labelH}, badge, font::small,
+                    enabled ? lilac : disabledLabel, .82f, 2);
     }
     const int valueY = top + labelH, valueH = std::min(r.y + r.h - (choice ? 3 : 5) - valueY, 33);
     if (slot == int(id::glide))
@@ -514,7 +532,7 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
     const auto& valueFace = big ? font::large : font::normal;
     const float zoom = std::min({1.f, compact ? float(valueH + 2) / valueFace.height : 1.f,
                                  std::max(.72f, float(valueW) / std::max(1, textWidth(reading.text, valueFace)))});
-    controlText(c_, {left, valueY, valueW, valueH}, reading.text, valueFace, light, zoom);
+    controlText(c_, {left, valueY, valueW, valueH}, reading.text, valueFace, enabled ? light : disabledValue, zoom);
     if (choice)
     {
         const int x = r.x + r.w - pad - 3, y = valueY + valueH / 2;
@@ -524,8 +542,9 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
     else
     {
         const int rail = r.w - 2 * pad, y = r.y + r.h - 5;
-        c_.fill(left, y, rail, 2, 0xff393247);
-        c_.fill(left, y, int(std::lround(norm(paramIndex_[slot]) * rail)), 2, hot ? ice : 0xff7389c9);
+        c_.fill(left, y, rail, 2, enabled ? 0xff393247 : 0xff32323b);
+        const uint32_t fill = enabled ? (hot ? ice : 0xff7389c9) : 0xff61616c;
+        c_.fill(left, y, int(std::lround(norm(paramIndex_[slot]) * rail)), 2, fill);
     }
 }
 

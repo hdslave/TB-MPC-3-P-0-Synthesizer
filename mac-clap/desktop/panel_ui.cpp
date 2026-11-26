@@ -5,6 +5,21 @@
 namespace hdslave_desktop
 {
 using Lane = tbmpc::sp16::StepLane;
+bool PanelUI::canEdit(int param) const
+{
+    if (param < 0 || param >= int(p_->params.size())) return false;
+    switch (p_->params[param].id)
+    {
+    case id::peakSpread:
+        return int(p_->displayValue(paramIndex_[id::filter])) == tbmpc::filterTwinPeak;
+    case id::slideTime:
+        // Legato keys in Notes mode always use the timed glide.
+        return p_->displayValue(paramIndex_[id::glide]) >= .5 || p_->displayValue(paramIndex_[id::mode]) >= .5;
+    default:
+        return true;
+    }
+}
+
 double PanelUI::norm (int param) const
 {
     if (param < 0 || param >= int (p_->params.size ())) return 0.0;
@@ -179,6 +194,7 @@ void PanelUI::popupPick (int i)
     const double val = popupValues_[(size_t)i];
     const Rect anchor = popupRect_;
     closePopup ();
+    if (param >= 0 && !canEdit(param)) return;
 
     if (k == PopupKind::Presets)
     {
@@ -312,8 +328,10 @@ Rect PanelUI::update(uint64_t now)
 {
     using Clock = std::chrono::steady_clock;
     const auto start = Clock::now();
-    if (wheelParam_ >= 0 && now - wheelAt_ > 175) endWheelGesture();
+    if (wheelParam_ >= 0 && (now - wheelAt_ > 175 || !canEdit(wheelParam_))) endWheelGesture();
     if (!visible_) return {};
+    if (dragParam_ >= 0 && !canEdit(dragParam_)) finishDrag();
+    if (popupParam_ >= 0 && !canEdit(popupParam_)) closePopup();
     const auto next = p_->panel->readPattern(p_->inner);
     const bool patternChanged = !(pattern_ == next);
     pattern_ = next;
@@ -333,8 +351,14 @@ Rect PanelUI::update(uint64_t now)
         reading.cc = cc;
     }
     changed[id::cutoff] |= changed[id::resonance] || changed[id::filter] || changed[id::peakSpread];
+    changed[id::peakSpread] |= changed[id::filter];
+    changed[id::slideTime] |= changed[id::glide] || changed[id::mode];
     for (uint32_t id = 0; id < changed.size(); ++id)
-        if (changed[id]) readings_[id].text = valueText(paramIndex_[id]);
+        if (changed[id])
+        {
+            readings_[id].text = valueText(paramIndex_[id]);
+            readings_[id].enabled = canEdit(paramIndex_[id]);
+        }
 
     const bool focusChanged = focus() != paintedFocus_;
     const bool hoverChanged = hover_ != paintedHover_,
@@ -539,6 +563,7 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
         return;
     }
     const int group = layout_.groupAt(x, y);
+    if (hover_ >= 0 && hover_ < int(id::count) && !canEdit(paramIndex_[hover_])) return;
     if (group >= 0 && (buttonId == 0 || hover_ >= 0)) bank_ = group;
     if (hover_ >= 0 && hover_ < int(id::count))
     {
@@ -596,6 +621,11 @@ void PanelUI::mouseMove(float x, float y, uint32_t mods)
     }
     if (dragParam_ >= 0)
     {
+        if (!canEdit(dragParam_))
+        {
+            finishDrag();
+            return;
+        }
         const float dx = x - downX_, dy = downY_ - y;
         if (!moved_ && std::abs(dx) + std::abs(dy) < 3) return;
         if (!moved_)
@@ -631,6 +661,10 @@ void PanelUI::mouseUp(float x, float y, int, uint32_t)
 void PanelUI::wheel(float x, float y, float, float dy, bool precise, uint32_t mods)
 {
     if (std::abs(dy) < .0001f) return;
+    const int slot = layout_.hitSlot(x, y, bank_);
+    if (popup_ == PopupKind::None &&
+        (slot < 0 || slot >= int(id::count) || slot == int(id::regen) || slot == int(id::seedBack) ||
+         !canEdit(paramIndex_[slot]))) return;
     wheelAccum_ += dy * (precise ? .15 : 1.);
     const int steps = int(wheelAccum_);
     if (!steps) return;
@@ -642,12 +676,9 @@ void PanelUI::wheel(float x, float y, float, float dy, bool precise, uint32_t mo
         dirty_ = true;
         return;
     }
-    const int slot = layout_.hitSlot(x, y, bank_);
-    if (slot < 0 || slot >= int(id::count) || slot == int(id::regen) || slot == int(id::seedBack)) return;
     const int group = layout_.groupAt(x, y);
     if (group >= 0) bank_ = group;
     const int param = paramIndex_[slot];
-    if (param < 0) return;
     lastTouched_ = param;
     if ((fine_ || (mods & kModShift)) && !p_->params[param].isStepped())
     {
@@ -693,7 +724,7 @@ bool PanelUI::key(int k)
         selected_ = std::clamp(selected_ + (k == 0 ? -1 : 1), 0, int(pattern_.steps) - 1);
         return true;
     }
-    if ((k == 2 || k == 3) && lastTouched_ >= 0)
+    if ((k == 2 || k == 3) && canEdit(lastTouched_))
     {
         stepParam(lastTouched_, k == 2 ? 1 : -1);
         return true;

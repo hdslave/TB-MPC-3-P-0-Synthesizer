@@ -27,17 +27,19 @@ enum Plot
 };
 struct Section
 {
+    enum Layout { grid, filterPad, lfoPads };
     const char* name;
     uint32_t ink;
     int columns;
     std::array<int, 6> slots;
+    Layout layout = grid;
 };
 inline constexpr Section sections[] = {
     {"PERFORM", 0xffb6c8fa, 3, {id::cutoff, id::resonance, id::envMod, id::decay, id::accent, id::volume}},
-    {"VOICE", 0xffaabfff, 3, {id::waveform, id::tuning, id::drive, id::filter, id::peakSpread, filterPlot}},
+    {"VOICE", 0xffaabfff, 3, {id::waveform, id::tuning, id::drive, id::filter, id::peakSpread, filterPlot}, Section::filterPad},
     {"GLIDE", 0xffb6c8fa, 2, {id::glide, id::slideTime, id::gate, id::accentDecay, -1, -1}},
     {"LFO", 0xffc3b0ed, 3, {pitchPlot, id::pitchLfoAmount, id::pitchLfoSpeed,
-                              cutoffPlot, id::cutoffLfoAmount, id::cutoffLfoSpeed}},
+                              cutoffPlot, id::cutoffLfoAmount, id::cutoffLfoSpeed}, Section::lfoPads},
     {"PATTERN", 0xffb6c8fa, 3, {id::seedMode, id::mutate, id::density, id::root, id::scale, id::transpose}},
     {"CLOCK", 0xffb6c8fa, 3, {id::mode, id::clockDiv, id::swing, id::reset, id::steps, id::octave}}};
 inline constexpr int ribbonParams[][2] = {{id::cutoff, id::resonance}, {id::waveform, id::filter},
@@ -134,16 +136,47 @@ struct ConsoleLayout
             const int row = i / 3, span = height - margin - deskY + gap;
             const int gy = deskY + span * row / 2, gy1 = deskY + span * (row + 1) / 2 - gap;
             groups[i] = {gx, gy, gx1 - gx, gy1 - gy};
-            const int cols = sections[i].columns, top = gy + headerHeight;
-            for (int j = 0; j < 2 * cols; ++j)
-            {
-                const int x0 = gx + 2 + (gx1 - gx - 4) * (j % cols) / cols,
-                          x1 = gx + 2 + (gx1 - gx - 4) * (j % cols + 1) / cols;
-                const int y0 = top + (gy1 - 2 - top) * (j / cols) / 2,
-                          y1 = top + (gy1 - 2 - top) * (j / cols + 1) / 2;
-                slots[sections[i].slots[j]] = {x0, y0, x1 - x0, y1 - y0};
-            }
+            const int top = gy + headerHeight;
+            arrangeControls(sections[i], {gx + 2, top, gx1 - gx - 4, gy1 - top - 2});
         }
+    }
+
+    void arrangeControls(const Section& section, Rect body)
+    {
+        const auto column = [](Rect r, int i, int count) {
+            const int x = r.w * i / count;
+            return Rect{r.x + x, r.y, r.w * (i + 1) / count - x, r.h};
+        };
+        if (section.layout == Section::lfoPads)
+        {
+            // Each LFO has its own pad with depth and rate directly underneath.
+            const int controlsH = std::max(22, body.h * 40 / 100);
+            for (int i = 0; i < 2; ++i)
+            {
+                const Rect unit = column(body, i, 2);
+                const int padH = unit.h - controlsH;
+                const Rect controls{unit.x, unit.y + padH, unit.w, controlsH};
+                slots[section.slots[3*i]] = {unit.x, unit.y, unit.w, padH};
+                slots[section.slots[3*i+1]] = column(controls, 0, 2);
+                slots[section.slots[3*i+2]] = column(controls, 1, 2);
+            }
+            return;
+        }
+        const bool filter = section.layout == Section::filterPad;
+        const int topH = filter ? std::max(22, body.h * 42 / 100) : body.h / 2;
+        const Rect top{body.x, body.y, body.w, topH};
+        Rect lower{body.x, body.y + topH, body.w, body.h - topH};
+        if (filter)
+        {
+            // The filter and spread readouts share the left half of the plot row.
+            lower.w = body.w * 54 / 100;
+            slots[filterPlot] = {body.x + lower.w, lower.y, body.w - lower.w, lower.h};
+        }
+        for (int j = 0; j < section.columns; ++j)
+            slots[section.slots[j]] = column(top, j, section.columns);
+        const int readouts = section.columns - int(filter);
+        for (int j = 0; j < readouts; ++j)
+            slots[section.slots[section.columns+j]] = column(lower, j, readouts);
     }
 
     Rect heading(size_t bank) const
@@ -191,9 +224,9 @@ struct ConsoleLayout
     }
     Rect plotArea(int slot) const
     {
-        const Rect r = slots[slot].inset(4);
-        const int title = std::clamp(r.h / 3, 12, 21);
-        return {r.x + 2, r.y + title, r.w - 4, r.h - title - 2};
+        const Rect r = slots[slot];
+        const int title = std::clamp(r.h / 4, 13, 21);
+        return {r.x + 5, r.y + title, r.w - 10, r.h - title - 4};
     }
 };
 } // namespace hdslave_desktop

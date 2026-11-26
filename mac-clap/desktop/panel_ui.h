@@ -53,6 +53,7 @@ class PanelUI
         double value = 0;
         std::string text;
         int cc = -1;
+        bool enabled = true;
     };
     std::array<Reading, id::count> readings_{};
     std::array<int, id::count> paramIndex_{};
@@ -113,6 +114,7 @@ class PanelUI
     double norm(int param) const;
     double fromNorm(int param, double n) const;
     std::string valueText(int param) const;
+    bool canEdit(int param) const;
     void setParam(int param, double value);
     void stepParam(int param, int steps);
     void resetParam(int param);
