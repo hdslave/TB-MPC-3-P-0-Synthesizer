@@ -53,7 +53,7 @@ struct ConsoleLayout
     std::array<Rect, slotCount> slots{};
     std::array<Rect, 2> ribbon{}, keyFields{};
     Rect toolbar, status, mast, logo, crest, face, counter, play;
-    Rect caption, score, grid, footer, keyScale, storm, print, legend;
+    Rect caption, score, grid, footer, keyScale, storm, legend;
     int headerHeight = 0, gutter = 0;
 
     // Keep the seed and transport panels at the hardware aspect ratio. The camera bay takes
@@ -119,13 +119,12 @@ struct ConsoleLayout
 
         const int footerH = std::clamp(height / 16, 33, 60);
         footer = {margin, score.y + score.h + 3, usable, footerH};
-        const int printLeft = margin + usable * 38 / 100, keyW = usable * 15 / 100;
+        const int keyW = usable * 15 / 100;
         keyScale = {margin, footer.y + 3, keyW - 4, footerH - 6};
         const int rootW = std::clamp(keyScale.w / 4, 34, 45);
         keyFields[0] = {keyScale.x, keyScale.y, rootW, keyScale.h};
         keyFields[1] = {keyScale.x + rootW, keyScale.y, keyScale.w - rootW, keyScale.h};
-        storm = {margin + keyW, footer.y + 4, printLeft - margin - keyW - 6, footerH - 8};
-        print = {printLeft, footer.y + 1, margin + usable - printLeft, footerH - 2};
+        storm = {margin + keyW, footer.y + 2, usable - keyW, footerH - 4};
 
         const int deskY = footer.y + footer.h + gap;
         headerHeight = std::clamp((height - margin - deskY) / 11, 20, 36);

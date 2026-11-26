@@ -9,8 +9,8 @@ _slink_sp16_thorn_bank:
 .p2align 4
 _slink_desktop_wordmark:
 .incbin "@THORN_WORDMARK@"
-.globl _slink_footer_print
-.private_extern _slink_footer_print
+.globl _slink_footer_storm
+.private_extern _slink_footer_storm
 .p2align 4
-_slink_footer_print:
+_slink_footer_storm:
 .incbin "@FOOTER_BANK@"

@@ -29,7 +29,7 @@
  camera.addEventListener('webglcontextlost',e=>{e.preventDefault();useFilm();});
  const gameNotes=['F2','C3','F3','G1','G2','C2','F2','C3','C#2','C#2','F2','G2','C#2','F2','G#1','C#2'];
  const semis=[5,12,17,-5,7,0,5,12,1,1,5,7,1,5,-4,1];
- const pattern=[[1,1,1,1,0,0,1,1,0,1,1,1,0,1,1,0],[0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],[0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,1]];
+ const pattern=thornStudyPattern;
  const names=['STEP','NOTE','GATE','ACC','SLD'],speech=['Step','Note','Gate','Accent','Slide'];
  const shotNames=['WIDE','WING L','CORE','WING R'];
  const two=n=>String(n).padStart(2,'0'),clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));

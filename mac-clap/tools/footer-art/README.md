@@ -1,8 +1,16 @@
-# Slink desktop footer artwork
+# Reusable Slink panel animations
 
-[Silver engraving master](silver-engraving.png) · [Animation source](../bake_footer.py)
+These three five-second loops are saved at their original sizes and colours. Each animated PNG contains all 120 frames and can be used independently on another panel.
 
-The silver engraving is an original transparent raster made for Slink with built-in ImageGen. The baker turns and relights the casting, then draws the near and far arcs of the wire around its opening. The folding checkerboard, lacquered disc and fluorescent stencil are drawn in the baker. The stencil retains its own [original ink palette](stencil-palette.png).
+| Animation | Dimensions |
+| --- | --- |
+| [Wire-threaded silver engraving](panel-loops/silver-engraving.apng) | 458 × 56 |
+| [Folding checkerboard and crimson disc](panel-loops/checkerboard.apng) | 318 × 56 |
+| [Fluorescent stencil](panel-loops/fluorescent-stencil.apng) | 312 × 56 |
+
+The [panel baker](panel-loops/bake.py) rebuilds the loops with NumPy, SciPy and Pillow and checks their decoded pixels against the original desktop release. It relights the [original transparent silver casting](silver-engraving.png) and draws its nickel wire, the paper folds, the disc and the stencil. The [silver and paper palette](panel-loops/silver-paper-palette.png) and the [stencil inks](stencil-palette.png) are included.
+
+The desktop footer uses the [original whip renderer](../../../tools/sp16_thorn/whip-storm.js). Its [desktop baker](../bake_footer.py) captures it at 60 fps.
 
 ## Silver engraving prompt
 

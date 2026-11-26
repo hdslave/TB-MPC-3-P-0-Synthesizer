@@ -288,8 +288,6 @@ Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
     }
     if (changed(lcd)) blit(lcd, layout_.headRect(lcd));
     if (changed(regen)) blit(regen, layout_.headRect(regen));
-    const Rect storm{127, 253, 168, 25};
-    if (changed(storm)) blit(storm, layout_.storm);
     return damage;
 }
 

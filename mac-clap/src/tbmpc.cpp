@@ -798,7 +798,8 @@ bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& 
     auto& panel=p.panel;
     panel.thorn.selected=selected;
     sp16::Raster raster{surface.pixels,surface.stride,surface.height};
-    return panel.thorn.draw(raster,panel.shown,surface.now_ms,full,seed,button,false);
+    // The desktop draws the full-width storm directly from its own film.
+    return panel.thorn.draw(raster,panel.shown,surface.now_ms,full,seed,button,false,false);
 }
 void desktopPitchTile(uint32_t* pixels,int cv,uint32_t background,bool active)
 {

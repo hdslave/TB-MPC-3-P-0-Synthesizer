@@ -1,7 +1,7 @@
 #pragma once
 #include "desktop_wrapper.h"
 #include "console_layout.h"
-#include "footer_print.h"
+#include "footer_storm.h"
 #include <array>
 
 namespace hdslave_desktop
@@ -46,7 +46,7 @@ class PanelUI
     DesktopPlugin* p_;
     Canvas c_;
     ConsoleLayout layout_;
-    FooterPrint footerPrint_;
+    FooterStorm footerStorm_;
     std::vector<uint32_t> frame_, art_, previousArt_;
     struct Reading
     {

@@ -58,7 +58,7 @@ public:
     }
 
     bool draw(const Raster& r,const PatternView& v,uint32_t now,bool full,
-              int seed,int button,bool score)
+              int seed,int button,bool score,bool includeStorm=true)
     {
         const uint32_t elapsed=lastCamera < 0 ? 0 : now-lastMs;
         lastMs=now;
@@ -75,7 +75,7 @@ public:
         if (!heldCamera) cameraMs+=elapsed;
 #endif
         const int camera=int(uint64_t(cameraMs % 20000)*thorn::crest.count/20000);
-        const int storm=int(uint64_t(now % 8000)*thorn::storm.count/8000);
+        const int storm=includeStorm ? int(uint64_t(now % 8000)*thorn::storm.count/8000) : -1;
         const double sway=.47+.32*std::sin((now%4800)*(6.28318530718/4800)+.18);
         const int face=int(std::lround(256*(thorn::face.count-1)*sway));
         if (full)
@@ -116,7 +116,7 @@ public:
         const bool moving=full || camera!=lastCamera || storm!=lastStorm || face!=lastFace;
         if (full || camera!=lastCamera) image(r,thorn::crest,camera,186,6);
         if (full || face!=lastFace) drawFace(r,face);
-        if (full || storm!=lastStorm) image(r,thorn::storm,storm,stormX,253);
+        if (includeStorm && (full || storm!=lastStorm)) image(r,thorn::storm,storm,stormX,253);
         lastCamera=camera;lastFace=face;lastStorm=storm;
         return moving;
     }

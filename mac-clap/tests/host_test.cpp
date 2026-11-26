@@ -386,6 +386,9 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
             if (!check(pad.w>=120 && pad.h>=12 && layout.hitSlot(pad.x,pad.y)==slot &&
                        layout.hitSlot(pad.x+pad.w-1,pad.y+pad.h-1)==slot,"full usable XY pad at each size")) return false;
         }
+        if (!check(layout.storm.x==layout.keyScale.x+layout.keyScale.w+4 &&
+                   layout.storm.x+layout.storm.w==layout.footer.x+layout.footer.w &&
+                   layout.storm.intersect(layout.keyScale).empty(),"one storm fills the footer beside the editable key")) return false;
         const Rect regen=layout.slots[id::regen];
         if (!check(regen.contains(layout.face.x,layout.face.y) &&
                    regen.contains(layout.face.x+layout.face.w-1,layout.face.y+layout.face.h-1) &&
@@ -420,7 +423,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         snap("compact",960,540,2);
         if (captureMotion)
         {
-            // Run the 48 kHz host through one complete five-second desktop print loop.
+            // Capture five seconds of desktop playback from the 48 kHz host.
             constexpr int fps=25;
             int64_t rendered=0;
             const auto start=std::chrono::steady_clock::now();
@@ -455,10 +458,10 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         const auto scoreBefore=area(desk.grid);
         press(desk.heading(bank));
         ctx.edited.clear();
-        const int printX=desk.print.x+desk.print.w*(2*bank+1)/12;
-        click(printX,desk.print.y+desk.print.h/2);
+        const int stormX=desk.storm.x+desk.storm.w*(2*bank+1)/12;
+        click(stormX,desk.storm.y+desk.storm.h/2);
         process();
-        if (!check(ctx.edited.empty() && desk.hitSlot(printX,desk.print.y+desk.print.h/2)==-1,
+        if (!check(ctx.edited.empty() && desk.hitSlot(stormX,desk.storm.y+desk.storm.h/2)==-1,
                    "clicking the artwork leaves the focused bank and parameters alone")) return false;
         if (!check(area(desk.grid)==scoreBefore,"changing bank preserves the single score")) return false;
         for (int j=0;j<2;++j)
@@ -717,21 +720,21 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     const auto crest=[&] { return area(desk.crest); };
     const auto storm=[&] { return area(desk.storm); };
     const auto smile=[&] { return area(desk.face); };
-    const auto prints=[&] {
+    const auto stormSamples=[&] {
         std::array<std::vector<uint32_t>,3> result;
-        constexpr int samples[][2]={{5,38},{46,68},{76,97}};
+        constexpr int samples[][2]={{2,24},{38,62},{77,98}};
         for (size_t i=0;i<result.size();++i)
-            result[i]=area({desk.print.x+desk.print.w*samples[i][0]/100,desk.print.y,
-                            desk.print.w*(samples[i][1]-samples[i][0])/100,desk.print.h});
+            result[i]=area({desk.storm.x+desk.storm.w*samples[i][0]/100,desk.storm.y,
+                            desk.storm.w*(samples[i][1]-samples[i][0])/100,desk.storm.h});
         return result;
     };
     press(desk.crest);
     const auto held=crest(), moving=storm(), turning=smile(), nextCap=area(cell(1,0));
-    const auto movingPrints=prints();
+    const auto movingParts=stormSamples();
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
-    const auto laterPrints=prints();
-    for (size_t i=0;i<laterPrints.size();++i)
-        if (!check(laterPrints[i]!=movingPrints[i],"each print animates independently of the camera hold")) return false;
+    const auto laterParts=stormSamples();
+    for (size_t i=0;i<laterParts.size();++i)
+        if (!check(laterParts[i]!=movingParts[i],"both ends and the crossing of the panoramic storm animate during camera hold")) return false;
     if (!check(crest()==held && storm()!=moving && smile()!=turning && area(cell(1,0))==nextCap,
                "the held crest, turning smiley and moving footer have independent regions")) return false;
     press(desk.crest);
@@ -739,7 +742,6 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(crest()!=held,"crest resumes")) return false;
     press(desk.tools[size_t(Item::Motion)]);
     const auto frozenCrest=crest(), frozenStorm=storm(), frozenFace=smile();
-    const auto frozenPrints=prints();
     set("Resonance",.28);
     mouse(1,0,0);
     const auto* partial=render();
@@ -747,9 +749,9 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     ui.ms_per_full_render(plug,960,540,scale);
     if (!check(std::equal(expected.begin(),expected.end(),render()),"partial and full paints match at Retina scale")) return false;
     std::this_thread::sleep_for(std::chrono::milliseconds(130));
-    if (!check(crest()==frozenCrest && storm()==frozenStorm && smile()==frozenFace && prints()==frozenPrints,"global motion hold")) return false;
+    if (!check(crest()==frozenCrest && storm()==frozenStorm && smile()==frozenFace,"global motion hold")) return false;
     press(desk.crest,1);
-    if (!check(crest()!=frozenCrest && storm()==frozenStorm && prints()==frozenPrints,"manual cut while global motion is held")) return false;
+    if (!check(crest()!=frozenCrest && storm()==frozenStorm,"manual cut while global motion is held")) return false;
     const auto lastCap=area(cell(31,0)), firstCap=area(cell(0,0)), firstCounter=area(desk.counter);
     press(cell(31,0)); mouse(1,0,0);
     if (!check(storm()==frozenStorm && area(cell(31,0))!=lastCap && area(desk.counter)!=firstCounter,
@@ -764,7 +766,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(area(cell(16,0))==step17 && area(desk.counter)==firstCounter,"step counter returns to the first half")) return false;
     press(desk.tools[size_t(Item::Motion)]);
     std::this_thread::sleep_for(std::chrono::milliseconds(140));
-    if (!check(prints()!=frozenPrints,"the print resumes after a global motion hold")) return false;
+    if (!check(storm()!=frozenStorm,"the storm resumes after a global motion hold")) return false;
     return true;
 }
 

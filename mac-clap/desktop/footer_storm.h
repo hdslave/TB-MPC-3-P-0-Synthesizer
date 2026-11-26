@@ -4,7 +4,7 @@
 
 namespace hdslave_desktop
 {
-class FooterPrint
+class FooterStorm
 {
 public:
     Rect paint(Canvas&, Rect bounds, uint64_t now, bool motion, bool full);

@@ -45,11 +45,11 @@ set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
     "${DESKTOP_DIR}/console_paint.cpp"
-    "${DESKTOP_DIR}/footer_print.cpp"
+    "${DESKTOP_DIR}/footer_storm.cpp"
 )
 set(THORN_BANK "${CMAKE_SOURCE_DIR}/../assets/sp16-thorn/panel.bank")
 set(THORN_WORDMARK "${CMAKE_SOURCE_DIR}/assets/thorn-wordmark.bgra")
-set(FOOTER_BANK "${CMAKE_SOURCE_DIR}/assets/footer-print.bank")
+set(FOOTER_BANK "${CMAKE_SOURCE_DIR}/assets/footer-storm.bank")
 file(SIZE "${FOOTER_BANK}" FOOTER_BANK_SIZE)
 file(SIZE "${THORN_WORDMARK}" WORDMARK_BYTES)
 if(NOT WORDMARK_BYTES EQUAL 293760)

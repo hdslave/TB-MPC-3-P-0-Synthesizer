@@ -284,7 +284,7 @@ void PanelUI::setVisible(bool visible)
 {
     if (visible_ == visible) return;
     visible_ = visible;
-    footerPrint_.resetClock();
+    footerStorm_.resetClock();
     if (visible)
     {
         p_->panel->open(p_->inner);
@@ -397,7 +397,7 @@ Rect PanelUI::update(uint64_t now)
         damage = damage.unite(layout_.score);
     }
     damage = damage.unite(paintArt(full, refreshHeader, now));
-    damage = damage.unite(footerPrint_.paint(c_, layout_.print, now, motion_, full));
+    damage = damage.unite(footerStorm_.paint(c_, layout_.storm, now, motion_, full));
     for (size_t i = 0; i < std::size(sections); ++i)
     {
         if (full || (bankChanged && (int(i) == paintedBank_ || int(i) == bank_)))
@@ -535,7 +535,7 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
             break;
         case Item::Motion:
             motion_ = !motion_;
-            footerPrint_.resetClock();
+            footerStorm_.resetClock();
             p_->panel->holdMotion(p_->inner, !motion_);
             break;
         default:
