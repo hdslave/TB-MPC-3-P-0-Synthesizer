@@ -77,7 +77,14 @@ Rect FooterStorm::paint(Canvas& canvas, Rect bounds, uint64_t now, bool motion, 
     }
     else if (!full) return {};
 
-    canvas.blitSharp(pixels_.data(), film.width, film.height, bounds);
+    // Anchor the print beside the key. Resizing reveals more of its continuous
+    // horizon, with both axes always sampled at the scale set by strip height.
+    Canvas strip = canvas;
+    strip.setClip(bounds);
+    strip.clip = strip.clip.intersect(canvas.clip);
+    const int period = std::max(1, (film.width * bounds.h + film.height / 2) / film.height);
+    for (int x = bounds.x; x < bounds.x + bounds.w; x += period)
+        strip.blitSharp(pixels_.data(), film.width, film.height, {x, bounds.y, period, bounds.h});
     return bounds;
 }
 }

@@ -54,12 +54,15 @@ if __name__ == '__main__':
         page = browser.new_page()
         page.set_content(f'<canvas width="{WIDTH}" height="{HEIGHT}"></canvas>')
         page.add_script_tag(path=SOURCE)
+        page.add_script_tag(path=ROOT / 'mac-clap/tools/footer-art/whip-panorama.js')
         page.evaluate("""() => {
             const canvas = document.querySelector('canvas'), ctx = canvas.getContext('2d');
-            const scale = canvas.height / 24;
+            const composition = makeFooterPanorama(), scale = canvas.height / 24;
+            if (composition.width * scale !== canvas.width)
+                throw new Error('The storm must be sampled at the same scale on both axes.');
             ctx.scale(scale, scale);
             ctx.imageSmoothingQuality = 'high';
-            const draw = makeWhipStorm(ctx, {left: 0, top: 0, width: canvas.width / scale, detail: 2});
+            const draw = makeWhipStorm(ctx, {left: 0, top: 0, composition, detail: 2});
             window.captureStorm = time => {
                 draw(time, ...thornStudyPattern);
                 return canvas.toDataURL().split(',')[1];

@@ -6,9 +6,9 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 [View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [Watch the editor during playback](assets/desktop-preview.gif) · [Watch the full-width storm at 60 fps](assets/footer-storm.mp4) · [Preview the footer as a GIF](assets/footer-detail.gif) · [View the Windows editor under CrossOver](assets/windows-preview.png)
 
-Slink **0.9.7** uses the freesp16 Thorn Crown faceplate. The chrome logo sits above the seed and barcode, the thorn camera fills the center, and the glass step counter shares its panel with the cobalt transport key. The turning smiley and **Regen** sit at the right edge. All 34 parameters fit in one resizable window, down to 960 × 540.
+Slink **0.9.8** uses the freesp16 Thorn Crown faceplate. The chrome logo sits above the seed and barcode, the thorn camera fills the center, and the glass step counter shares its panel with the cobalt transport key. The turning smiley and **Regen** sit at the right edge. All 34 parameters fit in one resizable window, down to 960 × 540.
 
-The pitch ribbon and chrome note keys line up with the Gate, Accent and Slide rows. One cobalt column follows the current step. Steps 17–32 appear alongside steps 1–16 when the pattern length exceeds 16. The original SP-16 chrome whips and forked lightning fill the strip beside the editable key and scale. The eight-second desktop loop uses 480 frames rendered at 2240 × 80.
+The pitch ribbon and chrome note keys line up with the Gate, Accent and Slide rows. One cobalt column follows the current step. Steps 17–32 appear alongside steps 1–16 when the pattern length exceeds 16. Beside the editable key and scale, the original SP-16 whip shapes lead into new curls and staggered lightning forks. Widening the window reveals more of the composition at the same proportions. The eight-second desktop loop uses 480 frames rendered at 2240 × 80.
 
 | Section | Controls |
 | --- | --- |

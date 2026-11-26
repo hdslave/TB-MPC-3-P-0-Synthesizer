@@ -742,6 +742,19 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(crest()!=held,"crest resumes")) return false;
     press(desk.tools[size_t(Item::Motion)]);
     const auto frozenCrest=crest(), frozenStorm=storm(), frozenFace=smile();
+    // Holding the frame isolates the resize from animation. All visible bends
+    // must stay in place when more space opens up to their right.
+    ConsoleLayout wideDesk;
+    wideDesk.arrange(1920,540);
+    int wideWidth=0,wideHeight=0;
+    const auto* wide=ui.ui_render(plug,1920,540,scale,&wideWidth,&wideHeight);
+    if (!check(wide && wideWidth==1920*scale && wideHeight==540*scale,"wide Retina resize")) return false;
+    std::vector<uint32_t> commonStorm;
+    for (int y=0;y<desk.storm.h*scale;y+=3)
+        for (int x=0;x<desk.storm.w*scale;x+=3)
+            commonStorm.push_back(wide[(wideDesk.storm.y*scale+y)*wideWidth+wideDesk.storm.x*scale+x]);
+    if (!check(commonStorm==frozenStorm,"widening the editor reveals the next whips at the same scale")) return false;
+    render();
     set("Resonance",.28);
     mouse(1,0,0);
     const auto* partial=render();
