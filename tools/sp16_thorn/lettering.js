@@ -19,9 +19,9 @@ const scoreForms = {
 
   // Tabular figures for aligning steps across the score.
   0: [19, 'M10.2 0H12Q19 0 19 8.8V13.6Q19 24 8.7 24H7.4Q0 24 0 15.4V10.6Q0 0 10.2 0Z M9.8 3.8Q5 3.8 4.9 10.4V15.3Q4.9 20.3 8.6 20.3Q14.2 20.3 14.2 13.6V8.9Q14.2 3.8 10.8 3.8Z'],
-  1: [19, 'M1 6L10.8 0H14V20.1H18L14.3 24H2V20.1H8.9V5.7L4 8.2Z'],
-  2: [19, 'M.6 5Q2.5 0 9.8 0H12Q19 0 19 6.9Q19 11.1 14.3 13.7L5.2 20.2H19L15.2 24H0V19.7L11.4 11Q14 9 14 7Q14 3.9 10.1 3.9H7.3Q4.1 3.9 .6 6Z'],
-  3: [19, 'M1 0H19L17 4L11.8 9.3Q18.7 9.8 18.7 15.4Q18.7 24 8.3 24H0L3.6 20.2H8.9Q13.7 20.2 13.7 15.8Q13.7 12.8 9.7 12.8H5.6V10.4L12.1 4H1Z'],
+  1: [19, 'M1 11Q9 6 15 0L10 16Q9 21 14 22L3 24Q5 18 7 9Z'],
+  2: [19, 'M1 7Q4 0 14 0L19 1Q18 8 11 12L5 18Q11 21 19 15L14 23L0 24Q2 17 8 12Q16 5 12 4Q7 3 1 7Z'],
+  3: [19, 'M0 5Q8 3 19 0L17 6L11 11Q23 8 16 19Q10 25 0 24L3 18Q8 22 13 16Q16 12 7 14L7 11L13 5Z'],
   4: [19, 'M0 14.7L10.8 0H16.4V14.5H19V18.4H16.4V24H11.5V18.4H0Z M4.4 14.5H11.5V4.6Z'],
   5: [19, 'M2 0H19L15.5 3.8H6.1L5.2 9.4H10.9Q18.7 9.4 18.7 15.4Q18.7 24 8.7 24H0L3.7 20.2H8.6Q13.7 20.2 13.7 16Q13.7 13.1 9.5 13.1H.2Z'],
   6: [19, 'M17.5 0L13.8 3.7Q6.7 3.8 5 10.3Q7.2 9 11.8 9Q19 9 19 15.3Q19 24 9.2 24Q0 24 0 15Q0 0 14.2 0Z M4.9 15.2Q4.7 20.5 9.1 20.5Q14.3 20.5 14.3 15.8Q14.3 12.6 10.3 12.6Q6.7 12.6 4.9 15.2Z'],
@@ -66,26 +66,5 @@ function scoreText(ctx, text, x, cy, height, maxWidth, ink, align = 'center') {
   ctx.scale(sx, sy);
   ctx.fillStyle = ink;
   drawRun(ctx, run, 0, 0, 1);
-  ctx.restore();
-}
-
-// The register sits below the accidental. Natural and sharp pitches keep the
-// same alignment and the letter keeps its proportions on ordinary octaves.
-function scorePitch(ctx, note, x, cy, height, maxWidth, ink) {
-  const letter = note[0], sharp = note[1] === '#';
-  const octave = note.slice(sharp ? 2 : 1);
-  const registerScale = 0.55, sharpScale = 0.39;
-  const letterWidth = runWidth(letter) + scoreOverhang;
-  const registerWidth = (runWidth(octave) + scoreOverhang) * registerScale;
-  const sharpWidth = (runWidth('#') + scoreOverhang) * sharpScale;
-  const right = letterWidth + 0.9, width = right + Math.max(registerWidth, sharpWidth);
-  const sy = height / 24, sx = Math.min(sy, maxWidth / width);
-  ctx.save();
-  ctx.translate(x - width * sx / 2, cy - height / 2);
-  ctx.scale(sx, sy);
-  ctx.fillStyle = ink;
-  drawRun(ctx, letter, 0, 0, 1);
-  if (sharp) drawRun(ctx, '#', right, 0, sharpScale);
-  drawRun(ctx, octave, right, 24 * (1 - registerScale), registerScale);
   ctx.restore();
 }

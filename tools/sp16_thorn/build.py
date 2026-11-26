@@ -28,7 +28,7 @@ def build_fragment():
         },
     }
     scripts = [(SOURCE / name).read_text() for name in
-               ('camera.js', 'whip-storm.js', 'step-counter.js', 'lettering.js', 'panel.js')]
+               ('camera.js', 'whip-storm.js', 'step-counter.js', 'lettering.js', 'razor-choir.js', 'panel.js')]
     scripts[-1] = scripts[-1].replace('THORN_ASSETS', json.dumps(assets, separators=(',', ':')))
     notice = (ROOT / 'licenses/OFL-barlow.txt').read_text()
     return ((SOURCE / 'frame.in').read_text() +

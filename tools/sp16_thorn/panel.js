@@ -129,8 +129,8 @@
        if(sel&&r===0)path([[xx+2,yy+2],[xx+8,yy+2],[xx+2,yy+8]],'#f2f4ff');
        if(plate)continue;
        const cx=xx+ww/2,cy=yy+rh/2,fg=sel?'#fff':r===1?'#13172c':'#d6d9ea';
-       if(r===0)scoreText(g,two(i+1),cx,cy,12,ww-8,fg);
-       else if(r===1)scorePitch(g,noteAt(i),cx,cy,23,ww-5,fg);
+       if(r===0)scoreFigures(g,two(i+1),cx,cy,12,ww-8,true);
+       else if(r===1)scorePitch(g,noteAt(i),cx,cy,23,ww-5,sel);
        else symbol(r,i,cx,cy,fg,sel);
        if(makeKeys)key(r+'-'+i,xx,yy,ww,rh,(r<=1?'Select step '+(i+1):speech[r]+' on step '+(i+1)),()=>hit(r,i));
      }yy+=rh;
@@ -247,7 +247,7 @@
  motionPref.addEventListener('change',()=>{options.motion=!motionPref.matches;lastTime=null;update();});
  fallback.addEventListener('loadeddata',()=>{needsPaint=true;schedule();});fallback.addEventListener('seeked',()=>{needsPaint=true;schedule();});
  if(globalThis.captureThornPlates){
-   globalThis.captureThornPlates({bed,bedDraw,paintCounter,scoreText,scorePitch,drawStorm:paintStorm,
+   globalThis.captureThornPlates({bed,bedDraw,paintCounter,scoreFigures,scorePitch,drawStorm:paintStorm,
      drawButton:label=>actionButton(622,55,81,29,label,true),
      drawPose:i=>{rect(717,0,61,58,"#080812");facePose=i;drawFace();}});
  }

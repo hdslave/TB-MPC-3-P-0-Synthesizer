@@ -53,8 +53,8 @@ public:
                 const bool active=i==col;
                 const Ink mark=active?0xffffffff:0xffd6d9ea, dash=active?0xffd6dcfa:0xff938aa8;
                 const int pitch=std::clamp(int(std::lround(v.pitch[index]/128.0))+256,0,512);
-                image(r,thorn::number,index,x,104,mark);
-                image(r,thorn::pitch,pitch,x,127,active?0xffffffff:0xff13172c);
+                image(r,thorn::number,index,x,104);
+                image(r,active?thorn::pitchSelected:thorn::pitch,pitch,x,127);
                 if ((v.gates>>index)&1u)
                 {
                     r.box(cx-5,174,10,10,mark);
@@ -110,13 +110,14 @@ private:
     uint32_t lastMs=0,cameraMs=0;
     int lastFace=-1,lastCamera=-1,lastStorm=-1;
 
-    // Frames have one packet stream per scanline. A mask uses four-bit coverage,
-    // an opaque frame starts with its own aligned 256-colour palette.
-    static void image(const Raster& r,const thorn::Images& img,int frame,int x,int y,Ink ink=0)
+    // Each scanline is packet encoded. Score frames share a translucent palette.
+    // The opaque animation frames carry their own palette before the packets.
+    static void image(const Raster& r,const thorn::Images& img,int frame,int x,int y)
     {
         const auto* data=slink_sp16_thorn_bank+img.offsets[frame];
-        const auto* palette=reinterpret_cast<const uint32_t*>(data);
-        if (!ink) data+=1024;
+        const auto* palette=reinterpret_cast<const uint32_t*>(
+            img.paletteOffset ? slink_sp16_thorn_bank+img.paletteOffset : data);
+        if (!img.paletteOffset) data+=1024;
         for (int row=0;row<img.h;++row)
         {
             auto* dest=r.px+(row+y)*r.w+x;
@@ -124,12 +125,20 @@ private:
             {
                 const int code=*data++,len=(code&127)+1;
                 const bool repeat=(code&128)!=0;
-                if (!ink && repeat) std::fill_n(dest+col,len,palette[*data]);
-                else for(int i=0;i<len;++i)
+                if (!img.paletteOffset)
                 {
-                    const unsigned val=data[repeat?0:i];
-                    if (!ink) dest[col+i]=palette[val];
-                    else if(val) r.blend(x+col+i,y+row,ink,val);
+                    if (repeat) std::fill_n(dest+col,len,palette[*data]);
+                    else for (int i=0;i<len;++i) dest[col+i]=palette[data[i]];
+                }
+                else if (!repeat || (palette[*data]>>24)!=0)
+                {
+                    for (int i=0;i<len;++i)
+                    {
+                        const Ink color=palette[data[repeat?0:i]];
+                        const unsigned alpha=color>>24;
+                        if (alpha==255) dest[col+i]=color;
+                        else if (alpha) r.blend(x+col+i,y+row,color,(alpha+8)/17);
+                    }
                 }
                 data+=repeat?1:len;col+=len;
             }
