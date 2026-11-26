@@ -1,6 +1,6 @@
 #pragma once
 #include "desktop_wrapper.h"
-#include "panel_renderer.h"
+#include "console_layout.h"
 #include <array>
 
 namespace hdslave_desktop
@@ -12,67 +12,62 @@ enum Mods : uint32_t
     kModCmd = 4,
     kModTouch = 8
 };
-enum class Item
-{
-    PresetPrev,
-    PresetBox,
-    PresetNext,
-    Fine,
-    Learn,
-    ClearCc,
-    Motion,
-    Count
-};
-
 class PanelUI
 {
   public:
-    explicit PanelUI (DesktopPlugin *);
-    ~PanelUI ();
+    explicit PanelUI(DesktopPlugin*);
+    ~PanelUI();
     void setVisible(bool visible);
-    void setSize (int w, int h, int scale);
-    Rect update (uint64_t now);
-    void invalidateAll () { dirty_ = true; }
-    void layoutChanged ()
+    void setSize(int w, int h, int scale);
+    Rect update(uint64_t now);
+    void invalidateAll() { dirty_ = true; }
+    void layoutChanged()
     {
-        layout ();
-        invalidateAll ();
+        layout();
+        invalidateAll();
     }
-    const uint32_t *pixels () const { return frame_.data (); }
-    int physWidth () const { return w_ * scale_; }
-    int physHeight () const { return h_ * scale_; }
-    int scale () const { return scale_; }
-    int width () const { return w_; }
-    int height () const { return h_; }
-    double lastRenderMs () const { return renderMs_; }
-    void mouseDown (float x, float y, int button, uint32_t mods, int clicks);
-    void mouseMove (float x, float y, uint32_t mods);
-    void mouseUp (float x, float y, int button, uint32_t mods);
-    void wheel (float x, float y, float dx, float dy, bool precise, uint32_t mods);
-    void rotate (float x, float y, float degrees) { wheel (x, y, 0, degrees * .25f, true, 0); }
-    void mouseExit ();
-    bool key (int k);
+    const uint32_t* pixels() const { return frame_.data(); }
+    int physWidth() const { return w_ * scale_; }
+    int physHeight() const { return h_ * scale_; }
+    int scale() const { return scale_; }
+    int width() const { return w_; }
+    int height() const { return h_; }
+    double lastRenderMs() const { return renderMs_; }
+    void mouseDown(float x, float y, int button, uint32_t mods, int clicks);
+    void mouseMove(float x, float y, uint32_t mods);
+    void mouseUp(float x, float y, int button, uint32_t mods);
+    void wheel(float x, float y, float dx, float dy, bool precise, uint32_t mods);
+    void rotate(float x, float y, float degrees) { wheel(x, y, 0, degrees * .25f, true, 0); }
+    void mouseExit();
+    bool key(int k);
 
   private:
     DesktopPlugin* p_;
     Canvas c_;
-    std::vector<uint32_t> frame_,bodyPixels_,previousBody_;
-    std::array<int,6> cardParams_ {-1,-1,-1,-1,-1,-1}, ccs_ {};
-    std::array<double,6> displayed_ {};
-    std::array<std::string,6> readings_;
-    std::array<Rect,6> cards_ {};
-    uint32_t lastLearn_=CLAP_INVALID_ID;
-    int w_=kDefaultGuiWidth,h_=kDefaultGuiHeight,scale_=1;
-    bool visible_=false,dirty_=true,stripDirty_=true,fullBody_=true,fine_=false,motion_=true;
-    double renderMs_=0;
-    int lastTouched_=-1,hover_=-1;
-    Rect items_[size_t(Item::Count)]{},body_,strip_,status_;
-    int dragParam_=-1,wheelParam_=-1;
-    bool moved_=false,bodyDrag_=false;
-    float downX_=0,downY_=0;
-    double start_=0,wheelAccum_=0;
-    uint64_t wheelAt_=0;
-    Rect dragRect_ {};
+    ConsoleLayout layout_;
+    std::vector<uint32_t> frame_, art_, previousArt_;
+    struct Reading
+    {
+        double value = 0;
+        std::string text;
+        int cc = -1;
+    };
+    std::array<Reading, id::count> readings_{};
+    std::array<int, id::count> paramIndex_{};
+    tbmpc::PatternView pattern_{};
+    uint32_t lastLearn_ = CLAP_INVALID_ID;
+    int w_ = kDefaultGuiWidth, h_ = kDefaultGuiHeight, scale_ = 1;
+    bool visible_ = false, dirty_ = true, fine_ = false, motion_ = true, localPlay_ = false;
+    double renderMs_ = 0;
+    int lastTouched_ = -1, hover_ = -1, hoverStep_ = -1, hoverLane_ = -1, selected_ = 0, paintedFocus_ = -1;
+    int paintedHover_ = -1, paintedHoverStep_ = -1, paintedHoverLane_ = -1, paintedPreset_ = -2;
+    int dragParam_ = -1, wheelParam_ = -1, dragPlot_ = -1, startStep_ = -1;
+    tbmpc::sp16::StepLane dragLane_ = tbmpc::sp16::StepLane::number;
+    bool moved_ = false;
+    float downX_ = 0, downY_ = 0;
+    double start_ = 0, wheelAccum_ = 0;
+    uint64_t wheelAt_ = 0;
+    Rect dragRect_{};
 
     enum class PopupKind
     {
@@ -87,29 +82,34 @@ class PanelUI
     std::vector<double> popupValues_;
     std::vector<Rect> popupRects_;
     Rect popupRect_{};
-    void openPresets ();
-    void openChoices (int param, const Rect &anchor);
-    void openMenu (int param, float x, float y);
-    void closePopup ();
-    void layoutPopup (const Rect &anchor);
-    void popupPick (int idx);
-    void drawPopup ();
+    void openPresets();
+    void openChoices(int param, const Rect& anchor);
+    void openMenu(int param, float x, float y);
+    void closePopup();
+    void layoutPopup(const Rect& anchor);
+    void popupPick(int idx);
+    void drawPopup();
 
-    void layout ();
-    int hitCard(int x,int y) const;
-    int bodyX(float x) const;
-    int bodyY(float y) const;
-    int bodyParam(int x,int y) const;
+    void layout() { layout_.arrange(w_, h_); }
+    int columns() const { return pattern_.steps > 16 ? 32 : 16; }
+    int focus() const;
     void paintToolbar();
-    void paintStrip();
-    void edit(int param,Rect anchor,int button,uint32_t mods,int clicks);
-    void finishDrag ();
-    void endWheelGesture ();
-    double norm (int param) const;
-    double fromNorm (int param, double n) const;
-    std::string valueText (int param) const;
-    void setParam (int param, double value);
-    void stepParam (int param, int steps);
-    void resetParam (int param);
+    void paintHeader();
+    void paintScore();
+    void paintSection(size_t group);
+    void paintSlot(int slot, uint32_t ink);
+    void paintPlot(int slot, uint32_t ink);
+    void movePlot(float x, float y);
+    void setHover(float x, float y);
+    Rect paintArt(bool reset, bool repaintHeader, bool repaintScore, uint64_t now);
+    void edit(int param, Rect anchor, int button, uint32_t mods, int clicks);
+    void finishDrag();
+    void endWheelGesture();
+    double norm(int param) const;
+    double fromNorm(int param, double n) const;
+    std::string valueText(int param) const;
+    void setParam(int param, double value);
+    void stepParam(int param, int steps);
+    void resetParam(int param);
 };
-}
+} // namespace hdslave_desktop

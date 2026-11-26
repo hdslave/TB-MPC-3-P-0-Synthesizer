@@ -288,9 +288,10 @@ public:
 
     // Sharp area-box scaled blit of a 320x218 MPC screen into logical rectangle `dst`: keeps pixel art razor-sharp at
     // both integer and fractional window scales without uneven pixel-column artifacts.
-    void blitSharp (const uint32_t* src, int sw, int sh, const Rect& dst)
+    void blitSharp (const uint32_t* src, int sw, int sh, const Rect& dst, int stride = 0)
     {
         if (!src || dst.w <= 0 || dst.h <= 0 || sw <= 0 || sh <= 0) return;
+        if (!stride) stride = sw;
         const int dx0 = dst.x * s, dy0 = dst.y * s;
         const int dw = dst.w * s, dh = dst.h * s;
         const int cx0 = std::max (clip.x, dx0), cx1 = std::min (clip.x + clip.w, dx0 + dw);
@@ -308,8 +309,8 @@ public:
             const int iy1 = std::clamp ((int) sy1, 0, sh - 1);
             const uint32_t wy = (iy0 == iy1) ? 0u : (uint32_t) std::clamp ((int) ((sy1 - (float) iy1) / scaleY * 256.0f), 0, 256);
 
-            const uint32_t* row0 = src + (size_t) iy0 * (size_t) sw;
-            const uint32_t* row1 = src + (size_t) iy1 * (size_t) sw;
+            const uint32_t* row0 = src + (size_t) iy0 * (size_t) stride;
+            const uint32_t* row1 = src + (size_t) iy1 * (size_t) stride;
             uint32_t* drow = px + (size_t) py * (size_t) pw;
 
             for (int pxl = cx0; pxl < cx1; ++pxl)

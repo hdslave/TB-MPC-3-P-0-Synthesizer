@@ -14,7 +14,7 @@
 #include "../../src/lfo.h"
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.8.1"
+#define TBMPC_VERSION "0.9.0"
 #endif
 
 namespace tbmpc
@@ -204,7 +204,7 @@ constexpr float driveOctaves = 5.0f;
 constexpr double moduleTickRate = 1.0e6 / 60.0;
 
 inline const char* const waveChoices[] = { "Saw", "Square" };
-inline const char* const glideChoices[] = { "Tick", "Glide" };
+inline const char* const glideChoices[] = { "TB-3PO", "303" };
 // Full-period seed succession for an explicit roll while transport resets are locked.
 inline uint16_t nextPanelSeed(uint16_t seed) { return uint16_t(25173u * seed + 13849u); }
 inline const char* const seedModeChoices[] = { "Random", "Locked" };
@@ -341,10 +341,11 @@ inline bool parseParam (const Param& p, const char* text, float& v, const TextCo
     if (p.kind == Kind::choice)
     {
         // Keep old desktop text accepted when importing automation or typed values.
-        if ((p.id == ParamId::mode || p.id == ParamId::glide) && strcasecmp(text,"TB-3PO") == 0)
+        if (p.id == ParamId::glide && strcasecmp(text,"Glide") == 0) return v = 1.0f, true;
+        if (p.id == ParamId::glide && strcasecmp(text,"Tick") == 0) return v = 0.0f, true;
+        if (p.id == ParamId::mode && strcasecmp(text,"TB-3PO") == 0)
             return v = 0.0f, true;
-        if ((p.id == ParamId::filter || p.id == ParamId::glide) && strcasecmp(text,"303") == 0)
-            return v = p.id == ParamId::filter ? 0.0f : 1.0f, true;
+        if (p.id == ParamId::filter && strcasecmp(text,"303") == 0) return v = 0.0f, true;
         const int n = (int) (p.max - p.min) + 1;
         for (int i = 0; i < n; ++i)
             if (strcasecmp (text, p.choices[i]) == 0)

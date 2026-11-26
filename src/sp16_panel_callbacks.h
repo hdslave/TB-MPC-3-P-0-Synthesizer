@@ -59,20 +59,14 @@ void publishStepEdit(Plugin& p)
     wakePanel(p);
 }
 
-bool dragStep(Plugin& p,int x,int y,bool down)
+// The hardware and desktop use different grids. Both submit musical step indices
+// and relative semitones here, so a gesture produces the same saved edit on either.
+bool applyStepGesture(Plugin& p,int step,int semitones,bool down)
 {
     auto& panel=p.panel;
     if (panel.shown.seed!=panel.gestureSeed) { panel.release(); return false; }
     const auto lane=panel.lane;
-    // Keep the original lane and bank while the finger crosses a cell edge.
-    const int step=lane==sp16::StepLane::pitch ? panel.startStep : panel.stepAt(x,panel.startY);
     if (step<0 || step>=panel.shown.steps) return true;
-    if (lane==sp16::StepLane::number && !down && y!=panel.startY)
-    {
-        // Only another numbered header may sound during a horizontal scrub.
-        if (panel.bank==sp16::patternPage ? (y<103 || y>=125)
-              : (y<panel.ribbonTop(step) || y>=panel.ribbonTop(step)+14)) return true;
-    }
     const int previous=panel.finger;
     panel.finger=step;
     panel.thorn.selected=step;
@@ -87,7 +81,7 @@ bool dragStep(Plugin& p,int x,int y,bool down)
         }
         return true;
     }
-    const int offset=std::clamp(panel.startOffset+int(std::round((panel.startY-y)/7.0)),-127,127);
+    const int offset=std::clamp(panel.startOffset+semitones,-127,127);
     if (lane==sp16::StepLane::pitch && (down || (offset==panel.startOffset && panel.gestureSeed!=p.manual.seed)))
         return true;
     if (p.manual.seed!=panel.gestureSeed)
@@ -109,6 +103,44 @@ bool dragStep(Plugin& p,int x,int y,bool down)
     }
     publishStepEdit(p);
     return true;
+}
+
+bool beginStepGesture(Plugin& p,int step,sp16::StepLane lane)
+{
+    auto& panel=p.panel;
+    if (step<0 || step>=panel.shown.steps) return false;
+    panel.lane=lane;
+    if (panel.lane==sp16::StepLane::number && valueOf(p,ParamId::mode)>=.5f) return false;
+    panel.gesture=sp16::Panel::Gesture::steps;
+    panel.startStep=step;
+    panel.gestureSeed=uint16_t(panel.shown.seed);
+    panel.startOffset=p.manual.seed==panel.gestureSeed ? sp16::StepEdits::pitch(p.manual.cells[step]) : 0;
+    panel.thorn.capturedBank=step/16*16;
+    const auto bits=panel.lane==sp16::StepLane::gate ? panel.shown.gates :
+                    panel.lane==sp16::StepLane::accent ? panel.shown.accents : panel.shown.slides;
+    // A second gesture can arrive before the next audio block publishes its view.
+    const bool generated=(bits>>step)&1;
+    panel.paintOn=!generated;
+    if (panel.lane>=sp16::StepLane::gate && p.manual.seed==panel.gestureSeed)
+        panel.paintOn=!sp16::StepEdits::flag(p.manual.cells[step],panel.lane,generated);
+    return applyStepGesture(p,step,0,true);
+}
+
+bool dragStep(Plugin& p,int x,int y)
+{
+    auto& panel=p.panel;
+    if (panel.shown.seed!=panel.gestureSeed) { panel.release(); return false; }
+    const auto lane=panel.lane;
+    // Keep the original lane and bank while the finger crosses a cell edge.
+    const int step=lane==sp16::StepLane::pitch ? panel.startStep : panel.stepAt(x,panel.startY);
+    if (step<0 || step>=panel.shown.steps) return true;
+    if (lane==sp16::StepLane::number && y!=panel.startY)
+    {
+        // Only another numbered header may sound during a horizontal scrub.
+        if (panel.bank==sp16::patternPage ? (y<103 || y>=125)
+              : (y<panel.ribbonTop(step) || y>=panel.ribbonTop(step)+14)) return true;
+    }
+    return applyStepGesture(p,step,int(std::round((panel.startY-y)/7.0)),false);
 }
 
 bool dragControl(Plugin& p,int x,int y)
@@ -155,7 +187,7 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
         return held;
     }
     if (phase==SIXTEEN_TOUCH_MOVE)
-        return panel.gesture==Panel::Gesture::steps ? dragStep(p,x,y,false) : dragControl(p,x,y);
+        return panel.gesture==Panel::Gesture::steps ? dragStep(p,x,y) : dragControl(p,x,y);
     if (phase!=SIXTEEN_TOUCH_DOWN) return false;
     panel.release();
     panel.startX=x;
@@ -228,21 +260,8 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
         return captureParam(panel.ribbonParam((x-8)/190));
     const int step=panel.stepAt(x,y);
     if (step<0) return false;
-    panel.lane=panel.bank==sp16::patternPage ? Panel::patternLane(y)
+    const auto lane=panel.bank==sp16::patternPage ? Panel::patternLane(y)
         : y<panel.ribbonTop(step)+14 ? sp16::StepLane::number : sp16::StepLane::pitch;
-    if (panel.lane==sp16::StepLane::number && valueOf(p,ParamId::mode)>=.5f) return false;
-    panel.gesture=Panel::Gesture::steps;
-    panel.startStep=step;
-    panel.gestureSeed=uint16_t(panel.shown.seed);
-    panel.startOffset=p.manual.seed==panel.gestureSeed ? sp16::StepEdits::pitch(p.manual.cells[step]) : 0;
-    panel.thorn.capturedBank=step/16*16;
-    const auto bits=panel.lane==sp16::StepLane::gate ? panel.shown.gates :
-                    panel.lane==sp16::StepLane::accent ? panel.shown.accents : panel.shown.slides;
-    // A second gesture can arrive before the next audio block publishes its view.
-    const bool generated=(bits>>step)&1;
-    panel.paintOn=!generated;
-    if (panel.lane>=sp16::StepLane::gate && p.manual.seed==panel.gestureSeed)
-        panel.paintOn=!sp16::StepEdits::flag(p.manual.cells[step],panel.lane,generated);
-    return dragStep(p,x,y,true);
+    return beginStepGesture(p,step,lane);
 }
 const sixteen_plugin_screen_t panelExtension {panelOpen, panelClose, panelRender, panelTouch, panelTurn, panelPush, panelKnobs};

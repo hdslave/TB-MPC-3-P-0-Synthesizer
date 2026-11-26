@@ -786,8 +786,63 @@ namespace
 
 void holdPanelMotion(const clap_plugin_t* plug, bool hold) { of(plug).panel.thorn.heldMotion=hold; }
 bool panelLocalPlay(const clap_plugin_t* plug) { return of(plug).previewRequested.load(std::memory_order_acquire); }
-void cutPanelCamera(const clap_plugin_t* plug) { of(plug).panel.thorn.nextCameraCut(); }
-const DesktopPanelAccess panelAccess { &panelExtension, holdPanelMotion, cutPanelCamera, panelLocalPlay };
+PatternView readDesktopPattern(const clap_plugin_t* plug)
+{
+    auto& p=of(plug);
+    p.panel.shown=p.patternState.read();
+    return p.panel.shown;
+}
+bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& surface,bool full,int selected)
+{
+    auto& p=of(plug);
+    auto& panel=p.panel;
+    panel.thorn.selected=selected;
+    sp16::Raster raster{surface.pixels,surface.stride,surface.height};
+    return panel.thorn.draw(raster,panel.shown,surface.now_ms,full,int(valueOf(p,ParamId::seed)),0,false);
+}
+void desktopPitchTile(uint32_t* pixels,int cv,uint32_t background)
+{
+    std::fill_n(pixels,thorn::pitch.w*thorn::pitch.h,background);
+    sp16::Raster tile{pixels,thorn::pitch.w,thorn::pitch.h};
+    // The silver register and sharp glyphs in this plate read against dark cells.
+    sp16::ThornPage::pitchLabel(tile,cv,true,0,0);
+}
+void desktopCamera(const clap_plugin_t* plug,bool cut)
+{
+    auto& art=of(plug).panel.thorn;
+    if (cut) art.nextCameraCut();
+    else art.heldCamera=!art.heldCamera;
+}
+void toggleDesktopPlay(const clap_plugin_t* plug)
+{
+    auto& p=of(plug);
+    const bool local=panelLocalPlay(plug);
+    if ((!local && p.panel.shown.running) || valueOf(p,ParamId::mode)>=.5f) return;
+    p.previewRequested.store(!local,std::memory_order_release);
+    wakePanel(p);
+}
+void desktopPress(const clap_plugin_t* plug,clap_id id)
+{
+    hdui::Edits edits;
+    edits.press(id);
+    applyScreenEdits(of(plug),edits);
+}
+bool desktopBeginStep(const clap_plugin_t* plug,int step,sp16::StepLane lane)
+{
+    auto& p=of(plug);
+    p.panel.release();
+    return beginStepGesture(p,step,lane);
+}
+void desktopMoveStep(const clap_plugin_t* plug,int step,int semitones)
+{
+    auto& p=of(plug);
+    if (p.panel.gesture==sp16::Panel::Gesture::steps)
+        applyStepGesture(p,step,semitones,false);
+}
+void desktopEndStep(const clap_plugin_t* plug) { of(plug).panel.release(); }
+const DesktopPanelAccess panelAccess {panelOpen,panelClose,readDesktopPattern,renderDesktopArt,desktopPitchTile,holdPanelMotion,
+                                      desktopCamera,panelLocalPlay,toggleDesktopPlay,desktopPress,
+                                      desktopBeginStep,desktopMoveStep,desktopEndStep};
 
 const void* pluginExtension (const clap_plugin*, const char* id)
 {

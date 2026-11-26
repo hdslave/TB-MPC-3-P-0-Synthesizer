@@ -1,5 +1,6 @@
 #include <clap/clap.h>
 #include "../desktop/panel_presentation.h"
+#include "../desktop/console_layout.h"
 #include <clap/ext/draft/transport-control.h>
 
 #include <chrono>
@@ -279,14 +280,15 @@ std::string resolveBinaryPath (const std::string& clapPath, std::string& baseOut
 #endif
 }
 
-// Exercise the shared 780x285 panel through desktop mouse events at minimum size and Retina scale.
+// Drive the one-screen editor through the same pointer events the native host sends.
 bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug_api_t& ui,
                           const clap_plugin_params_t& params, const clap_plugin_state_t& state,
-                          clap_process_t& block, const std::string& snapDir)
+                          clap_process_t& block, const std::string& snapDir,bool captureMotion)
 {
-    constexpr int left=12, top=45, w=936, h=342, scale=2;
-    const auto px = [](int x){ return left+(x+.5f)*w/780; };
-    const auto py = [](int y){ return top+(y+.5f)*h/285; };
+    using namespace hdslave_desktop;
+    constexpr int scale=2;
+    ConsoleLayout desk;
+    desk.arrange(960,540);
     int width=0,height=0;
     auto render=[&] { return ui.ui_render(plug,960,540,scale,&width,&height); };
     auto mouse=[&](int kind,float x,float y,uint32_t mods=0,float delta=0,int button=0) {
@@ -295,12 +297,21 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     auto click=[&](float x,float y,uint32_t mods=0) {
         mouse(0,x,y,mods); mouse(2,x,y,mods);
     };
-    auto bodyClick=[&](int x,int y,uint32_t mods=0) {
-        click(px(x),py(y),mods);
+    auto press=[&](Rect r,uint32_t mods=0) {
+        click(r.x+r.w/2,r.y+r.h/2,mods);
         render();
     };
-    auto bodyDrag=[&](int x,int y,int x1,int y1) {
-        mouse(0,px(x),py(y)); mouse(1,px(x1),py(y1)); mouse(2,px(x1),py(y1));
+    auto drag=[&](int x,int y,int x1,int y1) {
+        mouse(0,x,y); mouse(1,x1,y1); mouse(2,x1,y1);
+    };
+    auto dragSlot=[&](int slot,int deltaX,int deltaY) {
+        const auto r=desk.slots[slot];
+        const int x=r.x+r.w/2,y=r.y+r.h/2;
+        drag(x,y,x+deltaX,y+deltaY);
+    };
+    auto sweepPlot=[&](int slot) {
+        const auto p=desk.plotArea(slot);
+        drag(p.x+2,p.y+p.h-2,p.x+p.w-2,p.y+2);
     };
     auto& ctx=*static_cast<StrictHostCtx*>(block.out_events->ctx);
     auto process=[&] {
@@ -338,11 +349,11 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         block.in_events=before;
         render();
     };
-    auto area=[&](int x0,int y0,int x1,int y1) {
+    auto area=[&](Rect r) {
         const auto* data=render();
         std::vector<uint32_t> sample;
-        for(int y=int(py(y0)*scale);y<int(py(y1)*scale);y+=3)
-            for(int x=int(px(x0)*scale);x<int(px(x1)*scale);x+=3) sample.push_back(data[y*width+x]);
+        for(int y=r.y*scale;y<(r.y+r.h)*scale;y+=3)
+            for(int x=r.x*scale;x<(r.x+r.w)*scale;x+=3) sample.push_back(data[y*width+x]);
         return sample;
     };
     auto snap=[&](const char* page, int w=1352, int h=708, int density=1) {
@@ -356,28 +367,85 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         if (!ok) std::fprintf(stderr,"FAIL: desktop panel: %s\n",name);
         return ok;
     };
-    auto page=[&](int i) { bodyClick(338+79*i,268); };
     if (!check(render() && width==1920 && height==1080,"Retina buffer")) return false;
-    if (!check(area(190,8,512,90)!=area(190,11,512,93),"artwork bank rendered")) return false;
-
-    constexpr const char* names[]{"perform","voice","glide","lfo","pattern","clock"};
-    std::set<std::vector<uint32_t>> pages;
-    for(int i=0;i<6;++i)
+    const auto art=area(desk.crest);
+    if (!check(std::set<uint32_t>(art.begin(),art.end()).size()>100,"chrome artwork bank rendered")) return false;
+    for (const auto size : {std::pair{960,540},std::pair{1352,708},std::pair{960,1100},std::pair{2400,540}})
     {
-        page(i);
-        pages.insert(area(10,108,764,243));
-        snap(names[i]);
+        ConsoleLayout layout;
+        layout.arrange(size.first,size.second);
+        for (int i=0;i<slotCount;++i)
+        {
+            const Rect r=layout.slots[i];
+            if (!check(r.w>=40 && r.h>=20 && r.x>=0 && r.y>=0 && r.x+r.w<=size.first && r.y+r.h<=size.second
+                       && layout.hitSlot(r.x+r.w/2,r.y+r.h/2)==i,"every parameter and XY plot has a visible hit target")) return false;
+            for (int j=0;j<i;++j)
+                if (!check(r.intersect(layout.slots[j]).empty(),"control hit targets do not overlap")) return false;
+        }
     }
-    if (!check(pages.size()==6,"all six unique page bodies")) return false;
-    page(0);
-    snap("perform-compact",960,540,2);
-    const double cutoff=value("Cutoff");
-    mouse(0,85,446); mouse(1,85,416); mouse(2,85,416);
+    mouse(1,0,0);
+    if (!snapDir.empty())
+    {
+        if (!ui.preset_load(plug,1)) return false;
+        process();
+        set("Pitch LFO Amount",.31);
+        set("Pitch LFO Speed",4./3.);
+        set("Cutoff LFO Amt",.48);
+        set("Cutoff LFO Speed",2.);
+        press(desk.play);
+        for (int i=0;i<110;++i) process();
+        snap("console");
+        snap("compact",960,540,2);
+        if (captureMotion)
+        {
+            // Run the 48 kHz host alongside the artwork clock for four seconds.
+            constexpr int fps=15;
+            int64_t rendered=0;
+            const auto start=std::chrono::steady_clock::now();
+            for (int i=0;i<4*fps;++i)
+            {
+                std::this_thread::sleep_until(start+std::chrono::microseconds(1000000LL*i/fps));
+                while (rendered<48000LL*i/fps) { process(); rendered+=block.frames_count; }
+                char name[32]; std::snprintf(name,sizeof(name),"motion-%03d",i);
+                int sw=0,sh=0;
+                const auto* frame=ui.ui_render(plug,1352,708,1,&sw,&sh);
+                writePpm(snapDir+"/Slink-"+name+".ppm",frame,sw,sh);
+            }
+            render();
+        }
+        set("Steps",32);
+        for (int i=0;i<505;++i) process();
+        snap("32-steps");
+        press(desk.play);
+        process();
+        if (!ui.preset_load(plug,0)) return false;
+        plug->reset(plug);
+        process();
+        render();
+    }
+    // Every non-momentary parameter can send an automation event directly from this screen.
+    for (int i=0;i<int(id::count);++i)
+    {
+        if (i==int(id::regen) || i==int(id::seedBack)) continue;
+        const auto& spec=tbmpc::paramTable[tbmpc::paramIndex(i)];
+        const double before=value(spec.name);
+        const int dy=before>(spec.min+spec.max)/2?24:-24;
+        ctx.edited.clear();
+        dragSlot(i,0,dy);
+        process();
+        if (!check(value(spec.name)!=before && ctx.edited.count(i),spec.name)) return false;
+    }
+    // Clear short-lived drag readouts before a new patch is exercised.
+    if (!ui.preset_load(plug,0)) return false;
     process();
-    if (!check(value("Cutoff")>cutoff && ctx.edited.count(find("Cutoff").id),"perform strip control automates")) return false;
-
-    click(705,25); // MIDI Learn
-    click(85,446); // Cutoff in the Perform strip
+    render();
+    const auto glide=desk.slots[id::glide];
+    click(glide.x+glide.w*3/4,glide.y+glide.h*3/4); process();
+    if (!check(value("Slide")==1,"303 slide has a direct button")) return false;
+    click(glide.x+glide.w/4,glide.y+glide.h*3/4); process();
+    if (!check(value("Slide")==0,"TB-3PO slide has a direct button")) return false;
+    press(desk.tools[size_t(Item::Learn)]);
+    press(desk.slots[id::cutoff]);
     clap_event_midi_t cc {};
     cc.header={sizeof(cc),0,CLAP_CORE_EVENT_SPACE_ID,CLAP_EVENT_MIDI,0};
     cc.data[0]=0xb0; cc.data[1]=74; cc.data[2]=95;
@@ -391,54 +459,54 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     block.in_events=input;
     if (!check(std::abs(value("Cutoff")-102.0/127.0)<.0001,"MIDI learn still controls desktop parameters")) return false;
 
-    page(1);
     ctx.edited.clear();
-    bodyDrag(390,175,700,153);
+    sweepPlot(filterPlot);
     process();
     if (!check(value("Cutoff")>.94 && value("Resonance")>.8 &&
         ctx.edited.count(find("Cutoff").id) && ctx.edited.count(find("Resonance").id),"filter XY automation")) return false;
-    page(3);
     ctx.edited.clear();
-    bodyDrag(75,207,350,153);
-    bodyDrag(480,207,734,148);
+    sweepPlot(pitchPlot);
+    sweepPlot(cutoffPlot);
     process();
-    if (!check(value("Pitch LFO Amount")>.75 && value("Cutoff LFO Amt")>.8 &&
+    if (!check(value("Pitch LFO Amount")>.75 && value("Cutoff LFO Amt")>.75 &&
         ctx.edited.count(find("Pitch LFO Speed").id) && ctx.edited.count(find("Cutoff LFO Speed").id),"both LFO XY plots automate")) return false;
 
-    page(4);
     const double initialSeed=value("Seed");
-    bodyClick(749,75);
+    press(desk.slots[id::regen]);
     process();
     if (!check(initialSeed!=value("Seed"),"Regen rolls a locked seed")) return false;
     const double beforeBarcode=value("Seed");
-    bodyDrag(100,70,155,70);
+    dragSlot(id::seed,35,0);
     process();
     if (!check(beforeBarcode!=value("Seed"),"seed barcode drag")) return false;
-    // Choices remain keyboard/wheel reachable through the desktop six-control strip.
-    click(714,452);
-    mouse(3,750,180,0,-1000);
-    click(714,372);
+    const auto scaleBox=desk.slots[id::scale];
+    press(scaleBox);
+    mouse(3,scaleBox.x,scaleBox.y,0,-1000);
+    // The scale list opens above this row. Select the last visible choice.
+    click(scaleBox.x+35,scaleBox.y-18);
     process();
     if (!check(value("Scale")==find("Scale").max_value,"last scale reachable from desktop menu")) return false;
 
     set("Steps",32);
-    const auto numbers=[&] { return area(65,104,205,124); };
-    const auto first=numbers();
-    bodyClick(565,43);
-    const auto second=numbers();
-    bodyClick(565,43);
-    if (!check(second!=first && numbers()==first,"stopped counter switches pattern halves")) return false;
-    set("Seed Mode",0);
-    const auto pitchBefore=area(68,127,104,164);
-    const int marks=ctx.stateDirtyCalls;
-    bodyDrag(85,140,85,119); // +3 semitones
-    bodyDrag(85,177,219,177); // paint Gate across four columns
-    bodyClick(85,205);
-    bodyClick(85,232);
+    auto cell=[&](int i,int lane) { return desk.column(i,32).intersect(desk.lane(lane)); };
+    const auto last=cell(31,1), first=cell(0,1);
+    const int fx=first.x+first.w/2,fy=first.y+first.h/2;
+    const int lx=last.x+last.w/2,ly=last.y+last.h/2;
+    drag(lx,ly,lx,ly+14);
     process();
-    const auto pitchEdited=area(68,127,104,164);
+    set("Seed Mode",0);
+    const auto pitchBefore=area(first);
+    const int marks=ctx.stateDirtyCalls;
+    drag(fx,fy,fx,fy-21);
+    const Rect gate=cell(0,2),to=cell(3,2);
+    drag(fx,gate.y+gate.h/2,to.x+to.w/2,gate.y+gate.h/2);
+    press(cell(0,3));
+    press(cell(0,4));
+    process();
+    const auto pitchEdited=area(first);
     if (!check(value("Seed Mode")==1 && ctx.stateDirtyCalls>marks && pitchEdited!=pitchBefore,
                "step edits lock random seed, notify host and repaint pitch")) return false;
+    mouse(1,0,0);
 
     MemStream saved;
     clap_ostream_t out {&saved,MemStream::write};
@@ -454,14 +522,14 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         return -1;
     };
     const int step=record(0x534c0001);
-    if (!check(step>=0 && (step&255)==3 && (step&0x2a00)==0x2a00 &&
+    if (!check((record(0x534c0020)&255)==254 && step>=0 && (step&255)==3 && (step&0x2a00)==0x2a00 &&
              (record(0x534c0004)&0x300)==(step&0x300),"pitch, gate paint, accent and slide persist as SP-16 records")) return false;
     if (!ui.preset_load(plug,0)) return false;
     process();
     clap_istream_t in {&saved,MemStream::read};
     if (!state.load(plug,&in)) return false;
     process();
-    if (!check(area(68,127,104,164)==pitchEdited,"edited pattern restored after preset load")) return false;
+    if (!check(area(first)==pitchEdited,"edited pattern restored after preset load")) return false;
     auto raw=saved;
     raw.readPos=0;
     raw.data=std::vector<uint8_t>(saved.data.begin()+12,saved.data.begin()+12+word(8));
@@ -478,7 +546,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     plug->reset(plug);
     process();
     if (!check(peak()==0,"idle is silent before audition")) return false;
-    bodyClick(85,110);
+    press(cell(0,0));
     process();
     if (!check(peak()>.0001,"numbered step audibly auditions while stopped")) return false;
 
@@ -489,43 +557,63 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     plug->reset(plug);
     process();
     render();
-    const auto stopped=area(625,58,700,82);
-    bodyClick(660,67,1);
+    const auto stopped=area(desk.play);
+    press(desk.play,1);
     if (!check(ctx.transportRequests==1,"Shift-Play requests DAW transport when supported")) return false;
-    bodyClick(660,67);
+    press(desk.play);
     double previewPeak=0;
     for(int i=0;i<72;++i) { process(); previewPeak=std::max(previewPeak,peak()); }
-    const auto preview=area(625,58,700,82);
+    const auto preview=area(desk.play);
     if (!check(preview!=stopped && previewPeak>.0001,"local Play sends audio and shows Stop without running host")) return false;
-    bodyClick(660,67);
+    press(desk.play);
     process();
-    if (!check(area(625,58,700,82)==stopped,"local Stop releases preview control")) return false;
-    bodyClick(660,67);
+    if (!check(area(desk.play)==stopped,"local Stop releases preview control")) return false;
+    press(desk.play);
     process();
     transport.flags|=CLAP_TRANSPORT_IS_PLAYING;
     transport.song_pos_beats=8ull*CLAP_BEATTIME_FACTOR;
     process();
-    const auto synced=area(625,58,700,82);
+    const auto synced=area(desk.play);
     if (!check(synced!=preview && synced!=stopped,"DAW start replaces preview and displays Sync")) return false;
     transport.flags&=~CLAP_TRANSPORT_IS_PLAYING;
     process();
-    if (!check(area(625,58,700,82)==stopped,"host stop does not resume preview")) return false;
+    if (!check(area(desk.play)==stopped,"host stop does not resume preview")) return false;
     block.transport=nullptr;
 
-    const auto crest=[&] { return area(186,6,518,96); };
-    const auto storm=[&] { return area(127,253,295,278); };
-    bodyClick(350,52);
+    // Two seeds must actually sound before the sequencer offers the earlier one for recall.
+    set("Seed Mode",1);
+    press(desk.play);
+    for (int i=0;i<80;++i) process();
+    const double playedSeed=value("Seed");
+    press(desk.slots[id::regen]);
+    for (int i=0;i<80;++i) process();
+    press(desk.play);
+    process();
+    if (!check(value("Seed")!=playedSeed,"the regenerated seed played")) return false;
+    press(desk.slots[id::seedBack]);
+    process();
+    if (!check(value("Seed")==playedSeed,"Recall restores the previous played seed")) return false;
+
+    const auto crest=[&] { return area(desk.crest); };
+    const auto storm=[&] { return area(desk.storm); };
+    press(desk.crest);
     const auto held=crest(), moving=storm();
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     if (!check(crest()==held && storm()!=moving,"crest hold is independent of storm")) return false;
-    bodyClick(350,52);
+    press(desk.crest);
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
     if (!check(crest()!=held,"crest resumes")) return false;
-    click(900,25);
+    press(desk.tools[size_t(Item::Motion)]);
     const auto frozenCrest=crest(), frozenStorm=storm();
+    set("Resonance",.28);
+    mouse(1,0,0);
+    const auto* partial=render();
+    const std::vector<uint32_t> expected(partial,partial+size_t(width)*height);
+    ui.ms_per_full_render(plug,960,540,scale);
+    if (!check(std::equal(expected.begin(),expected.end(),render()),"partial and full paints match at Retina scale")) return false;
     std::this_thread::sleep_for(std::chrono::milliseconds(130));
     if (!check(crest()==frozenCrest && storm()==frozenStorm,"global motion hold")) return false;
-    bodyClick(350,52,1);
+    press(desk.crest,1);
     if (!check(crest()!=frozenCrest && storm()==frozenStorm,"manual cut while global motion is held")) return false;
     return true;
 }
@@ -557,8 +645,12 @@ bool testWin32Window (const clap_plugin_t* plug, const clap_plugin_gui_t& gui,
         }
         double before = 0, after = 0;
         ok = params.get_value (plug, seed, &before);
-        SendMessageW (child, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM (910, 136));
-        SendMessageW (child, WM_LBUTTONUP, 0, MAKELPARAM (910, 136));
+        hdslave_desktop::ConsoleLayout desk;
+        desk.arrange(960,540);
+        const auto r=desk.slots[tbmpc::ParamId::regen];
+        const auto point=MAKELPARAM(r.x+r.w/2,r.y+r.h/2);
+        SendMessageW (child, WM_LBUTTONDOWN, MK_LBUTTON, point);
+        SendMessageW (child, WM_LBUTTONUP, 0, point);
         static_cast<StrictHostCtx*> (block.out_events->ctx)->lastOutTime = 0;
         block.steady_time += block.frames_count;
         plug->process (plug, &block);
@@ -571,7 +663,7 @@ bool testWin32Window (const clap_plugin_t* plug, const clap_plugin_gui_t& gui,
 }
 #endif
 
-bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
+bool testOnePlugin (const std::string& clapPath, const std::string& snapDir,bool captureMotion)
 {
     std::string baseName;
     const std::string binPath = resolveBinaryPath (clapPath, baseName);
@@ -635,7 +727,7 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
     const auto* params = static_cast<const clap_plugin_params_t*> (plug->get_extension (plug, CLAP_EXT_PARAMS));
     if (!params) return false;
     struct OldChoice { const char* param;const char* text;double value; };
-    constexpr OldChoice legacy[] {{"Filter","303",0},{"Slide","303",1},{"Slide","TB-3PO",0},{"Mode","TB-3PO",0}};
+    constexpr OldChoice legacy[] {{"Filter","303",0},{"Slide","303",1},{"Slide","TB-3PO",0},{"Slide","Tick",0},{"Slide","Glide",1},{"Mode","TB-3PO",0}};
     for (const auto& choice : legacy)
     {
         bool parsed=false;
@@ -799,7 +891,7 @@ bool testOnePlugin (const std::string& clapPath, const std::string& snapDir)
             writePpm (snapDir + "/" + baseName + ".ppm", px, pw, ph);
 
         if (std::strcmp (desc->id, "com.hdslave.tb-mpc-3-p-0") == 0
-            && !testIntegratedPanel (plug, *dbg, *params, *state, proc, snapDir)) return false;
+            && !testIntegratedPanel (plug, *dbg, *params, *state, proc, snapDir,captureMotion)) return false;
 
         dbg->ui_close (plug);
 #ifdef __APPLE__
@@ -834,23 +926,27 @@ int main (int argc, char** argv)
         return 1;
     }
     std::string snapDir;
+    bool captureMotion=false;
     std::vector<std::string> plugins;
     for (int i = 1; i < argc; ++i)
     {
-        if (std::strcmp (argv[i], "--snap") == 0 && i + 1 < argc)
-            snapDir = argv[++i];
+        if ((!std::strcmp(argv[i],"--snap") || !std::strcmp(argv[i],"--film")) && i+1<argc)
+        {
+            captureMotion=!std::strcmp(argv[i],"--film");
+            snapDir=argv[++i];
+        }
         else
             plugins.push_back (argv[i]);
     }
     if (plugins.empty())
     {
-        std::fprintf (stderr, "Usage: %s [--snap <dir>] <plugin1.clap> ...\n", argv[0]);
+        std::fprintf (stderr, "Usage: %s [--snap <dir> | --film <dir>] <plugin1.clap> ...\n", argv[0]);
         return 1;
     }
     int failures = 0;
     for (const auto& p : plugins)
     {
-        if (!testOnePlugin (p, snapDir))
+        if (!testOnePlugin (p, snapDir,captureMotion))
             ++failures;
     }
     if (failures > 0)

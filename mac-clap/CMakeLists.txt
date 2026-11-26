@@ -44,6 +44,7 @@ endif()
 set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
+    "${DESKTOP_DIR}/console_paint.cpp"
 )
 set(THORN_BANK "${CMAKE_SOURCE_DIR}/../assets/sp16-thorn/panel.bank")
 if(APPLE)
@@ -125,6 +126,9 @@ endif()
 
 add_executable(host_test "${CMAKE_SOURCE_DIR}/tests/host_test.cpp")
 target_include_directories(host_test PRIVATE "${CLAP_INCLUDE_DIR}")
+if(MSVC)
+    target_include_directories(host_test PRIVATE "${DESKTOP_DIR}/win32/compat")
+endif()
 if(APPLE)
     target_sources(host_test PRIVATE tests/cocoa_window.mm)
     target_link_libraries(host_test PRIVATE dl "-framework Cocoa")

@@ -2,25 +2,28 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink’s Thorn Crown Pattern page on macOS](assets/thorn-crown-desktop.png)
+![Slink’s one-screen desktop editor during local playback](assets/thorn-crown-desktop.png)
 
-[See all six desktop pages](assets/thorn-crown-desktop-pages.jpg)
+[View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [Watch the editor during playback](assets/desktop-preview.gif)
 
-Slink **0.8.1** for macOS and Windows uses the same **Thorn Crown** panel, artwork and pointer gestures as the [freesp16 build](../README.md#freesp16-on-sp-16). The editor resizes down to 960 × 540. The six-control strip below the panel follows the selected page; it replaces the hardware encoder strip.
+Slink **0.9.0** puts all 34 parameters in one resizable window. At 960 × 540 the full instrument still fits. The chrome crest, step counter, whip storm and rave smiley use the artwork from the freesp16 Thorn Crown panel.
 
-| Page | What you can edit directly | Desktop strip |
-| --- | --- | --- |
-| Perform | Audition headers, pitch ribbon, cutoff and resonance readouts | Cutoff, Resonance, Env Mod, Decay, Accent, Volume |
-| Voice | Filter response: drag across for cutoff and up for resonance | Waveform, Tuning, Filter, Peak Spread, Drive, Volume |
-| Glide | Audition headers, pitch ribbon, slide and slide time readouts | Slide, Slide Time, Accent Decay, Gate, Accent, Decay |
-| LFO | Pitch and cutoff plots: drag across for rate and up for depth | Pitch Amount, Pitch Speed, Cutoff Amount, Cutoff Speed, Tuning, Transpose |
-| Pattern | Full Razor Choir score, with editable pitches and Gate, Accent and Slide lanes | Seed Mode, Seed, Mutate, Density, Scale, Root |
-| Clock | Audition headers, pitch ribbon, division and swing readouts | Mode, Clock Div, Swing, Reset, Steps, Octave |
+One score shows the numbered steps, pitch contour and note names above the Gate, Accent and Slide rows. Steps 17–32 appear alongside steps 1–16 as soon as the pattern length exceeds 16. The same highlighted column follows the playhead through every row.
 
-- **Edit the score:** Click or scrub across numbered headers to audition. Drag a pitch up or down in semitones. Click a Gate, Accent or Slide cell to toggle it, or drag across its row to paint the same setting. The first edit to a random pattern locks its displayed seed; the project saves edits with that seed. Long patterns follow playback into steps 17–32. When stopped, click the large counter to switch halves.
-- **Play and seed:** Click **Play** to preview through the plug-in while the DAW is stopped; click **Stop** to end the preview. The DAW takes over on transport start and the button reads **Sync**. Shift-click that button to control the DAW in hosts that expose CLAP transport control. Click **Regen** for a fresh seed, click the seed number to recall a previous played seed, or drag the barcode to set the seed.
-- **Motion:** Click the crest to pause or resume its camera without stopping the smiley and whip storm. Shift-click the crest for a manual camera cut. **Motion off** holds all artwork without freezing the controls or playhead.
-- **Desktop controls:** Drag or scroll the strip; hold Shift or enable **Fine** for smaller adjustments. Click a choice for its menu, double-click to reset, or right-click for reset and MIDI mapping. Presets and MIDI learn remain in the toolbar. Left and Right switch pages; Up and Down adjust the last selected parameter.
+| Section | Controls |
+| --- | --- |
+| Perform | Cutoff, resonance, envelope modulation, decay, accent and volume |
+| Voice | Waveform, tuning, drive, filter, peak spread and the filter-response XY pad |
+| Glide | TB-3PO or 303 slide mode, 303 slide time, gate length and accent decay |
+| Pattern | Seed mode, mutation, density, root, scale and transposition |
+| Modulation | Pitch and cutoff LFOs, each with its own XY pad, depth and rate |
+| Clock | Sequence or Notes mode, clock division, swing, reset interval, step count and octave |
+
+- **Edit steps.** Click or scrub numbered headers to audition. Drag a pitch vertically in semitones. Click a Gate, Accent or Slide cell to toggle it, or drag along its row to paint several steps. The first edit to a random pattern locks its displayed seed. The project saves those edits with that seed.
+- **Play and recall.** Click **Play** to preview while the DAW is stopped. **Stop** ends the preview. The DAW takes over on transport start and the button reads **Sync**. Shift-click requests DAW transport in hosts that support it. Drag the seed number or barcode to set it, click **Regen** for a fresh pattern, or click **Recall** to restore a previously played seed.
+- **Shape the sound.** Drag across the filter plot for cutoff and up for resonance. Each LFO plot spans one beat. Drag across for rate and up for depth. Pitch depth reads in semitones and cutoff depth in octaves.
+- **Use desktop controls.** Drag or scroll any value. Hold Shift or enable **Fine** for smaller adjustments. Click a choice to open its menu, double-click to reset, or right-click for reset and MIDI mapping. Left and Right select a step while stopped. Up and Down adjust the last touched parameter.
+- **Control the artwork.** Click the crest to hold its camera, or Shift-click it to cut to the next angle. **Motion off** pauses the crest, smiley and storm while the score follows playback.
 
 The CLAP ID, parameter IDs and choice order, factory preset keys, MIDI note behavior, and desktop state envelope stay compatible with previous builds. Older projects load without manual step edits. A raw state from the freesp16 build can also carry the shared step-edit records.
 
@@ -50,8 +53,8 @@ Copy `build\windows\clap\Release\Slink.clap` to `C:\Program Files\Common Files\C
 
 ## Shared artwork and validation
 
-Both desktop targets embed the same `assets/sp16-thorn/panel.bank` as freesp16. That bank holds the chrome lettering, crest, counter, face poses and storm. The shared renderer draws the score and plots, while Cocoa and Win32 add their host window, toolbar, six-control strip and popup menus. The older desktop artwork banks are retained as design references, not loaded by current builds.
+Both desktop targets embed the same Thorn Crown artwork bank as freesp16. The desktop editor draws the score, parameter sections and XY plots at the window’s device scale. Cocoa and Win32 present the same editor and send pointer events through the same hit targets. The step editor shares the hardware version’s audition and saved-edit logic.
 
 Normal builds use the committed bank. Rebuild it with `tools/sp16_thorn/bake_native.py` from the repository root. Artwork and font credits are in [THIRD_PARTY.md](../THIRD_PARTY.md).
 
-The desktop host test exercises all six pages, parameter automation, MIDI learn, step audition and state, transport takeover, motion holds and window resizing. Use `host_test --snap <directory> <plugin>` to capture the six desktop pages.
+The desktop host test exercises all 34 parameter targets, editing at both ends of a 32-step score, project recall, MIDI learn, filter and LFO gestures, transport takeover, motion holds and native window resizing. Run `host_test --snap <directory> <plugin>` to capture the 16-step editor, the minimum window at Retina scale and a 32-step pattern. `--film <directory>` also captures four seconds of playback at 15 fps.
