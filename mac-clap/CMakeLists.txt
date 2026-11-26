@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 project(tb_mpc_3p0_mac_clap LANGUAGES C CXX)
 
-option(SLINK_RAZOR_PANEL "Build the Windows Razor Choir panel" ${WIN32})
-
 if(APPLE)
     enable_language(OBJCXX)
 endif()
@@ -46,18 +44,10 @@ endif()
 set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
+    "${DESKTOP_DIR}/razor_panel.cpp"
     "${DESKTOP_DIR}/thorn_art.cpp"
 )
-if(SLINK_RAZOR_PANEL)
-    if(WIN32)
-        target_compile_definitions(${SLUG}_inner PRIVATE TBMPC_VERSION="0.7.3")
-    endif()
-    list(APPEND SHELL_SRCS "${DESKTOP_DIR}/razor_panel.cpp")
-    set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/razor/panel.bank")
-else()
-    list(APPEND SHELL_SRCS "${DESKTOP_DIR}/acid_motion.cpp")
-    set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/thorn/panel.bank")
-endif()
+set(THORN_BANK "${CMAKE_SOURCE_DIR}/assets/razor/panel.bank")
 if(APPLE)
     enable_language(ASM)
     set(BANK_SRC "${CMAKE_BINARY_DIR}/thorn_bank.S")
@@ -133,10 +123,8 @@ endif()
 
 add_executable(host_test "${CMAKE_SOURCE_DIR}/tests/host_test.cpp")
 target_include_directories(host_test PRIVATE "${CLAP_INCLUDE_DIR}")
-if(SLINK_RAZOR_PANEL)
-    target_compile_definitions(${TARGET_NAME} PRIVATE SLINK_RAZOR_PANEL=1)
-    target_compile_definitions(host_test PRIVATE SLINK_RAZOR_PANEL=1)
-endif()
+target_compile_definitions(${TARGET_NAME} PRIVATE SLINK_RAZOR_PANEL=1)
+target_compile_definitions(host_test PRIVATE SLINK_RAZOR_PANEL=1)
 if(APPLE)
     target_link_libraries(host_test PRIVATE dl)
 endif()

@@ -1,4 +1,4 @@
-"""Bake Windows plates from the SP-16 Thorn Crown artwork and native animation bank.
+"""Bake the shared desktop plates from the SP-16 Thorn Crown artwork and native animation bank.
 Usage: bake_razor.py SP16_CHECKOUT CHROMIUM
 Normal builds use the committed bank. Requires Pillow and Playwright.
 """
