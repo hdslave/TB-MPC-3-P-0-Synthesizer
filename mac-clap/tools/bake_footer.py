@@ -20,7 +20,7 @@ DEST = Path(__file__).resolve().parents[1] / 'assets' / 'footer-print.bank'
 PAPER = (8, 8, 18)
 RESAMPLE = Image.Resampling.LANCZOS
 ART = Path(__file__).with_name('footer-art')
-STENCIL_DIGEST = 'af4bae3c6f856173fab8606b893c57130b92b7afbb5dc6ce56567ddfc582cf88'
+STENCIL_DIGEST = '00b44ca537e547806f04531aff4fb05d01b1e95d1114ba672104eb3935c101f5'
 
 
 def grid(width):
@@ -204,7 +204,7 @@ def checker_print(phase):
 def stencil_print(phase):
     width = 312
     x, y = grid(width)
-    # A measured field of elliptical cuts, torn open along a single oblique axis.
+    # The moving grooves run continuously through the curved stencil.
     xx = (x-155)/127
     yy = (y-28)/16.7
     bend = .25*np.sin(phase+3.3*xx) + .47*np.sin(5.8*xx-.62*np.sin(phase))
@@ -212,7 +212,7 @@ def stencil_print(phase):
     capsule = (np.abs(xx)**3.0 + np.abs(v*.98)**3.0) < 1
     groove = 1.18*xx + .24*v + .20*np.sin(3.2*xx + 1.6*v + phase) + .085*np.sin(7*xx - 2.3*v - phase)
     slits = np.cos(TAU*(5.3*groove - .20*np.sin(phase))) > -.04
-    edge = capsule & slits & (np.abs(.80*xx+.18*v-.12)>.024)
+    edge = capsule & slits
     violet = np.array([143,104,241])
     acid = np.array([192,237,38])
     blue = np.array([72,146,233])
@@ -278,7 +278,7 @@ def bake(images):
         packets.append(zlib.compress(indices.tobytes(),9))
         offsets.append(offsets[-1] + len(packets[-1]))
     if stencil_hash.hexdigest() != STENCIL_DIGEST:
-        raise ValueError('The approved stencil differs from the original five-second print')
+        raise ValueError('The baked stencil differs from its five-second reference loop')
     DEST.write_bytes(header + palettes + struct.pack(f'<{len(offsets)}I',*offsets) + b''.join(packets))
     print(f'{DEST.name}: {FRAMES} frames, {offsets[-1]:,} bytes')
 
