@@ -16,6 +16,7 @@ public:
     bool heldCamera = false;
 #ifdef SLINK_DESKTOP
     bool heldMotion = false;
+    int cameraFrame() const { return lastCamera; }
     void nextCameraCut()
     {
         constexpr uint32_t cuts[]{0,5000,11000,14000,20000};

@@ -122,7 +122,8 @@ void scheduleMainThreadFlush (DesktopPlugin* dp)
     if (!dp || !dp->realHost) return;
     if (dp->realHost->request_callback)
     {
-        dp->realHost->request_callback (dp->realHost);
+        if (!dp->callbackPending.exchange(true,std::memory_order_acq_rel))
+            dp->realHost->request_callback (dp->realHost);
     }
     else
     {
@@ -238,7 +239,7 @@ void CLAP_ABI proxyRequestCallback (const clap_host_t* host)
 {
     auto* dp = static_cast<DesktopPlugin*> (host->host_data);
     if (dp && dp->realHost && dp->realHost->request_callback)
-        dp->realHost->request_callback (dp->realHost);
+        scheduleMainThreadFlush(dp);
 }
 
 // Preset discovery helper -------------------------------------------------------------------------------------
@@ -1052,6 +1053,7 @@ const void* CLAP_ABI wrapGetExtension (const clap_plugin_t* p, const char* id)
 void CLAP_ABI wrapOnMainThread (const clap_plugin_t* p)
 {
     auto& dp = of (p);
+    dp.callbackPending.store(false,std::memory_order_release);
     if (dp.inner && dp.inner->on_main_thread)
         dp.inner->on_main_thread (dp.inner);
 

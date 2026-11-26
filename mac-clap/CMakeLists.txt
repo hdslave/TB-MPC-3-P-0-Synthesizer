@@ -45,17 +45,25 @@ set(SHELL_SRCS
     "${DESKTOP_DIR}/desktop_wrapper.cpp"
     "${DESKTOP_DIR}/panel_ui.cpp"
     "${DESKTOP_DIR}/console_paint.cpp"
+    "${DESKTOP_DIR}/header_plate.cpp"
     "${DESKTOP_DIR}/footer_storm.cpp"
 )
 set(THORN_BANK "${CMAKE_SOURCE_DIR}/../assets/sp16-thorn/panel.bank")
 set(THORN_WORDMARK "${CMAKE_SOURCE_DIR}/assets/thorn-wordmark.bgra")
 set(FOOTER_BANK "${CMAKE_SOURCE_DIR}/assets/footer-storm.bank")
+set(HEADER_BANK "${CMAKE_SOURCE_DIR}/assets/desktop-header.bank")
+set(TYPE_BANK "${CMAKE_SOURCE_DIR}/assets/desktop-type.alpha")
+file(SIZE "${HEADER_BANK}" HEADER_BYTES)
+file(SIZE "${TYPE_BANK}" TYPE_BYTES)
+if(NOT TYPE_BYTES EQUAL 2872800)
+    message(FATAL_ERROR "Unexpected desktop type atlas size")
+endif()
 file(SIZE "${FOOTER_BANK}" FOOTER_BANK_SIZE)
 file(SIZE "${THORN_WORDMARK}" WORDMARK_BYTES)
 if(NOT WORDMARK_BYTES EQUAL 293760)
     message(FATAL_ERROR "Expected the 680 x 108 BGRA Slink wordmark")
 endif()
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${THORN_WORDMARK}" "${FOOTER_BANK}")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${HEADER_BANK}" "${TYPE_BANK}" "${THORN_WORDMARK}" "${FOOTER_BANK}")
 if(APPLE)
     enable_language(ASM)
     set(BANK_SRC "${CMAKE_BINARY_DIR}/thorn_bank.S")
@@ -70,14 +78,14 @@ elseif(WIN32)
     list(APPEND SHELL_SRCS "${DESKTOP_DIR}/gui_win32.cpp" "${DESKTOP_DIR}/thorn_resource.cpp"
         "${DESKTOP_DIR}/win32/clap.def")
 endif()
-set_source_files_properties("${BANK_SRC}" PROPERTIES OBJECT_DEPENDS "${THORN_BANK};${THORN_WORDMARK};${FOOTER_BANK}")
+set_source_files_properties("${BANK_SRC}" PROPERTIES OBJECT_DEPENDS "${HEADER_BANK};${TYPE_BANK};${THORN_BANK};${THORN_WORDMARK};${FOOTER_BANK}")
 list(APPEND SHELL_SRCS "${BANK_SRC}")
 
 add_library(${TARGET_NAME} MODULE
     $<TARGET_OBJECTS:${SLUG}_inner>
     ${SHELL_SRCS}
 )
-target_compile_definitions(${TARGET_NAME} PRIVATE SLINK_FOOTER_BANK_SIZE=${FOOTER_BANK_SIZE})
+target_compile_definitions(${TARGET_NAME} PRIVATE SLINK_HEADER_BYTES=${HEADER_BYTES} SLINK_TYPE_BYTES=${TYPE_BYTES} SLINK_FOOTER_BANK_SIZE=${FOOTER_BANK_SIZE})
 target_include_directories(${TARGET_NAME} PRIVATE
     "${CLAP_INCLUDE_DIR}"
     "${DESKTOP_DIR}"

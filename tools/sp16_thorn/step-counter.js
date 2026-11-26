@@ -24,15 +24,15 @@ function drawStepGlass(g){
   g.stroke();g.restore();
 }
 
-function makeStepCounter(font='66px SlinkItalic'){
+function makeStepCounter(font='66px SlinkItalic',density=2){
   const colours=['#afbeff','#958cf5','#985fdf','#7043a7'];
   const metrics=document.createElement('canvas').getContext('2d');metrics.font=font;
   const digitOrigins=Array.from({length:10},(_,i)=>{
     const ink=metrics.measureText(String(i));
     return 14+(ink.actualBoundingBoxLeft-ink.actualBoundingBoxRight)*.5;
   });
-  const tile=document.createElement('canvas');tile.width=182;tile.height=140;
-  const g=tile.getContext('2d');g.setTransform(2,0,0,2,-1056,-40);
+  const tile=document.createElement('canvas');tile.width=91*density;tile.height=70*density;
+  const g=tile.getContext('2d');g.setTransform(density,0,0,density,-528*density,-20*density);
   let lastNumber=0,lastPulse=-1;
   function drawInk(number,pulse){
     const digits=String(number).padStart(2,'0');
@@ -54,7 +54,7 @@ function makeStepCounter(font='66px SlinkItalic'){
       g.restore();
     }
     g.translate(534,84);
-    g.shadowColor='rgba(120,139,255,.61)';g.shadowBlur=4.8;
+    g.shadowColor='rgba(120,139,255,.61)';g.shadowBlur=2.4*density;
     g.strokeStyle='#5d659e';g.lineWidth=1;pair(true);g.shadowBlur=0;
     const pearl=g.createLinearGradient(0,-47,9,0);
     pearl.addColorStop(0,'#ffffff');pearl.addColorStop(.59,'#f8f9ff');pearl.addColorStop(1,'#d9e2ff');

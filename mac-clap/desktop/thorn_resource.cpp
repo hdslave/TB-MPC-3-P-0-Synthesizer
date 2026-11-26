@@ -34,3 +34,15 @@ const uint8_t* desktopFooterBank()
     static const auto* bytes = static_cast<const uint8_t*>(bitmapResource(103, SLINK_FOOTER_BANK_SIZE));
     return bytes;
 }
+
+const uint8_t* desktopHeaderBank()
+{
+    static const auto* data = static_cast<const uint8_t*>(bitmapResource(104, SLINK_HEADER_BYTES));
+    return data;
+}
+
+const uint8_t* desktopFontBank()
+{
+    static const auto* data = static_cast<const uint8_t*>(bitmapResource(105, SLINK_TYPE_BYTES));
+    return data;
+}

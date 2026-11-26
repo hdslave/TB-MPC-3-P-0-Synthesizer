@@ -42,6 +42,12 @@ struct Plugin
     // a state is loaded. The engine notices those at the next block.
     std::atomic<float> values[paramCount];
     std::atomic<bool> mainChanged { false }; // the main thread wrote values (a state, a preset, a flush): look at them
+    std::atomic<uint32_t> bulkRevision {0};
+    std::atomic<bool> bulkIsPreset {false};
+    uint32_t appliedRevision = 0;
+    // Audio-thread state for the short ramp when a sounding patch is replaced.
+    int rampLength = 1, rampRemaining = 0;
+    float lastSample[2] {}, rampStart[2] {};
     float applied[paramCount] {};
     Engine engine;
     bool active = false;
@@ -373,10 +379,13 @@ bool readAll (const clap_istream* s, void* data, uint64_t size)
 }
 
 // Every value at once, from the main thread (a state or a preset loaded).
-void setAll (Plugin& p, const float* values)
+void setAll (Plugin& p, const float* values, bool preset=false)
 {
+    ++p.bulkRevision;
+    p.bulkIsPreset.store(preset);
     for (uint32_t i = 0; i < paramCount; ++i)
-        p.values[i].store (values[i], std::memory_order_relaxed);
+        p.values[i].store(values[i]);
+    ++p.bulkRevision;
     p.mainChanged.store (true, std::memory_order_release);
     if (! p.active) // not processing: the engine takes them now; otherwise at the next block
     {
@@ -478,7 +487,8 @@ bool presetFromLocation (const clap_plugin* plugin, uint32_t kind, const char*, 
     presetValuesOf (*preset, values);
     p.manual = {};
     p.stepExchange.publish(p.manual);
-    setAll (p, values);
+    setAll (p, values, true);
+    if (p.active && p.host->request_process) p.host->request_process(p.host);
     if (const auto* hostParams = static_cast<const clap_host_params*> (p.host->get_extension (p.host, CLAP_EXT_PARAMS)))
         if (hostParams->rescan != nullptr)
             hostParams->rescan (p.host, CLAP_PARAM_RESCAN_VALUES);
@@ -551,6 +561,9 @@ bool pluginActivate (const clap_plugin* plugin, double rate, uint32_t, uint32_t 
 {
     auto& p = of (plugin);
     p.engine.prepare (rate, maxFrames);
+    p.rampLength=std::max(1,int(std::lround(rate*.003)));
+    p.rampRemaining=0;
+    p.lastSample[0]=p.lastSample[1]=0;
     p.active = true;
     return true;
 }
@@ -569,6 +582,8 @@ void pluginReset (const clap_plugin* plugin)
 {
     auto& p=of(plugin);
     p.engine.reset();
+    p.rampRemaining=0;
+    p.lastSample[0]=p.lastSample[1]=0;
     p.previewRequested.store(false,std::memory_order_release);
     p.previewRunning=false;
     p.touchedStep.store(-1,std::memory_order_release);
@@ -601,13 +616,35 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
     float* right = process->audio_outputs[0].channel_count > 1 ? process->audio_outputs[0].data32[1] : nullptr;
 
     // Values the main thread changed (a state loaded while playing): looked through only when it wrote some.
-    if (p.mainChanged.exchange (false, std::memory_order_acquire))
-        for (uint32_t i = 0; i < paramCount; ++i)
+    if (p.mainChanged.exchange(false,std::memory_order_acquire))
+    {
+        // A newer recall may already be publishing while this callback takes the
+        // previous one. Keep playing the current patch until a whole table is ready.
+        const auto revision=p.bulkRevision.load();
+        float snapshot[paramCount];
+        for (uint32_t i=0;i<paramCount;++i) snapshot[i]=p.values[i].load();
+        const bool preset=p.bulkIsPreset.load();
+        if ((revision&1u) || revision!=p.bulkRevision.load())
+            p.mainChanged.store(true,std::memory_order_release);
+        else
         {
-            const float v = p.values[i].load (std::memory_order_relaxed);
-            if (v != p.applied[i] && paramTable[i].kind != Kind::button)
-                p.applied[i] = v, p.engine.set (paramTable[i].id, v);
+            bool changed=false;
+            for (uint32_t i=0;i<paramCount;++i)
+                if (snapshot[i]!=p.applied[i] && paramTable[i].kind!=Kind::button)
+                {
+                    p.applied[i]=snapshot[i];
+                    p.engine.set(paramTable[i].id,snapshot[i]);
+                    changed=true;
+                }
+            if (changed && preset && revision!=p.appliedRevision &&
+                (std::abs(p.lastSample[0])>1.e-6f || std::abs(p.lastSample[1])>1.e-6f))
+            {
+                std::copy_n(p.lastSample,2,p.rampStart);
+                p.rampRemaining=p.rampLength;
+            }
+            p.appliedRevision=revision;
         }
+    }
     // The values the screen's page set are told to the host first, at the frame the engine takes them (and before any
     // event this block sends back, so they stay in time order).
     tellHost (p, process->out_events, 0);
@@ -648,9 +685,10 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
 
     // Local Play uses the same sample clock as the host. A host start ends the
     // preview and relocates immediately, including when both start at beat zero.
-    if (playing || p.applied[paramIndex(ParamId::mode)] >= .5f)
+    // Notes mode suspends the local sequence. Only a real host start takes playback away.
+    if (playing)
         p.previewRequested.store(false, std::memory_order_release);
-    const bool preview = !playing && p.previewRequested.load(std::memory_order_acquire);
+    const bool preview = !playing && p.applied[paramIndex(ParamId::mode)] < .5f && p.previewRequested.load(std::memory_order_acquire);
     if (playing && p.previewRunning)
         p.engine.transport(false, 0, bpm, bar, frames);
     if (preview)
@@ -678,6 +716,19 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
             until = std::min<uint32_t> (frames, std::max<uint32_t> (in->get (in, next)->time, done + 1));
         p.engine.render (left + done, right ? right + done : nullptr, until - done);
         done = until;
+    }
+    // Join a live recall to the actual last output sample, including a second
+    // recall that arrives before the first ramp has finished.
+    for (uint32_t i=0;i<frames && p.rampRemaining>0;++i,--p.rampRemaining)
+    {
+        const float t=1.f-float(p.rampRemaining)/p.rampLength;
+        left[i]=p.rampStart[0]+t*(left[i]-p.rampStart[0]);
+        if (right) right[i]=p.rampStart[1]+t*(right[i]-p.rampStart[1]);
+    }
+    if (frames)
+    {
+        p.lastSample[0]=left[frames-1];
+        p.lastSample[1]=right?right[frames-1]:p.lastSample[0];
     }
     for (; next < count; ++next) // events stamped past the block (a host's mistake): applied at its end
         handle (p, in->get (in, next), process->out_events, lastFrame);
@@ -792,14 +843,16 @@ PatternView readDesktopPattern(const clap_plugin_t* plug)
     p.panel.shown=p.patternState.read();
     return p.panel.shown;
 }
-bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& surface,bool full,int selected,int seed,int button)
+bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& surface,bool full,int selected,int seed,int button,int& cameraFrame)
 {
     auto& p=of(plug);
     auto& panel=p.panel;
     panel.thorn.selected=selected;
     sp16::Raster raster{surface.pixels,surface.stride,surface.height};
     // The desktop draws the full-width storm directly from its own film.
-    return panel.thorn.draw(raster,panel.shown,surface.now_ms,full,seed,button,false,false);
+    const bool changed=panel.thorn.draw(raster,panel.shown,surface.now_ms,full,seed,button,false,false);
+    cameraFrame=panel.thorn.cameraFrame();
+    return changed;
 }
 void desktopPitchTile(uint32_t* pixels,int cv,uint32_t background,bool active)
 {

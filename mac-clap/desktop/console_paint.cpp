@@ -71,6 +71,13 @@ void controlText(Canvas& c, Rect box, std::string_view text, const font::Font& f
         fitted += "...";
     }
     const float glyphScale = zoom * c.s;
+    const int density = glyphScale <= 1.2f ? 1 : glyphScale <= 2.4f ? 2 : 4;
+    const int priorLevels = density == 1 ? 0 : density == 2 ? 1 : 5;
+    const int priorRows = face.height == 15 ? 0 : face.height == 20 ? 15 : 35;
+    const int stride = 24 * density, rows = face.height * density;
+    const auto* atlas = desktopTypeMasks();
+    if (!atlas) return;
+    atlas += 95 * 24 * (60 * priorLevels + priorRows * density * density);
     const int lineHeight = int(std::lround(face.height * glyphScale));
     float cursor = float(box.x * c.s);
     if (align) cursor += (box.w * c.s - textWidth(fitted, face) * glyphScale) * (align == 1 ? .5f : 1.f);
@@ -79,28 +86,27 @@ void controlText(Canvas& c, Rect box, std::string_view text, const font::Font& f
     {
         const auto glyph = glyphIndex(ch);
         const int advance = face.widths[glyph];
-        const auto* mask = face.ink + glyph * face.height * face.stride;
+        const auto* mask = atlas + glyph * stride * rows;
         const int start = int(std::lround(cursor));
         cursor += advance * glyphScale;
         const int width = int(std::lround(cursor)) - start;
         const auto coverage = [&](int row, int col)
         {
-            const auto packed = mask[row * face.stride + col / 2];
-            return int(col % 2 ? packed & 15 : packed >> 4);
+            return int(mask[row * stride + col]);
         };
         // Sample at physical pixel centers so Retina text keeps soft edges.
         for (int dy = 0; dy < lineHeight; ++dy)
         {
-            const float v = std::clamp((dy + .5f) * face.height / lineHeight - .5f, 0.f, float(face.height - 1));
-            const int v0 = int(v), v1 = std::min(v0 + 1, face.height - 1);
+            const float v = std::clamp((dy + .5f) * rows / lineHeight - .5f, 0.f, float(rows - 1));
+            const int v0 = int(v), v1 = std::min(v0 + 1, rows - 1);
             for (int dx = 0; dx < width; ++dx)
             {
-                const float u = std::clamp((dx + .5f) * advance / width - .5f, 0.f, float(advance - 1));
-                const int u0 = int(u), u1 = std::min(u0 + 1, advance - 1);
+                const float u = std::clamp((dx + .5f) * advance * density / width - .5f, 0.f, float(advance * density - 1));
+                const int u0 = int(u), u1 = std::min(u0 + 1, advance * density - 1);
                 const float mixX = u - u0, mixY = v - v0;
                 const float top = coverage(v0, u0) * (1 - mixX) + coverage(v0, u1) * mixX;
                 const float bottom = coverage(v1, u0) * (1 - mixX) + coverage(v1, u1) * mixX;
-                const unsigned alpha = unsigned((top * (1 - mixY) + bottom * mixY) * 17.f + .5f);
+                const unsigned alpha = unsigned((top * (1 - mixY) + bottom * mixY) + .5f);
                 if (alpha) c.plot(start + dx, y + dy, color, alpha);
             }
         }
@@ -236,7 +242,7 @@ void PanelUI::paintToolbar()
         status = tips[hoverLane_];
     }
     else
-        status = "Thorn Crown";
+        status = "Slink " TBMPC_VERSION;
     controlText(c_, layout_.status, status, font::normal, muted, .9f);
 }
 
@@ -245,7 +251,8 @@ Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
     constexpr int sw = SIXTEEN_SCREEN_WIDTH, sh = SIXTEEN_SCREEN_HEIGHT;
     sixteen_screen_surface_t surface{art_.data(), sw, sh, sw, uint32_t(now)};
     const int button = readings_[id::mode].value >= .5 ? 3 : localPlay_ ? 1 : pattern_.running ? 2 : 0;
-    if (!p_->panel->renderArt(p_->inner, surface, refreshHeader, selected_, int(readings_[id::seed].value), button) && !full)
+    int cameraFrame = 0;
+    if (!p_->panel->renderArt(p_->inner, surface, refreshHeader, selected_, int(readings_[id::seed].value), button, cameraFrame) && !full)
         return {};
     Rect damage;
     const auto changed = [&](Rect src) {
@@ -269,25 +276,66 @@ Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
     const Rect brand{0, 0, 182, 100}, camera{182, 0, 340, 100}, lcd{522, 0, 193, 100}, regen{715, 0, 65, 100};
     if (changed(brand))
     {
-        blit(brand, layout_.headRect(brand));
+        const Rect dst = layout_.headRect(brand);
+        if (brandPlate_.paint(c_,637,dst))
+        {
+            const unsigned seed=unsigned(readings_[id::seed].value)&65535u;
+            char digits[5];
+            std::snprintf(digits,sizeof(digits),"%04X",seed);
+            controlText(c_,layout_.headRect({12,70,60,24}),digits,font::large,light,layout_.mast.h*.010f);
+            for (int i=0;i<20;++i)
+                c_.fill(layout_.headRect({72+i*98/20,59,((seed>>(i%16))&1)?4:1,26}),i%6?0xff919fbe:0xffced7ff);
+            damage=damage.unite(dst);
+        }
+        else blit(brand,dst);
         c_.fill(layout_.logo, 0xff10101b);
         c_.blitScaled(desktopWordmark(), 680, 108, layout_.headRect({10, 12, 164, 26}), 680, screenInk);
     }
     if (changed(camera))
     {
-        const Rect bay = layout_.headRect(camera);
-        if (bay.w <= bay.h * 9 / 2)
-            blit(camera, bay);
-        else
+        const Rect bay=layout_.headRect(camera);
+        Rect dst=bay;
+        if (bay.w>bay.h*9/2)
         {
-            // In an ultrawide host keep the camera framing intact inside the wider bezel.
-            if (full) faceplate(c_, layout_.crest, 0xff04040b, 0xff04040b, 0xff6f7391, 7);
-            const Rect image{187, 7, 330, 88};
-            blit(image, fit(image, layout_.crest.inset(2)));
+            if (full) c_.fill(bay,ground);
+            dst=fit(camera,bay);
         }
+        if (!crestPlate_.paint(c_,cameraFrame,dst)) blit(camera,dst);
+        damage=damage.unite(bay);
     }
-    if (changed(lcd)) blit(lcd, layout_.headRect(lcd));
-    if (changed(regen)) blit(regen, layout_.headRect(regen));
+    if (changed(lcd))
+    {
+        const Rect dst=layout_.headRect(lcd);
+        if (lcdPlate_.paint(c_,601+focus(),dst))
+        {
+            transportPlate_.paint(c_,633+button,layout_.play);
+            controlText(c_,layout_.headRect({597,77,23,13}),"/"+std::to_string(pattern_.steps),
+                        font::small,muted,layout_.mast.h*.009f,2);
+            const int first=focus()/16*16, count=std::min(16,int(pattern_.steps)-first);
+            if (count>0)
+            {
+                const auto limits=std::minmax_element(pattern_.pitch+first,pattern_.pitch+first+count);
+                const int span=std::max(128,int(*limits.second)-*limits.first);
+                int previous=0;
+                for (int i=0;i<count;++i)
+                {
+                    const int n=first+i, x=625+i*77/16;
+                    const int y=38-(pattern_.pitch[n]-*limits.first)*19/span;
+                    if (i && ((pattern_.slides>>(n-1))&1u))
+                        c_.fill(layout_.headRect({x-1,std::min(y,previous),1,std::abs(y-previous)+1}),0xff7689c0);
+                    c_.fill(layout_.headRect({x,y,3,2}),n==focus()?0xffcabaff:0xff7c8cc6);
+                    previous=y;
+                }
+            }
+            damage=damage.unite(dst);
+        }
+        else blit(lcd,dst);
+    }
+    if (changed(regen))
+    {
+        blit(regen,layout_.headRect(regen));
+        regenPlate_.paint(c_,638,layout_.headRect({720,63,53,26}));
+    }
     return damage;
 }
 

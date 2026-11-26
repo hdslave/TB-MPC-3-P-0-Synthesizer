@@ -140,8 +140,8 @@
    rect(u,yy,w/16-1.2,1.3,i===step?'#cabaff':'#7c8cc6');if(seq[2][i]&&i<15){
      const n=(semis[(i+1+rotation)%16]+5)/22;line(u+w/16-1,yy,x+(i+1)*w/16,y+2+(1-n)*(h-4),'#7689c0',.7);}
  }}
- function bedDraw(first=false,plate=false,selected=step){
-   g=staticCtx;g.setTransform(2,0,0,2,0,0);
+ function bedDraw(first=false,plate=false,selected=step,density=2){
+   g=staticCtx;g.setTransform(density,0,0,density,0,0);
    rect(0,0,780,285,'#080812');
    const edge=gradient(0,0,780,90,shell);
    chamfer(6,5,173,92,'#10101b',edge,8);drawWordmark();
@@ -246,7 +246,9 @@
  motionPref.addEventListener('change',()=>{options.motion=!motionPref.matches;lastTime=null;update();});
  fallback.addEventListener('loadeddata',()=>{needsPaint=true;schedule();});fallback.addEventListener('seeked',()=>{needsPaint=true;schedule();});
  if(globalThis.captureThornPlates){
-   globalThis.captureThornPlates({bed,bedDraw,paintCounter,scoreFigures,scorePitch,scoreText,drawStorm:paintStorm,
+   globalThis.captureThornPlates({bed,bedDraw,makeStepCounter,paintCounter,scoreFigures,scorePitch,scoreText,drawStorm:paintStorm,
+     createCrest:target=>buildCrestView(target,crest,depth),
+     buttonOn:(target,label)=>{const saved=g;g=target;actionButton(622,55,81,29,label,true);g=saved;},
      drawCrest:t=>{render3d(t);return camera;},
      drawButton:label=>actionButton(622,55,81,29,label,true),
      drawPose:i=>{rect(717,0,61,58,"#080812");facePose=i;drawFace();}});

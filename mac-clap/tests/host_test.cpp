@@ -687,6 +687,42 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     for(int i=0;i<72;++i) { process(); previewPeak=std::max(previewPeak,peak()); }
     const auto preview=area(desk.play);
     if (!check(preview!=stopped && previewPeak>.0001,"local Play sends audio and shows Stop without running host")) return false;
+    MemStream beforeBrowsing;
+    clap_ostream_t savedBrowse {&beforeBrowsing,MemStream::write};
+    if (!state.save(plug,&savedBrowse)) return false;
+    const int callbacksBefore=ctx.callbackRequests;
+    for (int i=0;i<18;++i)
+        if (!ui.preset_load(plug,i%6)) return false;
+    if (!check(ctx.callbackRequests-callbacksBefore<=1,"rapid recalls share a pending host callback")) return false;
+    // Browse through the MIDI-only preset while local playback is armed.
+    // Returning to a sequence must produce sustained audio without another click.
+    for (int lap=0;lap<3;++lap)
+        for (int index=0;index<ui.preset_count(plug);++index)
+        {
+            if (!ui.preset_load(plug,lap%2 ? 5-index : index)) return false;
+            process();
+        }
+    if (!ui.preset_load(plug,5)) return false;
+    for (int i=0;i<200;++i) process();
+    if (!check(peak()<.00001,"Note Bass waits for MIDI during internal preset browsing")) return false;
+    if (!ui.preset_load(plug,1)) return false;
+    double resumedPeak=0;
+    for (int i=0;i<200;++i)
+    {
+        process();
+        if (i>=150) resumedPeak=std::max(resumedPeak,peak());
+    }
+    if (!check(area(desk.play)==preview && resumedPeak>.0001,"sequence audio resumes after rapid preset browsing")) return false;
+    // Find a sounding boundary, then verify that switching the waveform joins to it.
+    float tail=0;
+    for (int i=0;i<180 && std::abs(tail)<.005f;++i)
+    {
+        process();
+        tail=block.audio_outputs[0].data32[0][block.frames_count-1];
+    }
+    if (!check(std::abs(tail)>=.005f && ui.preset_load(plug,3),"sounding preset transition")) return false;
+    process();
+    if (!check(std::abs(block.audio_outputs[0].data32[0][0]-tail)<1.e-6f,"continuous sample at live preset boundary")) return false;
     press(desk.play);
     process();
     if (!check(area(desk.play)==stopped,"local Stop releases preview control")) return false;
@@ -697,10 +733,59 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     process();
     const auto synced=area(desk.play);
     if (!check(synced!=preview && synced!=stopped,"DAW start replaces preview and displays Sync")) return false;
+    // Exercise the live host clock across late song positions, short blocks and preset bursts.
+    // A MIDI-only patch may rest until a note arrives. Each sequenced patch must sound again.
+    int64_t hostFrame=0;
+    const auto hostBlock=[&] {
+        transport.song_pos_beats=8ll*CLAP_BEATTIME_FACTOR+hostFrame*CLAP_BEATTIME_FACTOR/24000;
+        process();
+        hostFrame+=block.frames_count;
+        for (uint32_t channel=0;channel<2;++channel)
+            for (uint32_t i=0;i<block.frames_count;++i)
+                if (!std::isfinite(block.audio_outputs[0].data32[channel][i])) return false;
+        return true;
+    };
+    if (!ui.preset_load(plug,5)) return false;
+    for (int i=0;i<200;++i)
+        if (!hostBlock()) return false;
+    const auto midiPrompt=area(desk.play);
+    if (!check(peak()<.00001 && midiPrompt!=synced && midiPrompt!=stopped && midiPrompt!=preview,
+               "Note Bass waits silently with a distinct MIDI prompt during DAW playback")) return false;
+    clap_event_note_t bassNote {};
+    bassNote.header={sizeof(bassNote),0,CLAP_CORE_EVENT_SPACE_ID,CLAP_EVENT_NOTE_ON,0};
+    bassNote.note_id=-1;
+    bassNote.key=48;
+    bassNote.velocity=.85;
+    clap_input_events_t bassInput {&bassNote.header,midi.size,midi.get};
+    block.in_events=&bassInput;
+    if (!hostBlock() || !check(peak()>.0001,"Note Bass sounds on an incoming MIDI note")) return false;
+    bassNote.header.type=CLAP_EVENT_NOTE_OFF;
+    if (!hostBlock()) return false;
+    block.in_events=input;
+    for (int lap=0;lap<8;++lap)
+    {
+        for (int i=0;i<12;++i)
+        {
+            if (!ui.preset_load(plug,(i+lap)%6) || !hostBlock()) return false;
+        }
+        const int finalPreset=lap%5;
+        if (!ui.preset_load(plug,finalPreset)) return false;
+        double level=0;
+        for (int i=0;i<480;++i)
+        {
+            if (!hostBlock()) return false;
+            if (i>=120) level=std::max(level,peak());
+        }
+        if (!check(level>.0001,"FL-style transport keeps sequenced presets audible after browsing")) return false;
+    }
     transport.flags&=~CLAP_TRANSPORT_IS_PLAYING;
     process();
     if (!check(area(desk.play)==stopped,"host stop does not resume preview")) return false;
     block.transport=nullptr;
+
+    clap_istream_t restoreBrowse {&beforeBrowsing,MemStream::read};
+    if (!state.load(plug,&restoreBrowse)) return false;
+    process();
 
     // Two seeds must actually sound before the sequencer offers the earlier one for recall.
     set("Seed Mode",1);

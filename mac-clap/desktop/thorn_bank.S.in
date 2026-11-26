@@ -14,3 +14,13 @@ _slink_desktop_wordmark:
 .p2align 4
 _slink_footer_storm:
 .incbin "@FOOTER_BANK@"
+.globl _slink_desktop_header
+.private_extern _slink_desktop_header
+.p2align 4
+_slink_desktop_header:
+.incbin "@HEADER_BANK@"
+.globl _slink_desktop_type
+.private_extern _slink_desktop_type
+.p2align 4
+_slink_desktop_type:
+.incbin "@TYPE_BANK@"

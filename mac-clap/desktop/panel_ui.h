@@ -2,6 +2,7 @@
 #include "desktop_wrapper.h"
 #include "console_layout.h"
 #include "footer_storm.h"
+#include "header_plate.h"
 #include <array>
 
 namespace hdslave_desktop
@@ -47,6 +48,7 @@ class PanelUI
     Canvas c_;
     ConsoleLayout layout_;
     FooterStorm footerStorm_;
+    HeaderPlate crestPlate_, lcdPlate_, transportPlate_, brandPlate_, regenPlate_;
     std::vector<uint32_t> frame_, art_, previousArt_;
     struct Reading
     {

@@ -108,6 +108,7 @@ struct DesktopPlugin
     std::atomic<bool> processing { false };
     std::atomic<bool> inAudioCall { false };
     std::atomic<uint64_t> lastProcessMs { 0 };
+    std::atomic<bool> callbackPending {false};
     std::atomic<uint32_t> pendingRescanFlags { 0 };
     std::atomic<bool> pendingStateDirty { false };
     bool inInternalPresetLoad = false;
