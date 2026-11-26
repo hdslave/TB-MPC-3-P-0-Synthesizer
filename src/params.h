@@ -178,7 +178,7 @@ constexpr float decayShortest = 0.2f, decayLongest = 2.0f;
 inline float decaySeconds (float k) { return decayShortest * std::pow (decayLongest / decayShortest, k); }
 inline float decayKnob (float s) { return std::log (s / decayShortest) / std::log (decayLongest / decayShortest); }
 
-// Slide Time: the 303 glide's time constant (Slide: Glide, and a note's glide in Mode: Notes), 5 ms to 200 ms; it reads
+// Slide Time: the 303 glide's time constant (Slide: 303, and a note's glide in Mode: Notes), 5 ms to 200 ms; it reads
 // as the time to arrive (95 %, three time constants). The 303's own, 20 ms (there in 60 ms), is the default, and the
 // default gives exactly that constant (the sound is the same to the bit as before the knob was added).
 constexpr float glideSeconds = 0.020f;
@@ -204,7 +204,7 @@ constexpr float driveOctaves = 5.0f;
 constexpr double moduleTickRate = 1.0e6 / 60.0;
 
 inline const char* const waveChoices[] = { "Saw", "Square" };
-inline const char* const glideChoices[] = { "Tick", "Glide" };
+inline const char* const glideChoices[] = { "TB-3PO", "303" };
 // Full-period seed succession for an explicit roll while transport resets are locked.
 inline uint16_t nextPanelSeed(uint16_t seed) { return uint16_t(25173u * seed + 13849u); }
 inline const char* const seedModeChoices[] = { "Random", "Locked" };
@@ -353,6 +353,12 @@ inline bool parseParam (const Param& p, const char* text, float& v, const TextCo
         for (int i = 0; i < n; ++i)
             if (strcasecmp (text, p.choices[i]) == 0)
                 return v = (float) i, true;
+    }
+    // Hosts can still enter the two earlier labels for the same slide values.
+    if (p.id == ParamId::glide)
+    {
+        if (strcasecmp (text, "Tick") == 0) return v = 0.f, true;
+        if (strcasecmp (text, "Glide") == 0) return v = 1.f, true;
     }
     if (p.kind == Kind::button)
     {

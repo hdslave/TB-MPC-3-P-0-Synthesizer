@@ -59,8 +59,8 @@ In the order Melodee's Edit page lists them, three to a page.
 | Accent | 0 – 100 % | How much an accented step (TB-3PO's 5 V gate) lifts the VCA (up to +7 dB) and opens the filter through the accent sweep. Accents in a row at high resonance build up. |
 | Waveform | Saw / Square | |
 | Volume | 0 – 100 % | |
-| Slide | Tick / Glide | **Tick**: the applet's slide as the module plays it (see below). **Glide**: a glide both ways, as long as Slide Time. |
-| Slide Time | 15 – 600 ms | — (new): the 303 glide's time to arrive (95 %), for Slide: Glide and the glides of Mode: Notes. 60 ms (a time constant of 20 ms) is the 303's and the default. The applet's slide keeps its own speed. |
+| Slide | TB-3PO / 303 | **TB-3PO** uses the applet’s tick-based slide. **303** glides in both directions and uses Slide Time. |
+| Slide Time | 15 – 600 ms | — (new): the 303 glide's time to arrive (95 %), for **303** slides and glides in **Notes** mode. 60 ms (a time constant of 20 ms) is the 303's and the default. The applet's slide keeps its own speed. |
 | Accent Decay | 200 ms – 2 s | — (new): the MEG's decay on an accented step. Its default, the shortest, is the 303's, whose accented steps always take it; longer lets an accent's sweep hang. |
 | Drive | 0 – 100 % | — (new): after the VCA, a soft clipper driven up to +30 dB, anti-aliased (first-order antiderivative). Its level is made up so a playing pattern stays within about -2 to +3 dB of the dry voice; a held, dark note (few harmonics of its own) still grows louder as it gains them, up to about +12 dB. 0 is no drive at all. |
 | Filter | Diode / Twin Peak / 18 dB | — (new): see [Filter](#filter). |
@@ -199,7 +199,7 @@ These come from the applet's code and are kept so the plug-in plays what the mod
 
 - **Slides only go down.** The applet's slide was meant as an exponential glide; its integer arithmetic moves down by
   3/128 semitone each 1/16666 s (an octave in about 31 ms) and never moves up: a step slid into from below holds the
-  step before's pitch. Slide: Glide glides both ways.
+  step before's pitch. The **303** mode glides in both directions.
 - **Some low notes drop an extra octave.** The quantizer gives a note exactly a whole number of octaves below the
   root (an octave-down root note, or the root with Octave below 0) one octave too low, plus whatever note a longer
   scale chosen earlier left in its table.
@@ -284,16 +284,20 @@ Slink on freesp16 opens on the **Thorn Crown Pattern** page. Sixteen columns sho
 
 **Play** auditions the sequence locally at the host tempo while the transport is stopped. **Stop** ends that preview. Starting freesp16’s transport takes over and the button reads **Sync**. Tap the thorn crest to pause or resume its camera independently. **Regen** rolls a fresh seed each time you tap it. **Locked** keeps that seed across transport starts. Tap the seed value to recall a previous seed. Drag the barcode to adjust the seed.
 
-Tap **Perform**, **Voice**, **Glide**, **LFO**, **Pattern** or **Clock** along the bottom of any Slink page. The cobalt underline marks the active bank. Turn its six encoders or drag up or down on the corresponding values in the host strip below. The main selector also changes banks. The crest, transport and seed controls stay in the same place throughout. On **Voice**, drag across the response graph to change cutoff or upward to increase resonance. The diamond follows your finger. Frequency is logarithmic and the silver curve shows the modeled gain in dB. On LFO, dragging horizontally across either plot changes its rate and dragging upward increases its depth. Perform, Glide and Clock have numbered audition headers and pitch cells that you can drag vertically. Drag a parameter readout to change its value.
+Tap **Perform**, **Voice**, **Slide**, **LFO**, **Pattern** or **Clock** along the bottom of any Slink page. The cobalt underline marks the active bank. Turn its six encoders or drag up or down on the corresponding values in the host strip below. The main selector also changes banks. The crest, transport and seed controls stay in the same place throughout. On **Voice**, drag across the response graph to change cutoff or upward to increase resonance. The diamond follows your finger. Frequency is logarithmic and the silver curve shows the modeled gain in dB. On LFO, dragging horizontally across either plot changes its rate and dragging upward increases its depth. Perform, Slide and Clock have numbered audition headers and editable pitch cells. Drag a parameter readout to change its value.
+
+On **Slide**, tap **TB-3PO** or **303** above the pitch ribbon. The connectors preview the first 60 ms of each slide. Thin blue bars show the gate fraction and violet bars mark gates held through a slide. Drag **303 Time**, **Gate Length**, **Octave** or **Transpose** to edit it directly.
+
+On **Clock**, the timing ruler marks each step pair. The dim line shows its straight midpoint and the blue tick moves with **Swing**. Wider ticks mark four-quarter-note boundaries from the start of the pattern. Drag **Division**, **Swing**, **Reset**, **Steps** or **Mode** to change it.
 
 | Bank | Encoders 1–6 |
 | --- | --- |
 | Perform | Cutoff, Resonance, Env Mod, Decay, Accent, Volume |
-| Voice | Waveform, Tuning, Filter, Peak Spread, Drive, Volume |
-| Glide | Slide, Slide Time, Accent Decay, Gate, Accent, Decay |
-| LFO | Pitch Amount, Pitch Speed, Cutoff Amount, Cutoff Speed, Tuning, Transpose |
+| Voice | Waveform, Tuning, Filter, Peak Spread, Drive, Accent Decay |
+| Slide | Slide, Slide Time, Gate, Octave, Transpose |
+| LFO | Pitch Amount, Pitch Speed, Cutoff Amount, Cutoff Speed |
 | Pattern | Seed Mode, Seed, Mutate, Density, Scale, Root |
-| Clock | Mode, Clock Div, Swing, Reset, Steps, Octave |
+| Clock | Clock Div, Swing, Reset, Steps, Mode |
 
 In **Sequence** mode, tap a step number or slide across the numbered headers to audition individual steps. The physical pads do the same in freesp16’s **Scale** pad mode with the chromatic scale, centre window and zero key shift. MIDI notes 60–75 address the first sixteen steps. A pattern longer than sixteen extends that range, up to note 91. Other notes transpose the sequence. In **Notes** mode the pads play chromatic pitches. **Regen** resets the generator and **Seed back** recalls a previous seed. The six factory patches are under the host’s **Presets** menu.
 

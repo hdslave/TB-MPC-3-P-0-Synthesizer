@@ -1,6 +1,7 @@
 // SP-16 touch panel. The host paints the six encoder values below this canvas.
 #pragma once
 #include "screen.h"
+#include "tb3po.h"
 #include "sixteen_screen.h"
 #include "sp16_graphics.h"
 #include <array>
@@ -9,14 +10,15 @@ namespace tbmpc::sp16
 {
 using namespace ParamId;
 struct Bank { const char* name; std::array<uint32_t, 6> ids; };
-enum Page { performPage, voicePage, glidePage, lfoPage, patternPage, clockPage };
+enum Page { performPage, voicePage, slidePage, lfoPage, patternPage, clockPage };
 inline constexpr Bank banks[] = {
     {"Perform", {cutoff, resonance, envMod, decay, accent, volume}},
-    {"Voice",   {waveform, tuning, filter, peakSpread, drive, volume}},
-    {"Glide",   {glide, slideTime, accentDecay, gate, accent, decay}},
-    {"LFO",     {pitchLfoAmount, pitchLfoSpeed, cutoffLfoAmount, cutoffLfoSpeed, tuning, transpose}},
+    {"Voice",   {waveform, tuning, filter, peakSpread, drive, accentDecay}},
+    {"Slide",   {glide, slideTime, gate, octave, transpose, SIXTEEN_INVALID_PARAM_ID}},
+    {"LFO",     {pitchLfoAmount, pitchLfoSpeed, cutoffLfoAmount, cutoffLfoSpeed,
+                 SIXTEEN_INVALID_PARAM_ID, SIXTEEN_INVALID_PARAM_ID}},
     {"Pattern", {seedMode, seed, mutate, density, scale, root}},
-    {"Clock",   {mode, clockDiv, swing, reset, steps, octave}}
+    {"Clock",   {clockDiv, swing, reset, steps, mode, SIXTEEN_INVALID_PARAM_ID}}
 };
 using hdui::Ink;
 constexpr Ink bg = 0xff080812, cell = 0xff100d1a, grid = 0xff302840;
@@ -110,6 +112,27 @@ namespace tbmpc::sp16
 {
 class Panel
 {
+    static constexpr int ribbonY = 103, ribbonHeight = 25;
+    struct Card { int x, w; };
+
+    int ribbonControls() const
+    {
+        if (bank == performPage) return 2;
+        return bank == slidePage || bank == clockPage ? 5 : 0;
+    }
+    Card ribbonCard(int index) const
+    {
+        if (bank == performPage || (bank == slidePage && index == 0))
+            return {gridLeft+190*index,186};
+        const int first = bank == slidePage ? gridLeft+190 : gridLeft;
+        const int count = bank == slidePage ? 4 : 5;
+        const int slot = bank == slidePage ? index-1 : index;
+        const int available = gridLeft+gridWidth-first+4;
+        const int x = first + slot*available/count;
+        return {x,first + (slot+1)*available/count - x-4};
+    }
+    static constexpr int slideChoiceX = 54, slideChoiceWidth = 66, slideChoiceGap = 3;
+
 public:
     int bank = patternPage;
     ThornPage thorn;
@@ -131,11 +154,23 @@ public:
         thorn.capturedBank=-1;
         finger=-1;
     }
-    uint32_t ribbonParam(int column) const
+    int ribbonColumnAt(int x, int y) const
     {
-        if (bank==performPage) return column ? resonance : cutoff;
-        if (bank==glidePage) return column ? slideTime : glide;
-        return column ? swing : clockDiv;
+        if (y < ribbonY || y >= ribbonY+ribbonHeight) return -1;
+        for (int i=0; i<ribbonControls(); ++i)
+        {
+            const auto card = ribbonCard(i);
+            if (x >= card.x && x < card.x+card.w) return i;
+        }
+        return -1;
+    }
+    int slideChoiceAt(int x, int y) const
+    {
+        if (bank != slidePage || ribbonColumnAt(x,y) != 0 || x < slideChoiceX)
+            return -1;
+        const int offset = x-slideChoiceX;
+        const int index = offset/(slideChoiceWidth+slideChoiceGap);
+        return index < 2 && offset%(slideChoiceWidth+slideChoiceGap) < slideChoiceWidth ? index : -1;
     }
     static StepLane patternLane(int y)
     {
@@ -145,6 +180,8 @@ public:
         return y<219 ? StepLane::accent : StepLane::slide;
     }
     int ribbonTop(int step) const { return gridTop + (step/16)*gridHeight/(shown.steps>16 ? 2 : 1); }
+    int ribbonBottom(int row) const { return gridTop + (row+1)*gridHeight/(shown.steps>16 ? 2 : 1) - 1; }
+    int ribbonPitchTop(int row) const { return ribbonBottom(row) - (shown.steps>16 ? 28 : 41); }
     bool localPlay = false;
     int finger = -1;
     bool dirty = true;
@@ -178,6 +215,8 @@ public:
             return -1;
         const int rows = shown.steps > 16 ? 2 : 1;
         const int row = ((y - gridTop + 1) * rows - 1) / gridHeight;
+        if (bank == clockPage && y >= ribbonTop(row*16)+14 && y < ribbonPitchTop(row))
+            return -1;
         const int col = ((x - gridLeft + 1) * 16 - 1) / gridWidth;
         const int index = row * 16 + col;
         return index < shown.steps ? index : -1;
@@ -218,7 +257,7 @@ public:
             if (bodyChanged) drawVoice(r);
         }
         if (bank==lfoPage && bodyChanged) drawLfos(r);
-        if ((bodyChanged || sequenceChanged) && (bank==performPage || bank==glidePage || bank==clockPage))
+        if ((bodyChanged || sequenceChanged) && (bank==performPage || bank==slidePage || bank==clockPage))
             drawPattern(r);
         const int button=value(mode)>=.5f ? 3 : shown.running ? (localPlay?1:2) : 0;
         const bool headerChanged=thorn.draw(r,shown,s.now_ms,layoutChanged || paramsChanged || sequenceChanged,
@@ -244,43 +283,112 @@ private:
             const bool active = i==bank;
             r.plate(x,tabTop+2,tabWidth-2,33,active?0xff4d75de:0xff2b203b,
                     active?0xff202f7f:0xff100d1b,active?0xffb1c9ff:0xff675a79);
-            ThornPage::bankLabel(r,i,x,tabTop+8);
+            if (i == slidePage)
+            {
+                const char* label = "SLIDE";
+                r.text(x+(tabWidth-2-Raster::measure(label,rave::small))/2,tabTop+11,label,paper);
+            }
+            else ThornPage::bankLabel(r,i,x,tabTop+8);
             if (active) r.box(x+9,tabTop+30,tabWidth-20,2,0xffbbd1ff);
         }
     }
-    void drawPattern(const Raster& r) const
+    void drawSlideSwitch(const Raster& r) const
     {
-        r.box(0,bodyTop,780,tabTop-bodyTop,bg);
-        // Each ribbon puts the current bank's two performance readings above the notes.
-        const TextContext ctx {value(resonance),value(filter),value(peakSpread)};
+        r.text(gridLeft+9,109,"Slide",muted);
         for (int i=0; i<2; ++i)
         {
-            const uint32_t id = ribbonParam(i);
+            const int x = slideChoiceX+i*(slideChoiceWidth+slideChoiceGap);
+            const bool active = i == int(value(glide));
+            r.plate(x,ribbonY+2,slideChoiceWidth,ribbonHeight-4,active?0xff456ac4:0xff1d192d,
+                    active?0xff242e72:0xff14101e,active?0xff95b7fd:0xff514761);
+            const char* label = glideChoices[i];
+            r.text(x+(slideChoiceWidth-Raster::measure(label,rave::small))/2,109,label,active?paper:muted);
+        }
+    }
+
+    void drawRibbonControls(const Raster& r) const
+    {
+        const TextContext ctx {value(resonance),value(filter),value(peakSpread)};
+        for (int i=0; i<ribbonControls(); ++i)
+        {
+            const auto [x,width] = ribbonCard(i);
+            r.plate(x,ribbonY,width,ribbonHeight,0xff292036,0xff151121,0xff514761);
+            if (bank == slidePage && i == 0)
+            {
+                drawSlideSwitch(r);
+                continue;
+            }
+            const uint32_t id = banks[bank].ids[i];
             const auto& param = paramTable[paramIndex(id)];
             char text[64];
             formatParam(param,value(id),text,sizeof(text),ctx);
-            const int x = 8+i*190;
-            r.plate(x,103,186,25,0xff292036,0xff151121,0xff514761);
-            r.text(x+9,109,param.name,muted);
-            r.right(x+176,109,text,paper);
+            const char* label = param.name;
+            if (id == slideTime) label = "303 Time";
+            if (id == gate) label = "Gate Length";
+            if (id == clockDiv) label = "Division";
+            r.text(x+9,109,label,muted);
+            r.right(x+width-10,109,text,paper);
         }
-        r.box(500,114,13,3,steel);
-        r.text(519,109,"Gate",muted);
-        accentMark(r,575,109,paper);
-        r.text(590,109,"Accent",muted);
-        slideMark(r,681,116,paper);
-        r.text(699,109,"Slide",muted);
 
+        if (bank == performPage)
+        {
+            r.box(500,114,13,3,steel);
+            r.text(519,109,"Gate",muted);
+            accentMark(r,575,109,paper);
+            r.text(590,109,"Accent",muted);
+            slideMark(r,681,116,paper);
+            r.text(699,109,"Slide",muted);
+        }
+    }
+
+    void drawClockRuler(const Raster& r, int row, int top, int bottom, int focus) const
+    {
+        const int count = std::min(16,int(shown.steps)-row*16);
+        const int middle = (top+bottom)/2;
+        const double beats = clockDivBeats[int(value(clockDiv))];
+        const double swingShare = value(swing);
+        for (int col=0; col<count; col+=2)
+        {
+            const int end = stepX(std::min(count,col+2));
+            const int x = stepX(col);
+            const int straight = stepX(col+1);
+            const bool paired = col+1 < count;
+            const int split = paired ? x+int(std::lround((end-x)*swingShare)) : end;
+            const double beat = (row*16+col)*beats;
+            const bool bar = std::abs(beat/4-std::round(beat/4)) < 1e-6;
+            const bool first = focus == row*16+col;
+            const bool second = paired && focus == row*16+col+1;
+            r.box(x+1,top+1,end-x-2,bottom-top-1,first || second ? 0xff1c2a58 : 0xff111225);
+            r.box(x+2,top+(bar?1:3),bar?2:1,bottom-top-(bar?2:6),bar?paper:steel);
+            if (paired) r.box(straight,top+2,1,bottom-top-4,0xff69588e);
+            r.box(x+6,middle-3,split-x-8,6,first?0xff7295ee:0xff36497f);
+            r.box(x+6,middle-3,split-x-8,1,first?paper:ice);
+            if (paired)
+            {
+                r.box(split+3,middle-3,end-split-6,6,second?0xff8972d6:0xff4d376d);
+                r.box(split+3,middle-3,end-split-6,1,second?paper:0xffb292eb);
+                r.box(split,middle-4,2,8,second?paper:ice);
+            }
+        }
+    }
+
+    void drawPattern(const Raster& r) const
+    {
+        r.box(0,bodyTop,780,tabTop-bodyTop,bg);
+        drawRibbonControls(r);
         if (shown.steps <= 0) return;
         const int rows = shown.steps > 16 ? 2 : 1;
         const auto bounds = std::minmax_element(shown.pitch, shown.pitch + shown.steps);
         const int low = *bounds.first, range = std::max(128, int(*bounds.second)-low);
+        const bool showSlide = bank == slidePage, mode303 = value(glide) >= .5f;
+        constexpr double previewSeconds = .06;
+        const double glideSpeed = showSlide && mode303 ? previewSeconds/slideSeconds(value(slideTime)) : 0;
         for (int row = 0; row < rows; ++row)
         {
             const int numberTop = ribbonTop(row*16);
             const int top = numberTop+14;
-            const int bottom = gridTop + (row+1)*gridHeight/rows - 1;
-            const int plotEnd = bottom - (rows == 1 ? 41 : 28);
+            const int bottom = ribbonBottom(row);
+            const int plotEnd = ribbonPitchTop(row);
             r.box(gridLeft, top, gridWidth, plotEnd-top, cell);
             const int focus = finger >= 0 ? finger : shown.running ? shown.current : -1;
             if (focus >= row*16 && focus < (row+1)*16)
@@ -288,11 +396,15 @@ private:
                 const int col = focus%16;
                 r.box(stepX(col), top, stepX(col+1)-stepX(col), plotEnd-top, 0xff293b80);
             }
-            for (int line=0; line<4; ++line)
-                r.box(gridLeft, top+3+line*(plotEnd-top-6)/3, gridWidth, 1, grid);
-            for (int col=0; col<16; ++col)
-                r.box(stepX(col), top, 1, plotEnd-top, col%4 ? grid : 0xff655975);
-            const int pad=rows==1 ? 7 : 2;
+            if (bank == clockPage) drawClockRuler(r,row,top,plotEnd,focus);
+            else
+            {
+                for (int line=0; line<4; ++line)
+                    r.box(gridLeft, top+3+line*(plotEnd-top-6)/3, gridWidth, 1, grid);
+                for (int col=0; col<16; ++col)
+                    r.box(stepX(col), top, 1, plotEnd-top, col%4 ? grid : 0xff655975);
+            }
+            const int pad=rows==1 ? 7 : bank==slidePage ? 4 : 2;
             auto pitchY = [&](int i) { return plotEnd-pad-(shown.pitch[i]-low)*(plotEnd-top-2*pad)/range; };
             for (int i=row*16; i<std::min((row+1)*16, int(shown.steps)); ++i)
             {
@@ -302,25 +414,44 @@ private:
                 r.box(x+1,numberTop,w-2,14,focus==i?0xff28396c:0xff181322);
                 r.text(x+(w-Raster::measure(number,rave::small))/2,numberTop,number,focus==i?paper:muted);
                 const bool hit = focus == i, gated = (shown.gates >> i) & 1u;
-                if (hit) r.box(x, top, w, 2, ice);
-                if ((shown.slides >> i) & 1u)
+                if (bank != clockPage)
                 {
-                    if (col < 15 && i+1 < shown.steps)
+                    if (hit) r.box(x, top, w, 2, ice);
+                    const bool sliding = (shown.slides >> i) & 1u;
+                    if (sliding && col < 15 && i+1 < shown.steps)
                     {
-                        double prev = y;
+                        const int target = pitchY(i+1), startPitch = shown.pitch[i], endPitch = shown.pitch[i+1];
+                        double previous = y;
                         for (int j=0; j<=12; ++j)
                         {
                             const double t = j/12.0;
-                            const double next = y+(pitchY(i+1)-y)*t*t*(3-2*t);
-                            r.trace(x+w-6+j, prev, next, muted);
-                            prev = next;
+                            double amount = t*t*(3-2*t);
+                            if (showSlide && mode303)
+                                amount = -std::expm1(-t*glideSpeed);
+                            else if (showSlide && endPitch != startPitch)
+                            {
+                                const auto ticks = int64_t(t*previewSeconds*moduleTickRate);
+                                amount = double(Tb3po::slideAfter(startPitch,endPitch,ticks)-startPitch)/(endPitch-startPitch);
+                            }
+                            const double next = y+(target-y)*amount;
+                            r.trace(x+w-6+j,previous,next,showSlide ? ice : muted);
+                            previous = next;
                         }
                     }
-                    else slideMark(r, x+w-16, plotEnd-4, muted);
+                    else if (sliding) slideMark(r, x+w-16, plotEnd-4, muted);
+                    if (gated) r.box(x+5,y-1,w-10,4,hit ? paper : steel);
+                    else r.frame(x+5,y-2,w-10,4,muted);
+                    if ((shown.accents >> i) & 1u) accentMark(r,x+w/2-4,top+3,ice);
+                    if (showSlide)
+                    {
+                        r.box(x+3,plotEnd-3,w-6,2,0xff292745);
+                        if (gated)
+                        {
+                            const int length = int(std::lround((w-6)*(sliding ? 1.f : value(gate))));
+                            r.box(x+3,plotEnd-3,length,2,sliding ? 0xffbf9af7 : ice);
+                        }
+                    }
                 }
-                if (gated) r.box(x+5, y-1, w-10, 4, hit ? paper : steel);
-                else r.frame(x+5, y-2, w-10, 4, muted);
-                if ((shown.accents >> i) & 1u) accentMark(r, x+w/2-4, top+3, ice);
                 r.plate(x+1,plotEnd,w-2,bottom-plotEnd+1,hit?0xff151c32:0xff09090e,
                         hit?0xff080b16:0xff020204,hit?0xff8ca8fc:0xff292333);
                 ThornPage::pitchLabel(r,shown.pitch[i],hit,x+(w-42)/2,plotEnd+(rows==1?0:-3));

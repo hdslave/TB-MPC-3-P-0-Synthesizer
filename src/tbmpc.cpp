@@ -1094,8 +1094,16 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
         panel.lfoLane=lane;
         return dragControl(p,x,y);
     }
-    if (panel.bank!=sp16::patternPage && y>=103 && y<128 && x>=8 && x<384 && (x-8)%190<186)
-        return captureParam(panel.ribbonParam((x-8)/190));
+    if (const int choice = panel.slideChoiceAt(x,y); choice >= 0)
+    {
+        hdui::Edits edits;
+        edits.set(ParamId::glide,float(choice));
+        applyScreenEdits(p,edits);
+        return true;
+    }
+    const int ribbonColumn = panel.ribbonColumnAt(x,y);
+    if (ribbonColumn >= 0 && (panel.bank != sp16::slidePage || ribbonColumn > 0))
+        return captureParam(sp16::banks[panel.bank].ids[ribbonColumn]);
     const int step=panel.stepAt(x,y);
     if (step<0) return false;
     panel.lane=panel.bank==sp16::patternPage ? Panel::patternLane(y)

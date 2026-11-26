@@ -266,9 +266,12 @@ void controls()
     r.key (Key::wheel, -3);
     bindings (r, P::tuning, P::volume, P::cutoffLfoAmount);
     r.go (1);
+    bindings (r, P::glide, P::slideTime, P::filter);
     r.key (Key::push);
     r.key (Key::nudge, 1);
-    check (r.get (P::filter) == 1, "choice");
+    check (r.get (P::glide) == 1, "303 slide");
+    r.key (Key::nudge, -1);
+    check (r.get (P::glide) == 0, "TB-3PO slide");
     r.key (Key::push);
     r.go (1);
     r.key (Key::wheel, 3);
@@ -280,7 +283,7 @@ void controls()
     check (r.get (P::density) == 4, "integer");
     r.key (Key::push);
     r.key (Key::nudge, -1);
-    bindings (r, P::filter, P::peakSpread, P::drive);
+    bindings (r, P::glide, P::slideTime, P::filter);
     r.key (Key::nudge, -1);
     bindings (r, P::cutoff, P::resonance, P::envMod);
     r.key (Key::nudge, -1);

@@ -345,6 +345,12 @@ inline bool parseParam (const Param& p, const char* text, float& v, const TextCo
             if (strcasecmp (text, p.choices[i]) == 0)
                 return v = (float) i, true;
     }
+    // Hosts can still enter the two earlier labels for the same slide values.
+    if (p.id == ParamId::glide)
+    {
+        if (strcasecmp (text, "Tick") == 0) return v = 0.f, true;
+        if (strcasecmp (text, "Glide") == 0) return v = 1.f, true;
+    }
     if (p.kind == Kind::button)
     {
         v = (strcasecmp (text, "Pressed") == 0 || std::atof (text) >= 0.5) ? 1.0f : 0.0f;

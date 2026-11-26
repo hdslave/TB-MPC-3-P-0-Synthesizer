@@ -11,13 +11,14 @@ inline constexpr hdui::Field performance[] = {
 };
 inline constexpr hdui::Field voice[] = {
     performance[0], performance[1], performance[2],
-    { ParamId::decay, "DECAY" }, { ParamId::accent, "ACCENT" }, { ParamId::waveform, "WAVEFORM" },
+    { ParamId::decay, "DECAY" }, { ParamId::accent, "ACCENT" }, { ParamId::accentDecay, "ACCENT DECAY" },
+    { ParamId::waveform, "WAVEFORM" },
     { ParamId::tuning, "TUNING" }, { ParamId::volume, "VOLUME" },
     { ParamId::cutoffLfoAmount, "LFO AMOUNT" }, { ParamId::cutoffLfoSpeed, "LFO SPEED" },
 };
 inline constexpr hdui::Field tone[] = {
+    { ParamId::glide, "SLIDE" }, { ParamId::slideTime, "303 TIME" },
     { ParamId::filter, "FILTER" }, { ParamId::peakSpread, "PEAK SPREAD" }, { ParamId::drive, "DRIVE" },
-    { ParamId::glide, "SLIDE" }, { ParamId::slideTime, "SLIDE TIME" }, { ParamId::accentDecay, "ACCENT DECAY" },
     { ParamId::pitchLfoAmount, "LFO AMOUNT" }, { ParamId::pitchLfoSpeed, "LFO SPEED" },
 };
 inline constexpr hdui::Field sequencer[] = {

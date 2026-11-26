@@ -559,7 +559,6 @@ private:
             const char* name = group ? fields().fields[row+k].label : layout::performance[k].label;
             if (id == ParamId::accentDecay) name = "ACC DECAY";
             if (id == ParamId::peakSpread) name = "PEAK SPRD";
-            if (id == ParamId::slideTime) name = "SLD TIME";
             char label[24];
             std::snprintf (label, sizeof (label), "K%d %s", k+1, name);
             const int textEnd = cx-14;

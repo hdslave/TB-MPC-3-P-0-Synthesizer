@@ -8,7 +8,7 @@ Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and a
 
 Slink 0.7.3 on macOS and Windows uses the SP-16 Razor Choir score. Each note has its own chrome letter with a separate sharp and octave. The plate beside the seed enlarges the current note. Click a step to inspect it there. Key and scale sit below the score beside the animated chrome whips, pitch contour and position rail. The counter offers **Play** and **Stop** in hosts that support CLAP transport requests. Other hosts show their transport state there.
 
-All 34 host parameters fit on one resizable panel down to 960 × 540.
+All 34 host parameters fit on one resizable panel down to 960 × 540. In **Tone**, click **TB-3PO** or **303** to select the slide mode and drag **303 Time** to set the glide speed. The pitch and cutoff LFO pairs sit together below the filter settings. **Voice** groups Accent with Accent Decay. **Sequencer** puts Gate Length beside Octave and Transpose.
 
 - Start playback in the host to advance the cobalt playhead. The chrome face turns on its own 4.8-second cycle. The lower strip loops two metal whips and forked lightning. Click a step to inspect it. New instances start with a locked seed. Click Regen to roll another seed and keep it for the next Play. Patterns longer than 16 steps have two banks and a **Follow** switch.
 - Click the enamel **Regen** button for a new pattern. Drag the seed under the Slink wordmark to set a seed. Click **Key** or **Scale** to choose from a list.
@@ -20,8 +20,7 @@ Build from this checkout to use the updated editor. The [0.6.0 release](https://
 
 Slink 0.6.0 is the new name of TB-MPC-3-P-0. Existing projects use the same CLAP ID and factory preset keys. On upgrade, replace the previous plug-in in place, keeping its installed filename if the host stores paths. Install one copy per host.
 
-Version 0.5.5 added a sine pitch LFO on **Tone** and a separate sine cutoff LFO at the bottom of **Voice**.
-Both Speed controls follow the host BPM and snap to 1/1, 3/4, 1/2, and 1/3 beat per cycle.
+The pitch and cutoff LFOs are separate sine modulators. Both speed controls follow the host BPM and snap to 1/1, 3/4, 1/2, and 1/3 beat per cycle.
 
 ## Build & Install (macOS)
 

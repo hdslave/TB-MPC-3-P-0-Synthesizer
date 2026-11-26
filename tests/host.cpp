@@ -420,8 +420,14 @@ void testParameters()
         }
         CHECK (std::fabs (a.valueOf (name, "0.625 beat") - 1.6) < 1.0e-6);
     }
-    // The seed reads as the module shows it, four hex digits; density as -7..+7; the applet's first scale.
     char text[64] = {};
+    CHECK (a.params->value_to_text (a.plugin, a.id ("Slide"), 0, text, sizeof (text)));
+    CHECK (std::string (text) == "TB-3PO");
+    CHECK (a.params->value_to_text (a.plugin, a.id ("Slide"), 1, text, sizeof (text)));
+    CHECK (std::string (text) == "303");
+    CHECK (a.valueOf ("Slide", "TB-3PO") == 0 && a.valueOf ("Slide", "303") == 1);
+    CHECK (a.valueOf ("Slide", "Tick") == 0 && a.valueOf ("Slide", "Glide") == 1);
+    // The seed reads as the module shows it, four hex digits; density as -7..+7; the applet's first scale.
     a.params->value_to_text (a.plugin, a.id ("Seed"), 0xbeef, text, sizeof (text));
     CHECK (std::string (text) == "beef");
     CHECK (a.valueOf ("Seed", "a3f0") == 0xa3f0);
@@ -1695,13 +1701,23 @@ void testScreen (const std::string& folder)
     // VOICE: Plus; K1-K3 follow the cursor; the filter's response beside.
     CHECK (in (MELODEE_SCREEN_STEP, 1));
     CHECK ((knobs() == std::vector<uint32_t> { a.id ("Cutoff"), a.id ("Resonance"), a.id ("Env Mod") }));
-    CHECK (in (MELODEE_SCREEN_WHEEL, 6));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 5));
+    CHECK (knobs()[0] == a.id ("Accent Decay"));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 2));
     CHECK ((knobs() == std::vector<uint32_t> { a.id ("Tuning"), a.id ("Volume"), a.id ("Cutoff LFO Amt") }));
     CHECK (in (MELODEE_SCREEN_WHEEL, 2));
     CHECK ((knobs() == std::vector<uint32_t> { a.id ("Cutoff LFO Amt"), a.id ("Cutoff LFO Speed"), MELODEE_SCREEN_NO_CONTROL }));
     shot ("voice");
-    // TONE: Filter edited to Twin Peak a detent on; its response.
+    // TONE opens on Slide, with 303 Time beside it.
     CHECK (in (MELODEE_SCREEN_STEP, 1));
+    CHECK ((knobs() == std::vector<uint32_t> { a.id ("Slide"), a.id ("Slide Time"), a.id ("Filter") }));
+    CHECK (in (MELODEE_SCREEN_PUSH, 0));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 1));
+    CHECK (a.value ("Slide") == a.valueOf ("Slide", "303"));
+    CHECK (in (MELODEE_SCREEN_WHEEL, -1));
+    CHECK (a.value ("Slide") == a.valueOf ("Slide", "TB-3PO"));
+    CHECK (in (MELODEE_SCREEN_PUSH, 0));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 2));
     CHECK (in (MELODEE_SCREEN_PUSH, 0));
     CHECK (in (MELODEE_SCREEN_WHEEL, 1));
     CHECK (a.value ("Filter") == a.valueOf ("Filter", "Twin Peak"));
@@ -1709,7 +1725,7 @@ void testScreen (const std::string& folder)
     CHECK (in (MELODEE_SCREEN_WHEEL, 1));
     CHECK (in (MELODEE_SCREEN_PUSH, 0));
     shot ("tone-18db");
-    CHECK (in (MELODEE_SCREEN_WHEEL, 6));
+    CHECK (in (MELODEE_SCREEN_WHEEL, 3));
     CHECK ((knobs() == std::vector<uint32_t> { a.id ("Pitch LFO Amount"), a.id ("Pitch LFO Speed"), MELODEE_SCREEN_NO_CONTROL }));
     shot ("tone-lfo");
     // TB-3PO: Regen is a button: no pot; Push presses it.
@@ -2747,7 +2763,15 @@ void testSp16Panel(const std::string& folder)
     uint32_t ids[6];
     char label[SIXTEEN_TAB_NAME_SIZE];
     std::vector<clap_id> reachable;
-    const char* bankNames[] = {"Perform","Voice","Glide","LFO","Pattern","Clock"};
+    const char* bankNames[] = {"Perform","Voice","Slide","LFO","Pattern","Clock"};
+    const char* bankParams[][6] = {
+        {"Cutoff","Resonance","Env Mod","Decay","Accent","Volume"},
+        {"Waveform","Tuning","Filter","Peak Spread","Drive","Accent Decay"},
+        {"Slide","Slide Time","Gate","Octave","Transpose",nullptr},
+        {"Pitch LFO Amount","Pitch LFO Speed","Cutoff LFO Amt","Cutoff LFO Speed",nullptr,nullptr},
+        {"Seed Mode","Seed","Mutate","Density","Scale","Root"},
+        {"Clock Div","Swing","Reset","Steps","Mode",nullptr}
+    };
     auto openBank = [&](int bank) {
         CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 339+bank*79, 264));
         CHECK(ui->knobs(touch.plugin, ids, label) && std::string(label)==bankNames[bank]);
@@ -2761,16 +2785,51 @@ void testSp16Panel(const std::string& folder)
             openBank(bank);
         }
         CHECK(writePng((folder+"/thorn-"+bankNames[bank]+".png").c_str(),pixels.data(),780,h,stride,1));
-        for (auto id : ids)
+        for (int knob=0; knob<SIXTEEN_KNOB_COUNT; ++knob)
         {
+            const char* name=bankParams[bank][knob];
+            const auto id=ids[knob];
+            CHECK(id==(name ? touch.id(name) : SIXTEEN_INVALID_PARAM_ID));
+            if (!name) continue;
             double v;
             CHECK(touch.params->get_value(touch.plugin, id, &v));
+            CHECK(std::find(reachable.begin(),reachable.end(),id)==reachable.end());
             reachable.push_back(id);
         }
     }
     for (const auto& item : touch.ids)
         if (item.first != "Regen" && item.first != "Seed Back")
             CHECK(std::find(reachable.begin(), reachable.end(), item.second) != reachable.end());
+    openBank(2);
+    const double oldSlideTime=touch.value("Slide Time");
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,150,115));
+    CHECK(touch.value("Slide")==1);
+    ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,150,115);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,88,115));
+    CHECK(touch.value("Slide")==0 && touch.value("Slide Time")==oldSlideTime);
+    ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,88,115);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,150,115));
+    ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,150,115);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,250,115));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,280,115));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,280,115));
+    CHECK(touch.value("Slide")==1 && touch.value("Slide Time")>oldSlideTime);
+    touch.setup({{"Slide",0},{"Slide Time",oldSlideTime}});
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,370,115));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,390,115));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,390,115));
+    CHECK(touch.value("Gate") > .5);
+    touch.setup({{"Gate",.5}});
+    openBank(5);
+    const auto straightClock = pixels;
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,220,115));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,270,115));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,270,115));
+    CHECK(touch.value("Swing") > .5);
+    CHECK(ui->render(touch.plugin,&surface,false));
+    CHECK(!std::equal(pixels.begin()+stride*145,pixels.begin()+stride*158,straightClock.begin()+stride*145));
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,200,152));
+    touch.setup({{"Swing",.5}});
     CHECK(ui->selector_push(touch.plugin));
     CHECK(ui->knobs(touch.plugin, ids, label) && std::string(label) == "Perform");
     CHECK(ui->selector_turn(touch.plugin, 3));

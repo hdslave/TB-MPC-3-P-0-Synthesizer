@@ -22,23 +22,23 @@ constexpr Field voice[] = {{id::cutoff, "Cutoff"},
                            {id::envMod, "Env mod"},
                            {id::decay, "Decay"},
                            {id::accent, "Accent"},
+                           {id::accentDecay, "Accent decay"},
                            {id::waveform, "Waveform"},
                            {id::tuning, "Tuning"},
-                           {id::volume, "Volume"},
-                           {id::cutoffLfoAmount, "Cutoff LFO"},
-                           {id::cutoffLfoSpeed, "LFO speed"}};
-constexpr Field tone[] = {{id::filter, "Filter"},
+                           {id::drive, "Drive"},
+                           {id::volume, "Volume"}};
+constexpr Field tone[] = {{id::glide, "Slide"},
+                          {id::slideTime, "303 Time"},
+                          {id::filter, "Filter"},
                           {id::peakSpread, "Peak spread"},
-                          {id::drive, "Drive"},
-                          {id::glide, "Slide"},
-                          {id::slideTime, "Slide time"},
-                          {id::accentDecay, "Accent decay"},
                           {id::pitchLfoAmount, "Pitch LFO"},
-                          {id::pitchLfoSpeed, "LFO speed"}};
+                          {id::pitchLfoSpeed, "Pitch speed"},
+                          {id::cutoffLfoAmount, "Cutoff LFO"},
+                          {id::cutoffLfoSpeed, "Cutoff speed"}};
 constexpr Field sequence[] = {{id::mode, "Mode"},        {id::seedMode, "Seed mode"}, {id::seedBack, "Seed back"},
                               {id::mutate, "Mutate"},    {id::density, "Density"},    {id::scale, "Scale"},
-                              {id::root, "Root"},        {id::octave, "Octave"},      {id::steps, "Steps"},
-                              {id::gate, "Gate length"}, {id::transpose, "Transpose"}};
+                              {id::root, "Root"},        {id::steps, "Steps"},       {id::gate, "Gate length"},
+                              {id::octave, "Octave"},    {id::transpose, "Transpose"}};
 constexpr Field clockFields[] = {{id::clockDiv, "Division"}, {id::swing, "Swing"}, {id::reset, "Reset"}};
 struct ControlGroup
 {
@@ -77,6 +77,11 @@ void button (Canvas &c, Rect r, std::string_view name, bool active = false)
     c.fillChamfer (r, 3, active ? 0xff6579c2 : lineInk);
     c.fillChamfer (r.inset (1), 2, active ? 0xff303f81 : 0xff1b1729);
     lettering (c, r.inset (3), name, 15, active ? light : muted, Face::regular, 1);
+}
+Rect slideButton (Rect card, int index)
+{
+    const int width = (card.w - 12) / 2;
+    return {card.x + 4 + index * (width + 4), card.y + card.h / 2 - 1, width, card.h / 2};
 }
 }
 
@@ -564,6 +569,16 @@ void PanelUI::drawDeck ()
 #endif
         c_.hline (r.x, r.y, r.w, hot ? lilac : lineInk);
         const int inset = std::clamp (r.w / 15, 7, 14);
+        if (pr.id == id::glide)
+        {
+            const int half = r.h / 2;
+            lettering (c_, {r.x + inset, r.y + 1, r.w - 2 * inset, half - 2},
+                       ctl.label, std::min (16, half), muted);
+            for (int choice = 0; choice < 2; ++choice)
+                button (c_, slideButton (r, choice), tbmpc::glideChoices[choice],
+                        p_->displayValue (ctl.param) == choice);
+            continue;
+        }
         const int d = std::clamp (std::min (r.h * 7 / 10, r.w / 4), 17, 52);
         const int tx = r.x + inset, tw = r.w - 2 * inset - d - 5;
         const int half = r.h / 2;
@@ -1017,6 +1032,18 @@ void PanelUI::mouseDown (float x, float y, int buttonId, uint32_t mods, int clic
     for (const auto &control : controls_)
         if (control.rect.contains (x, y))
         {
+            if (control.param >= 0 && p_->params[size_t (control.param)].id == id::glide
+                && buttonId == 0 && clicks == 1 && !(mods & (kModAlt | kModCmd))
+                && p_->midiLearnTarget.load () != DesktopPlugin::kLearnArmedNoParam)
+            {
+                for (int choice = 0; choice < 2; ++choice)
+                    if (slideButton (control.rect, choice).contains (x, y))
+                    {
+                        p_->setValueOnce (control.param, choice);
+                        lastTouched_ = control.param;
+                        return;
+                    }
+            }
             edit (control.param, control.rect, buttonId, mods, clicks);
             return;
         }

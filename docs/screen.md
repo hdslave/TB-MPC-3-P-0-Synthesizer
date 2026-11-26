@@ -21,12 +21,12 @@ These six captures show the ARM plug-in playing the same 16-step pattern at its 
 | Pattern | Voice |
 | --- | --- |
 | [![Pattern with chrome notes on black keys, gate squares, accent diamonds and slide arrows](slink-sp16-thorn.png)](slink-sp16-thorn.png) | [![Voice with its cutoff and resonance cursor on the filter response](slink-sp16-voice.png)](slink-sp16-voice.png) |
-| **Perform** | **Glide** |
-| [![Perform with cutoff, resonance and a numbered pitch ribbon](slink-sp16-perform.png)](slink-sp16-perform.png) | [![Glide with slide timing and the pitch contour](slink-sp16-glide.png)](slink-sp16-glide.png) |
+| **Perform** | **Slide** |
+| [![Perform with cutoff, resonance and a numbered pitch ribbon](slink-sp16-perform.png)](slink-sp16-perform.png) | [![Slide with TB-3PO and 303 buttons, pitch transitions and gate lengths](slink-sp16-glide.png)](slink-sp16-glide.png) |
 | **LFO** | **Clock** |
-| [![LFO with separate pitch and cutoff modulation curves](slink-sp16-lfo.png)](slink-sp16-lfo.png) | [![Clock with division and swing above the playing steps](slink-sp16-clock.png)](slink-sp16-clock.png) |
+| [![LFO with separate pitch and cutoff modulation curves](slink-sp16-lfo.png)](slink-sp16-lfo.png) | [![Clock with a swing ruler, transport settings and the playing steps](slink-sp16-clock.png)](slink-sp16-clock.png) |
 
-The freesp16 edition opens on the **Thorn Crown** Pattern page. The score uses Razor Choir. Each pitch has a hooked chrome letter, with its octave at the lower right and its sharp directly above. The numbered headers, counter, switches, tabs and parameter labels use Barlow SemiBold. The native panel draws pre-rendered color glyphs with transparent edges over black note keys and a cobalt playhead. The crest follows a twenty-second camera move and the whip strip loops every eight seconds. Both use 30 frames per second. The chrome face blends adjacent poses on its own 4.8-second cycle. All six SP-16 pages share the crest, animated smiley, whip strip, transport and bank tabs. The three pitch ribbons show chrome notes over near-black cells, with a separate numbered row for audition. Voice overlays a cutoff/resonance touch cursor on the modeled filter response. The lower axis shows frequency, the left scale shows gain in dB and the right scale shows resonance. LFO plots its curves on dark violet glass. [SP-16 controls](../README.md#freesp16-on-sp-16)
+The freesp16 edition opens on the **Thorn Crown** Pattern page. The score uses Razor Choir. Each pitch has a hooked chrome letter, with its octave at the lower right and its sharp directly above. The numbered headers, counter, switches, tabs and parameter labels use Barlow SemiBold. The native panel draws pre-rendered color glyphs with transparent edges over black note keys and a cobalt playhead. The crest follows a twenty-second camera move and the whip strip loops every eight seconds. Both use 30 frames per second. The chrome face blends adjacent poses on its own 4.8-second cycle. All six SP-16 pages share the crest, animated smiley, whip strip, transport and bank tabs. The three pitch ribbons show chrome notes over near-black cells, with a separate numbered row for audition. Voice overlays a cutoff/resonance touch cursor on the modeled filter response. The lower axis shows frequency, the left scale shows gain in dB and the right scale shows resonance. LFO plots its curves on dark violet glass. Slide shows gate lengths and the selected slide’s pitch transitions. Clock shows the straight grid and shifted swing ticks above the pitch cells. [SP-16 controls](../README.md#freesp16-on-sp-16)
 
 ## Silver panel on MPC
 
@@ -56,8 +56,8 @@ Voice and Tone draw the filter response in lime on a plain charcoal field. The 1
 | Group | Rows or performance controls |
 |---|---|
 | PATTERN | K1 Cutoff, K2 Resonance, K3 Env Mod. Wheel changes Seed by one per detent, or sixteen with Shift. Turning locks a Random seed. Push presses Regen. Shift + Push presses Seed Back. Minus / Plus changes group. |
-| VOICE | Cutoff, Resonance, Env Mod, Decay, Accent, Waveform, Tuning, Volume, Cutoff LFO Amount, Cutoff LFO Speed |
-| TONE | Filter, Peak Spread, Drive, Slide, Slide Time, Accent Decay, Pitch LFO Amount, Pitch LFO Speed |
+| VOICE | Cutoff, Resonance, Env Mod, Decay, Accent, Accent Decay, Waveform, Tuning, Volume, Cutoff LFO Amount, Cutoff LFO Speed |
+| TONE | Slide (TB-3PO or 303), 303 Time, Filter, Peak Spread, Drive, Pitch LFO Amount, Pitch LFO Speed |
 | TB-3PO | Mode, Seed Mode, Seed, Regen, Seed Back, Mutate, Density, Scale, Root, Octave, Steps, Gate, Transpose |
 | CLOCK | Clock Div, Swing, Reset, Theme |
 

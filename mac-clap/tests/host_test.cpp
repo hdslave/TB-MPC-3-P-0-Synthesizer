@@ -314,8 +314,8 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     };
 
     if (!render() || !drag (80, 394, "Cutoff") || !drag (230, 394, "Resonance")
-        || !drag (80, 514, "Cutoff LFO Amt") || !drag (230, 514, "Cutoff LFO Speed")
-        || !drag (380, 484, "Pitch LFO Amount") || !drag (515, 484, "Pitch LFO Speed")
+        || !drag (380, 484, "Cutoff LFO Amt") || !drag (515, 484, "Cutoff LFO Speed")
+        || !drag (380, 454, "Pitch LFO Amount") || !drag (515, 454, "Pitch LFO Speed")
         || !drag (950, 394, "Mutate") || !drag (797, 506, "Swing")
         || !drag (60, 143, "Seed")) return false;
 
@@ -332,6 +332,16 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         params.get_value (plug, idOf (name), &v);
         return v;
     };
+    for (int choice : {1, 0})
+    {
+        click (choice == 0 ? 350 : 414, 403);
+        process();
+        if (value ("Slide") != choice)
+        {
+            std::fprintf (stderr, "FAIL: Slide switch did not select %d\n", choice);
+            return false;
+        }
+    }
     const double previous = value ("Seed");
     click (966, 139);
     process();
@@ -441,9 +451,9 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (crest() == fixedCrest) return false;
 
     // Switch banks through the toolbar and inspect their actual step numerals.
-    ui.ui_mouse (plug, 0, 650, 448, 0, 0, 0, 1);
-    ui.ui_mouse (plug, 1, 650, 100, 0, 0, 0, 1);
-    ui.ui_mouse (plug, 2, 650, 100, 0, 0, 0, 1);
+    ui.ui_mouse (plug, 0, 950, 424, 0, 0, 0, 1);
+    ui.ui_mouse (plug, 1, 950, 100, 0, 0, 0, 1);
+    ui.ui_mouse (plug, 2, 950, 100, 0, 0, 0, 1);
     process();
     if (value ("Steps") != 32 || !render()) return false;
     auto stepNumbers = [&] { return sampleArea (80, 171, 245, 189); };
