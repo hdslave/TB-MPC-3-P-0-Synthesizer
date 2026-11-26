@@ -33,24 +33,43 @@ struct Section
     std::array<int, 6> slots;
 };
 inline constexpr Section sections[] = {
-    {"PERFORM", 0xffb7c5ff, 3, {id::cutoff, id::resonance, id::envMod, id::decay, id::accent, id::volume}},
-    {"VOICE", 0xff9aafff, 3, {id::waveform, id::tuning, id::drive, id::filter, id::peakSpread, filterPlot}},
-    {"GLIDE", 0xffdea3ff, 2, {id::glide, id::slideTime, id::gate, id::accentDecay, -1, -1}},
-    {"PATTERN", 0xffb3ec87, 3, {id::seedMode, id::mutate, id::density, id::root, id::scale, id::transpose}},
-    {"MODULATION",
-     0xffc7a7ff,
-     3,
-     {pitchPlot, id::pitchLfoAmount, id::pitchLfoSpeed, cutoffPlot, id::cutoffLfoAmount, id::cutoffLfoSpeed}},
-    {"CLOCK", 0xff8dd6da, 3, {id::mode, id::clockDiv, id::swing, id::reset, id::steps, id::octave}}};
+    {"PERFORM", 0xffb6c8fa, 3, {id::cutoff, id::resonance, id::envMod, id::decay, id::accent, id::volume}},
+    {"VOICE", 0xffaabfff, 3, {id::waveform, id::tuning, id::drive, id::filter, id::peakSpread, filterPlot}},
+    {"GLIDE", 0xffb6c8fa, 2, {id::glide, id::slideTime, id::gate, id::accentDecay, -1, -1}},
+    {"LFO", 0xffc3b0ed, 3, {pitchPlot, id::pitchLfoAmount, id::pitchLfoSpeed,
+                              cutoffPlot, id::cutoffLfoAmount, id::cutoffLfoSpeed}},
+    {"PATTERN", 0xffb6c8fa, 3, {id::seedMode, id::mutate, id::density, id::root, id::scale, id::transpose}},
+    {"CLOCK", 0xffb6c8fa, 3, {id::mode, id::clockDiv, id::swing, id::reset, id::steps, id::octave}}};
+inline constexpr int ribbonParams[][2] = {{id::cutoff, id::resonance}, {id::waveform, id::filter},
+    {id::glide, id::slideTime}, {id::pitchLfoAmount, id::cutoffLfoAmount}, {id::density, id::scale},
+    {id::clockDiv, id::swing}};
 
 struct ConsoleLayout
 {
     std::array<Rect, size_t(Item::Count)> tools{};
     std::array<Rect, std::size(sections)> groups{};
     std::array<Rect, slotCount> slots{};
-    Rect toolbar, status, mast, logo, crest, face;
-    Rect score, caption, counter, play, grid;
+    std::array<Rect, std::size(sections)> bankKeys{};
+    std::array<Rect, 2> ribbon{}, keyFields{};
+    Rect toolbar, status, mast, logo, crest, face, counter, play;
+    Rect caption, score, grid, footer, keyScale, storm, legend;
     int headerHeight = 0, gutter = 0;
+
+    // Keep the seed and transport panels at the hardware aspect ratio. The camera bay takes
+    // the extra width in a wide, shallow host window. Pointer targets use the very same map.
+    Rect headRect(Rect source) const
+    {
+        constexpr int left = 182, right = 522, nativeWidth = 780;
+        const auto scale = [&](int v) { return (v * mast.h + 50) / 100; };
+        const auto x = [&](int v) {
+            if (v <= left) return scale(v);
+            if (v >= right) return mast.w - scale(nativeWidth - v);
+            const int span = mast.w - scale(left) - scale(nativeWidth - right);
+            return scale(left) + (span * (v - left) + (right - left) / 2) / (right - left);
+        };
+        return {mast.x + x(source.x), mast.y + scale(source.y), x(source.x + source.w) - x(source.x),
+                scale(source.y + source.h) - scale(source.y)};
+    }
 
     void arrange(int width, int height)
     {
@@ -74,34 +93,45 @@ struct ConsoleLayout
         tool(Item::ClearCc, 75);
         tool(Item::Motion, 92);
 
-        const int y = margin + toolHeight + gap, h = std::clamp(height * 13 / 100, 68, 132);
-        mast = {margin, y, usable, h};
-        const int inset = std::clamp(usable / 64, 12, 28), right = margin + usable - inset;
-        const int keyH = std::clamp(h / 2, 34, 54), keyY = y + (h - keyH) / 2;
-        const int regenW = std::clamp(usable / 10, 99, 144), backW = std::clamp(usable / 18, 60, 82);
-        slots[id::regen] = {right - regenW, keyY - 2, regenW, keyH + 4};
-        slots[id::seedBack] = {slots[id::regen].x - gap - backW, keyY, backW, keyH};
-        const int seedW = std::clamp(usable / 6, 147, 240), seedH = std::min(h - 8, keyH + 12);
-        slots[id::seed] = {slots[id::seedBack].x - 2 * gap - seedW, y + (h - seedH) / 2, seedW, seedH};
-        const int faceW = keyH + 4;
-        face = {slots[id::regen].x + 2, keyY - 2, faceW, keyH + 4};
-        const int logoW = std::clamp(usable / 5, 184, 325);
-        logo = {margin + inset, y + h / 8, logoW, h * 3 / 4};
-        const int crestLeft = logo.x + logoW * 4 / 5;
-        const int crestRoom = slots[id::seed].x - inset - crestLeft, crestW = std::min(h * 5, crestRoom);
-        crest = {crestLeft + std::min((crestRoom - crestW) / 2, h / 5), y, crestW, h};
+        const int y = margin + toolHeight + 1;
+        mast = {0, y, width, std::min((width * 100 + 390) / 780, std::clamp(height * 23 / 100, 118, 280))};
+        logo = headRect({9, 11, 166, 29});
+        crest = headRect({185, 5, 334, 92});
+        face = headRect({717, 0, 61, 58});
+        counter = headRect({528, 20, 91, 70});
+        play = headRect({622, 55, 81, 29});
+        slots[id::seedBack] = headRect({7, 50, 64, 46});
+        slots[id::seed] = headRect({71, 50, 107, 46});
+        slots[id::regen] = headRect({716, 0, 63, 96});
 
-        const int scoreY = y + h, scoreH = std::clamp(height * 34 / 100, 172, 391) + gap;
-        score = {margin, scoreY, usable, scoreH};
-        const int captionH = std::clamp(scoreH / 5, 32, 53);
-        caption = {margin, scoreY, usable, captionH};
-        const int playW = std::clamp(usable / 11, 90, 138);
-        play = {right - playW, scoreY + 4, playW, captionH - 8};
-        counter = {play.x - 96, scoreY, 84, captionH};
-        gutter = std::clamp(usable / 13, 86, 110);
-        grid = {margin + gutter, scoreY + captionH, usable - gutter - 2, scoreH - captionH - 2};
+        const int captionH = std::clamp(height / 23, 24, 42);
+        caption = {margin, y + mast.h, usable, captionH};
+        const int readW = usable * 24 / 100;
+        for (int i = 0; i < 2; ++i)
+            ribbon[i] = {margin + i * readW, caption.y + 1, readW - 4, captionH - 3};
+        const int legendW = std::clamp(usable / 4, 225, 288);
+        legend = {margin + usable - legendW, caption.y + 1, legendW, captionH - 3};
 
-        const int deskY = scoreY + scoreH + gap;
+        score = {margin, caption.y + captionH + 2, usable, std::clamp(height * 24 / 100, 130, 370)};
+        gutter = std::clamp(usable * 74 / 1000, 66, 104);
+        grid = {margin + gutter, score.y, usable - gutter, score.h};
+
+        const int footerH = std::clamp(height / 18, 29, 53);
+        footer = {margin, score.y + score.h + 3, usable, footerH};
+        const int tabsLeft = margin + usable * 38 / 100, keyW = usable * 15 / 100;
+        keyScale = {margin, footer.y + 3, keyW - 4, footerH - 6};
+        const int rootW = std::clamp(keyScale.w / 4, 34, 45);
+        keyFields[0] = {keyScale.x, keyScale.y, rootW, keyScale.h};
+        keyFields[1] = {keyScale.x + rootW, keyScale.y, keyScale.w - rootW, keyScale.h};
+        storm = {margin + keyW, footer.y + 4, tabsLeft - margin - keyW - 6, footerH - 8};
+        const int bankCount = int(bankKeys.size()), tabsW = margin + usable - tabsLeft;
+        for (int i = 0; i < bankCount; ++i)
+        {
+            const int left = tabsLeft + tabsW * i / bankCount, right = tabsLeft + tabsW * (i + 1) / bankCount;
+            bankKeys[i] = {left, footer.y, right - left - (i + 1 == bankCount ? 0 : 3), footerH};
+        }
+
+        const int deskY = footer.y + footer.h + gap;
         headerHeight = std::clamp((height - margin - deskY) / 11, 20, 36);
         for (int i = 0; i < int(std::size(sections)); ++i)
         {
@@ -122,16 +152,25 @@ struct ConsoleLayout
         }
     }
 
-    int hitSlot(int x, int y) const
+    int hitSlot(int x, int y, int bank = 0, Rect* anchor = nullptr) const
     {
+        const auto hit = [&](int slot, Rect r) {
+            if (anchor) *anchor = r;
+            return slot;
+        };
+        for (int i = 0; i < 2; ++i)
+        {
+            if (ribbon[i].contains(x, y)) return hit(ribbonParams[bank][i], ribbon[i]);
+            if (keyFields[i].contains(x, y)) return hit(i ? id::scale : id::root, keyFields[i]);
+        }
         for (int i = 0; i < slotCount; ++i)
-            if (slots[i].contains(x, y)) return i;
+            if (slots[i].contains(x, y)) return hit(i, slots[i]);
         return -1;
     }
     Rect lane(int i) const
     {
         // A single ruler above the pitch trace and its three switch lanes.
-        constexpr int pct[]{0, 14, 57, 72, 86, 100};
+        constexpr int pct[]{0, 13, 62, 75, 88, 100};
         const int top = grid.y + grid.h * pct[i] / 100, end = grid.y + grid.h * pct[i + 1] / 100;
         return {grid.x, top, grid.w, end - top};
     }

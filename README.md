@@ -19,7 +19,7 @@
 
 [Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
 
-Slink 0.9.1 for desktop puts all 34 parameters on one screen. The chrome crest flows from the Slink wordmark, the smiley rolls a new seed, and a silver ribbon marks the active step across a single 16- or 32-column score. [Desktop build and controls](mac-clap/)
+Slink 0.9.2 for desktop brings the freesp16 Thorn Crown panel to a single-screen editor. Its chrome crest, outlined step counter and cobalt bank keys sit above six open control banks. The pitch ribbon and Gate, Accent and Slide rows share one 16- or 32-step score. [Desktop build and controls](mac-clap/)
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.3).
 

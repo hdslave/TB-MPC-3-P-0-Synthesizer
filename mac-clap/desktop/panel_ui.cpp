@@ -338,12 +338,9 @@ Rect PanelUI::update(uint64_t now)
     const bool focusChanged = focus() != paintedFocus_;
     const bool hoverChanged = hover_ != paintedHover_,
                stepHoverChanged = hoverStep_ != paintedHoverStep_ || hoverLane_ != paintedHoverLane_;
-    const auto mastSlot = [](int slot) {
-        return slot == int(id::seed) || slot == int(id::seedBack) || slot == int(id::regen);
-    };
-    const bool mast = full || changed[id::seed] || (hoverChanged && (mastSlot(hover_) || mastSlot(paintedHover_)));
-    const bool score = full || patternChanged || focusChanged || stepHoverChanged || playChanged ||
-                       changed[id::scale] || changed[id::root] || changed[id::mode];
+    const bool bankChanged = bank_ != paintedBank_;
+    const bool refreshHeader = full || patternChanged || focusChanged || playChanged || changed[id::seed] || changed[id::mode];
+    const bool score = full || patternChanged || focusChanged || stepHoverChanged;
     const bool toolbar = full || lastLearn_ != learn || paintedPreset_ != p_->currentPresetIndex || hoverChanged ||
                          stepHoverChanged || (hover_ >= 0 && hover_ < int(id::count) && changed[hover_]);
     lastLearn_ = learn;
@@ -352,29 +349,35 @@ Rect PanelUI::update(uint64_t now)
     if (full)
     {
         damage = {0, 0, w_, h_};
-        c_.fill(damage, 0xff090910);
+        c_.fill(damage, 0xff080812);
     }
     if (toolbar)
     {
         paintToolbar();
         damage = damage.unite(layout_.toolbar);
     }
-    if (mast)
+    if (full || bankChanged || changed[ribbonParams[bank_][0]] || changed[ribbonParams[bank_][1]] || hoverChanged)
     {
-        paintMast();
-        damage = damage.unite(layout_.mast);
+        paintRibbon();
+        damage = damage.unite(layout_.caption);
+    }
+    if (full || bankChanged || changed[id::root] || changed[id::scale])
+    {
+        paintFooter();
+        damage = damage.unite(layout_.footer);
     }
     if (score)
     {
         paintScore();
         damage = damage.unite(layout_.score);
     }
-    damage = damage.unite(paintArt(mast, score, now));
+    damage = damage.unite(paintArt(full, refreshHeader, now));
     for (size_t i = 0; i < std::size(sections); ++i)
     {
-        if (full)
+        if (full || (bankChanged && (int(i) == paintedBank_ || int(i) == bank_)))
         {
             paintSection(i);
+            damage = damage.unite(layout_.groups[i]);
             continue;
         }
         const auto& group = sections[i];
@@ -399,6 +402,7 @@ Rect PanelUI::update(uint64_t now)
     }
     if (popup_ != PopupKind::None && !damage.intersect(popupRect_).empty()) drawPopup();
     paintedFocus_ = focus();
+    paintedBank_ = bank_;
     paintedPreset_ = p_->currentPresetIndex;
     paintedHover_ = hover_;
     paintedHoverStep_ = hoverStep_;
@@ -420,7 +424,7 @@ void PanelUI::finishDrag()
 
 void PanelUI::setHover(float x, float y)
 {
-    hover_ = layout_.crest.contains(x, y) ? crestHover : layout_.hitSlot(x, y);
+    hover_ = layout_.crest.contains(x, y) ? crestHover : layout_.hitSlot(x, y, bank_);
     hoverStep_ = hoverLane_ = -1;
     if (!layout_.grid.contains(x, y)) return;
     const int step = layout_.stepAt(int(x), columns());
@@ -512,6 +516,13 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
         }
         return;
     }
+    if (buttonId == 0)
+        for (size_t i = 0; i < layout_.bankKeys.size(); ++i)
+            if (layout_.bankKeys[i].contains(x, y))
+            {
+                bank_ = int(i);
+                return;
+            }
     if (layout_.play.contains(x, y) && buttonId == 0)
     {
         if ((mods & kModShift) && !p_->panel->localPlay(p_->inner) && p_->hostTransport &&
@@ -526,6 +537,14 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
         p_->panel->camera(p_->inner, bool(mods & kModShift));
         return;
     }
+    if (layout_.counter.contains(x, y) && buttonId == 0 && pattern_.steps > 16 && !pattern_.running)
+    {
+        selected_ = selected_ >= 16 ? 0 : 16;
+        return;
+    }
+    if (hover_ >= 0)
+        for (size_t i = 0; i < layout_.groups.size(); ++i)
+            if (layout_.groups[i].contains(x, y)) bank_ = int(i);
     if (hover_ >= 0 && hover_ < int(id::count))
     {
         const bool special = buttonId != 0 || clicks >= 2 || (mods & (kModCmd | kModAlt)) ||
@@ -536,7 +555,9 @@ void PanelUI::mouseDown(float x, float y, int buttonId, uint32_t mods, int click
             lastTouched_ = paramIndex_[hover_];
             return;
         }
-        edit(paramIndex_[hover_], layout_.slots[hover_], buttonId, mods, clicks);
+        Rect anchor;
+        layout_.hitSlot(x, y, bank_, &anchor);
+        edit(paramIndex_[hover_], anchor, buttonId, mods, clicks);
         return;
     }
     if (buttonId != 0) return;
@@ -603,7 +624,7 @@ void PanelUI::mouseUp(float x, float y, int, uint32_t)
     if (dragParam_ >= 0 && !moved_)
     {
         const auto& pr = p_->params[size_t(dragParam_)];
-        if (pr.id == id::glide && dragRect_.contains(x, y))
+        if (pr.id == id::glide && layout_.slots[id::glide].contains(downX_, downY_) && dragRect_.contains(x, y))
             p_->setValueOnce(dragParam_, x < dragRect_.x + dragRect_.w / 2 ? 0 : 1);
         else if (tbmpc::paramTable[tbmpc::paramIndex(pr.id)].kind == tbmpc::Kind::choice)
             openChoices(dragParam_, dragRect_);
@@ -626,7 +647,7 @@ void PanelUI::wheel(float x, float y, float, float dy, bool precise, uint32_t mo
         dirty_ = true;
         return;
     }
-    const int slot = layout_.hitSlot(x, y);
+    const int slot = layout_.hitSlot(x, y, bank_);
     if (slot < 0 || slot >= int(id::count) || slot == int(id::regen) || slot == int(id::seedBack)) return;
     const int param = paramIndex_[slot];
     if (param < 0) return;

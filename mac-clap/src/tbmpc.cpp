@@ -792,20 +792,19 @@ PatternView readDesktopPattern(const clap_plugin_t* plug)
     p.panel.shown=p.patternState.read();
     return p.panel.shown;
 }
-bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& surface,bool full,int selected)
+bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& surface,bool full,int selected,int seed,int button)
 {
     auto& p=of(plug);
     auto& panel=p.panel;
     panel.thorn.selected=selected;
     sp16::Raster raster{surface.pixels,surface.stride,surface.height};
-    return panel.thorn.draw(raster,panel.shown,surface.now_ms,full,int(valueOf(p,ParamId::seed)),0,false);
+    return panel.thorn.draw(raster,panel.shown,surface.now_ms,full,seed,button,false);
 }
-void desktopPitchTile(uint32_t* pixels,int cv,uint32_t background)
+void desktopPitchTile(uint32_t* pixels,int cv,uint32_t background,bool active)
 {
     std::fill_n(pixels,thorn::pitch.w*thorn::pitch.h,background);
     sp16::Raster tile{pixels,thorn::pitch.w,thorn::pitch.h};
-    // The silver register and sharp glyphs in this plate read against dark cells.
-    sp16::ThornPage::pitchLabel(tile,cv,true,0,0);
+    sp16::ThornPage::pitchLabel(tile,cv,active,0,0);
 }
 void desktopCamera(const clap_plugin_t* plug,bool cut)
 {

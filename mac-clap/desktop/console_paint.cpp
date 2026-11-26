@@ -16,14 +16,26 @@ namespace hdslave_desktop
 {
 namespace
 {
-constexpr uint32_t ground = 0xff090910, glass = 0xff171423, edge = 0xff504762, light = 0xfff2f2ff,
-                   muted = 0xffb9b6cb;
-constexpr uint32_t lime = 0xffc3f58a, ice = 0xffa0b8ff, lilac = 0xffd4a2fc, quiet = 0xff817b94;
-constexpr uint32_t laneInk[]{ice, ice, lime, lilac, 0xff8edddc};
+constexpr uint32_t ground = 0xff080812, glass = 0xff21192e, edge = 0xff685d80, light = 0xfff1efff,
+                   muted = 0xffb9b1cb, steel = 0xffb6c8fa, ice = 0xff96b7ff, lilac = 0xffd1afff, quiet = 0xff938aa8;
+
+// The hardware faceplates cut the upper-right and lower-left corners.
+void faceplate(Canvas& c, Rect r, uint32_t top, uint32_t bottom, uint32_t outline, int cut = 4)
+{
+    const int x = r.x * c.s, y = r.y * c.s, w = r.w * c.s, h = r.h * c.s;
+    const int bevel = std::min({cut * c.s, w / 2, h / 2});
+    for (int j = 0; j < h; ++j)
+    {
+        const int left = x + std::max(0, bevel - (h - 1 - j));
+        const int right = x + w - std::max(0, bevel - j);
+        c.fillPhys(left, y + j, right, y + j + 1, outline);
+        if (j >= c.s && j < h - c.s)
+            c.fillPhys(left + c.s, y + j, right - c.s, y + j + 1, mix(top, bottom, float(j) / h));
+    }
+}
 void plate(Canvas& c, Rect r, uint32_t fill = glass, uint32_t outline = edge)
 {
-    c.fillChamfer(r, 4, outline);
-    c.fillChamfer(r.inset(1), 3, fill);
+    faceplate(c, r, fill, mix(fill, ground, .45f), outline);
 }
 // Use the same antialiased Barlow lettering as the panel for desktop control cards.
 namespace font = tbmpc::rave;
@@ -92,7 +104,8 @@ void controlText(Canvas& c, Rect box, std::string_view text, const font::Font& f
 
 void button(Canvas& c, Rect r, std::string_view text, bool selected = false)
 {
-    plate(c, r, selected ? 0xff29304a : 0xff191624, selected ? 0xff8594bf : edge);
+    faceplate(c, r, selected ? 0xff4d75de : 0xff2b203b, selected ? 0xff202f7f : 0xff100d1b,
+              selected ? 0xffb1c9ff : edge);
     controlText(c, r.inset(2), text, font::normal, selected ? light : muted, .9f, 1);
 }
 
@@ -200,7 +213,8 @@ void PanelUI::paintToolbar()
     else if (hover_ >= 0 && hover_ < int(id::count))
     {
         if (hover_ == int(id::regen)) status = "Roll a new pattern seed";
-        else if (hover_ == int(id::seedBack)) status = "Recall a previously played seed";
+        else if (hover_ == int(id::seedBack)) status = "Click the seed number to recall a previously played seed";
+        else if (hover_ == int(id::seed)) status = "Drag the barcode to set the pattern seed";
         else status = std::string(tbmpc::paramTable[tbmpc::paramIndex(hover_)].name) + "   /   " + readings_[hover_].text;
         if (readings_[hover_].cc >= 0) status += "   /   CC " + std::to_string(readings_[hover_].cc);
     }
@@ -218,316 +232,224 @@ void PanelUI::paintToolbar()
     controlText(c_, layout_.status, status, font::normal, muted, .9f);
 }
 
-void PanelUI::paintMast()
-{
-    const Rect mast = layout_.mast;
-    const auto seed = layout_.slots[id::seed], back = layout_.slots[id::seedBack];
-    const Rect regen = layout_.slots[id::regen];
-    c_.gradient(mast, 0xff222438, 0xff101020);
-    c_.hline(mast.x, mast.y, mast.w, 0xff51516a);
-
-    // Etched contours open around the signature and gather at the seed barcode.
-    const int span = seed.x - mast.x;
-    constexpr float tau = 6.2831853f;
-    for (int i = 0; i < 8; ++i)
-    {
-        float lastX = 0, lastY = 0;
-        for (int j = 0; j <= 64; ++j)
-        {
-            const float t = float(j) / 64, fan = std::sin(t * tau * .5f);
-            const float wave = std::sin(t * tau + i * .16f) * .19f + std::sin(t * tau * 2 - i * .18f) * .10f;
-            const float x = mast.x + t * (span - 1);
-            const float y = mast.y + mast.h * (.63f + wave * fan + (i - 3.5f) * (.005f * (1 - t) + .043f * fan));
-            if (j) c_.line(lastX, lastY, x, y, .72f, i == 5 ? 0xff9686bb : 0xff6976a0, i == 5 ? 118 : 74);
-            lastX = x;
-            lastY = y;
-        }
-    }
-
-    const int seedNumber = int(readings_[id::seed].value);
-    char hex[8];
-    std::snprintf(hex, sizeof(hex), "%04X", seedNumber & 65535);
-    const int pad = 8, labelH = seed.h / 3, valueW = seed.w * 43 / 100;
-    const uint32_t seedInk = hover_ == int(id::seed) ? lime : ice;
-    controlText(c_, {seed.x + pad, seed.y, seed.w - pad, labelH}, "PATTERN SEED", font::small, seedInk);
-    controlText(c_, {seed.x + pad, seed.y + labelH, valueW, seed.h - labelH}, hex, font::large, light,
-                seed.h >= 50 ? 1.28f : 1.05f);
-    const int bx = seed.x + pad + valueW, by = seed.y + labelH + 4, barWidth = seed.x + seed.w - bx - 2;
-    for (int i = 0; i < 20; ++i)
-    {
-        const int left = bx + i * barWidth / 20, right = bx + (i + 1) * barWidth / 20;
-        const int w = (seedNumber >> (i % 16)) & 1 ? std::max(1, right - left - 1) : 1;
-        c_.fill(left, by, w, seed.y + seed.h - by - 5, i % 5 ? 0xff98a8c3 : seedInk);
-    }
-    const bool recallHot = hover_ == int(id::seedBack), regenHot = hover_ == int(id::regen);
-    const Rect recall = back.inset(2);
-    c_.fillChamfer(recall, 7, recallHot ? 0xff353044 : 0xff242232);
-    c_.frameChamfer(recall, 7, recallHot ? ice : 0xff534d68);
-    controlText(c_, recall, "Recall", font::normal, recallHot ? light : muted, 1.f, 1);
-    const int cx = layout_.face.x + layout_.face.w / 2, cy = regen.y + regen.h / 2;
-    const int radius = regen.h / 2;
-    const Rect key{cx, regen.y + 4, regen.x + regen.w - cx, regen.h - 8};
-    const uint32_t cap = regenHot ? 0xff4c405d : 0xff322b45, rim = regenHot ? lilac : 0xff756583;
-    c_.fillChamfer(key, 8, cap);
-    c_.frameChamfer(key, 8, rim);
-    c_.disc(cx, cy, radius, rim);
-    c_.disc(cx, cy, radius - 1, 0xff272337);
-    const int nameX = layout_.face.x + layout_.face.w;
-    controlText(c_, {nameX, key.y, key.x + key.w - nameX - 4, key.h}, "Regen", font::normal, light, 1.f, 1);
-}
-
-// The hardware plates have dark opaque grounds. Use their light as screen ink on the desktop metal.
-void PanelUI::chrome(Rect src, Rect dst, int fadeX, int fadeY, int intensity)
-{
-    const size_t area = size_t(src.w) * src.h;
-    if (chromeInk_.size() < area) chromeInk_.resize(area);
-    auto feather = [](int p, int length, int fade) {
-        return std::min({p, length - 1 - p, fade}) * 256 / fade;
-    };
-    std::array<int, tbmpc::thorn::crest.w> horizontal;
-    for (int x = 0; x < src.w; ++x) horizontal[x] = feather(x, src.w, fadeX);
-    for (int y = 0; y < src.h; ++y)
-    {
-        const auto* original = art_.data() + (src.y + y) * SIXTEEN_SCREEN_WIDTH + src.x;
-        auto* ink = chromeInk_.data() + y * src.w;
-        const int gain = feather(y, src.h, fadeY) * intensity;
-        for (int x = 0; x < src.w; ++x)
-        {
-            const int weight = (gain * horizontal[x]) >> 16;
-            const auto channel = [&](int shift) {
-                const int value = int((original[x] >> shift) & 255);
-                return uint32_t(std::min(255, std::max(0, value - 17) * weight / 238)) << shift;
-            };
-            ink[x] = 0xff000000u | channel(16) | channel(8) | channel(0);
-        }
-    }
-    c_.blitScaled(chromeInk_.data(), src.w, src.h, dst, src.w, screenInk);
-}
-
-Rect PanelUI::paintArt(bool repaintMast, bool repaintScore, uint64_t now)
+Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
 {
     constexpr int sw = SIXTEEN_SCREEN_WIDTH, sh = SIXTEEN_SCREEN_HEIGHT;
     sixteen_screen_surface_t surface{art_.data(), sw, sh, sw, uint32_t(now)};
-    const bool changed = p_->panel->renderArt(p_->inner, surface, repaintMast, selected_);
-    if (!changed && !repaintMast && !repaintScore) return {};
+    const int button = readings_[id::mode].value >= .5 ? 3 : localPlay_ ? 1 : pattern_.running ? 2 : 0;
+    if (!p_->panel->renderArt(p_->inner, surface, refreshHeader, selected_, int(readings_[id::seed].value), button) && !full)
+        return {};
     Rect damage;
-    const auto changedPlate = [&](Rect src, bool force)
-    {
-        if (!changed) return force;
-        bool touched = force;
+    const auto changed = [&](Rect src) {
+        bool touched = full;
         for (int y = src.y; y < src.y + src.h; ++y)
         {
-            const size_t offset = size_t(y) * sw + src.x;
-            const size_t bytes = size_t(src.w) * sizeof(uint32_t);
-            if (!force && !std::memcmp(art_.data() + offset, previousArt_.data() + offset, bytes)) continue;
-            std::memcpy(previousArt_.data() + offset, art_.data() + offset, bytes);
+            const size_t pos = size_t(y) * sw + src.x, bytes = size_t(src.w) * sizeof(uint32_t);
+            if (!full && !std::memcmp(art_.data() + pos, previousArt_.data() + pos, bytes)) continue;
+            std::memcpy(previousArt_.data() + pos, art_.data() + pos, bytes);
             touched = true;
         }
         return touched;
     };
-    const Rect mast = layout_.mast;
-    const int stride = mast.w * c_.s;
-    if (repaintMast)
-    {
-        const Rect wordmark{0, 0, 680, 108};
-        c_.blitScaled(desktopWordmark(), wordmark.w, wordmark.h, fit(wordmark, layout_.logo), wordmark.w, screenInk);
-        mastBacking_.resize(size_t(stride) * mast.h * c_.s);
-        for (int y = 0; y < mast.h * c_.s; ++y)
-            std::copy_n(c_.px + (mast.y * c_.s + y) * c_.pw + mast.x * c_.s, stride,
-                        mastBacking_.data() + size_t(y) * stride);
-    }
-    const auto inlay = [&](Rect src, Rect dst, int fadeX, int fadeY, int gain) {
-        if (!changedPlate(src, repaintMast)) return;
-        // Restore the engraving underneath each moving silhouette before laying down the next exposure.
-        if (!repaintMast)
-            for (int y = 0; y < dst.h * c_.s; ++y)
-                std::copy_n(mastBacking_.data() + ((dst.y - mast.y) * c_.s + y) * stride + (dst.x - mast.x) * c_.s,
-                            dst.w * c_.s, c_.px + (dst.y * c_.s + y) * c_.pw + dst.x * c_.s);
-        chrome(src, dst, fadeX, fadeY, gain);
+    const auto blit = [&](Rect src, Rect dst) {
+        c_.blitSharp(art_.data() + src.y * sw + src.x, src.w, src.h, dst, sw);
         damage = damage.unite(dst);
     };
-    inlay({186, 6, 332, 90}, layout_.crest, 42, 10, 262);
-    const Rect face{717, 0, 61, 58};
-    inlay(face, fit(face, layout_.face), 2, 2, 252);
-    if (changedPlate({127, 253, 168, 25}, repaintScore) && pattern_.steps)
+
+    // These are adjacent regions of the live hardware framebuffer, including its frame,
+    // glass, seed, count, pitch preview and transport. Update each at its own cadence.
+    const Rect brand{0, 0, 182, 100}, camera{182, 0, 340, 100}, lcd{522, 0, 193, 100}, regen{715, 0, 65, 100};
+    if (changed(brand))
     {
-        const Rect cap = layout_.column(focus(), columns()).intersect(layout_.lane(0));
-        paintPlayhead(cap);
-        damage = damage.unite(cap);
+        blit(brand, layout_.headRect(brand));
+        c_.fill(layout_.logo, 0xff10101b);
+        c_.blitScaled(desktopWordmark(), 680, 108, layout_.headRect({10, 12, 164, 26}), 680, screenInk);
     }
+    if (changed(camera))
+    {
+        const Rect bay = layout_.headRect(camera);
+        if (bay.w <= bay.h * 9 / 2)
+            blit(camera, bay);
+        else
+        {
+            // In an ultrawide host keep the camera framing intact inside the wider bezel.
+            if (full) faceplate(c_, layout_.crest, 0xff04040b, 0xff04040b, 0xff6f7391, 7);
+            const Rect image{187, 7, 330, 88};
+            blit(image, fit(image, layout_.crest.inset(2)));
+        }
+    }
+    if (changed(lcd)) blit(lcd, layout_.headRect(lcd));
+    if (changed(regen)) blit(regen, layout_.headRect(regen));
+    const Rect storm{127, 253, 168, 25};
+    if (changed(storm)) blit(storm, layout_.storm);
     return damage;
 }
 
-void PanelUI::paintPlayhead(Rect cap)
+void PanelUI::paintRibbon()
 {
-    const Rect head{cap.x + 1, cap.y, cap.w - 2, cap.h};
-    c_.gradient(head, 0xff49405e, 0xff26243c);
-    const Rect storm{129, 255, 164, 21};
-    // The moving chrome belongs to the one focused column. Keep the number on a quiet face.
-    const Rect foil = head.inset(1);
-    chrome(fit(foil, storm), foil, 4, 2, 201);
-    char number[4];
-    std::snprintf(number, sizeof(number), "%02d", focus() + 1);
-    const int badgeW = std::min(head.w - 4, textWidth(number, font::normal) + 6);
-    const Rect badge{head.x + (head.w - badgeW) / 2, head.y + 1, badgeW, head.h - 3};
-    c_.fillChamfer(badge, 4, 0xff211e34, 225);
-    controlText(c_, badge, number, font::normal, light, .9f, 1);
-    c_.fill(head.x, head.y + head.h - 2, head.w, 2, lime);
-    if (hoverStep_ == focus()) c_.hline(head.x, head.y, head.w, lilac);
+    for (int i = 0; i < 2; ++i)
+    {
+        const int slot = ribbonParams[bank_][i];
+        const Rect r = layout_.ribbon[i];
+        faceplate(c_, r, 0xff292036, 0xff151121, hover_ == slot ? ice : 0xff554962);
+        const int pad = std::clamp(r.w / 22, 6, 12);
+        const int valueW = std::min(r.w * 54 / 100, textWidth(readings_[slot].text, font::normal) + 2);
+        const char* label = slot == int(id::pitchLfoAmount) ? "Pitch depth" :
+                            slot == int(id::cutoffLfoAmount) ? "Cutoff depth" : fieldName(slot);
+        controlText(c_, {r.x + pad, r.y, r.w - 2 * pad - valueW - 3, r.h}, label, font::normal, muted, .92f);
+        controlText(c_, {r.x + r.w - pad - valueW, r.y, valueW, r.h}, readings_[slot].text, font::normal, light, .96f, 2);
+    }
+    const Rect r = layout_.legend;
+    faceplate(c_, r, 0xff241c34, 0xff141020, 0xff4a405c);
+    constexpr const char* names[]{"Gate", "Accent", "Slide"};
+    const int pad = 5, gap = 14, symbol = 13;
+    int total = gap * 2;
+    for (const char* name : names) total += symbol + pad + textWidth(name, font::normal);
+    int x = r.x + (r.w - total) / 2;
+    for (int i = 0; i < 3; ++i)
+    {
+        const int w = textWidth(names[i], font::normal);
+        mark(c_, i + 2, x + symbol / 2, r.y + r.h / 2, 5, i == 0 ? steel : light);
+        controlText(c_, {x + symbol + pad, r.y, w + 1, r.h}, names[i], font::normal, light);
+        x += symbol + pad + w + gap;
+    }
+}
+
+void PanelUI::paintFooter()
+{
+    const auto& l = layout_;
+    faceplate(c_, l.keyScale, 0xff291d39, 0xff141021, edge);
+    const Rect root = l.keyFields[0], scale = l.keyFields[1];
+    controlText(c_, {root.x + 6, root.y, root.w - 13, root.h}, readings_[id::root].text, font::normal, light, .94f);
+    controlText(c_, {scale.x - 9, scale.y, 9, scale.h}, "/", font::normal, muted, .92f);
+    controlText(c_, scale.inset(3), readings_[id::scale].text, font::normal, light, .94f);
+    c_.hline(l.storm.x, l.storm.y - 1, l.storm.w, 0xff514f70);
+    c_.hline(l.storm.x, l.storm.y + l.storm.h, l.storm.w, 0xff514f70);
+    for (size_t i = 0; i < l.bankKeys.size(); ++i)
+    {
+        const Rect key = l.bankKeys[i];
+        const bool active = int(i) == bank_;
+        faceplate(c_, key, active ? 0xff4d75de : 0xff2b203b, active ? 0xff202f7f : 0xff100d1b,
+                  active ? 0xffb1c9ff : 0xff675a79, 5);
+        controlText(c_, key.inset(2), sections[i].name, font::normal, light, key.h >= 34 ? 1.05f : .94f, 1);
+        if (active) c_.fill(key.x + 9, key.y + key.h - 4, key.w - 18, 2, 0xffbbd1ff);
+    }
 }
 
 void PanelUI::paintScore()
 {
     const auto& l = layout_;
-    const Rect box = l.score, heading = l.caption;
-    plate(c_, box, 0xff11101c);
-    c_.gradient(heading, 0xff191a2a, 0xff141321);
-    c_.hline(box.x, heading.y, box.w, 0xff46445a);
-    const int titleX = box.x + 14;
-    const float titleZoom = heading.h >= 41 ? 1.13f : .97f;
-    const int titleW = int(std::ceil(textWidth("Step sequencer", font::large) * titleZoom));
-    controlText(c_, {titleX, heading.y, titleW + 1, heading.h}, "Step sequencer", font::large, light, titleZoom);
-    const int active = focus(), n = std::clamp(int(pattern_.steps), 0, 32), count = columns();
-    int railStart = titleX + titleW + 20;
-    if (n)
-    {
-        const std::string key = std::string(tbmpc::rootChoices[int(readings_[id::root].value)]) + " / " +
-                                readings_[id::scale].text;
-        const int keyW = textWidth(key, font::normal);
-        const int mid = heading.y + heading.h / 2;
-        c_.line(railStart - 8, mid + 6, railStart - 4, mid - 6, 1.f, 0xff69657b);
-        controlText(c_, {railStart + 4, heading.y, keyW, heading.h}, key, font::normal, muted, .92f);
-        railStart += keyW + 20;
-        char current[4], length[8];
-        std::snprintf(current, sizeof(current), "%02d", active + 1);
-        std::snprintf(length, sizeof(length), "/ %02d", n);
-        const Rect r = l.counter;
-        if (heading.h >= 41)
-            controlText(c_, {r.x + 3, r.y - 2, r.w / 2, r.h}, current, font::large, 0xff40384f, titleZoom, 2);
-        controlText(c_, {r.x, r.y, r.w / 2, r.h}, current, font::large, light, titleZoom, 2);
-        controlText(c_, {r.x + r.w / 2 + 6, r.y + 1, r.w / 2 - 6, r.h - 1}, length, font::normal, muted, .9f);
-    }
-    const int railY = heading.y + heading.h / 2;
-    c_.hline(railStart, railY + 3, l.counter.x - railStart - 6, 0xff423e53);
-    c_.line(l.counter.x - 7, railY + 3, l.counter.x - 1, railY - 3, 1, 0xff77738e);
-    c_.hline(l.counter.x, railY - 3, 7, 0xff77738e);
-
-    const Rect play = l.play;
-    const bool notes = readings_[id::mode].value >= .5, sync = pattern_.running && !localPlay_;
-    const char* action = notes ? "Notes" : localPlay_ ? "Stop" : sync ? "Sync" : "Play";
-    const uint32_t keyInk = notes ? muted : 0xff19221b;
-    c_.fillChamfer(play, 7, notes ? 0xff373344 : sync ? 0xffa5cbea : lime);
-    const int nameW = textWidth(action, font::normal), icon = play.x + (play.w - nameW - 19) / 2;
-    const int mid = play.y + play.h / 2;
-    if (localPlay_ || notes)
-        c_.fillChamfer({icon, mid - 4, 9, 9}, 1, keyInk);
-    else if (sync)
-    {
-        c_.line(icon, mid + 4, icon + 5, mid - 4, 2.f, keyInk);
-        c_.line(icon + 5, mid + 4, icon + 10, mid - 4, 2.f, keyInk);
-    }
-    else
-        for (int i = 0; i < 7; ++i) c_.fill(icon + i, mid - (6 - i), 1, 2 * (6 - i) + 1, keyInk);
-    controlText(c_, {icon + 18, play.y, nameW + 2, play.h}, action, font::normal, keyInk);
-    constexpr const char* labels[]{"Step", "Pitch", "Gate", "Accent", "Slide"};
-    for (int lane = 0; lane < 5; ++lane)
-    {
-        const Rect r = l.lane(lane);
-        c_.fill(box.x + 2, r.y, l.gutter - 3, r.h, 0xff1b1828);
-        c_.hline(box.x + 2, r.y, box.w - 4, 0xff473d56);
-        if (lane >= 2) mark(c_, lane, box.x + 14, r.y + r.h / 2, 4, laneInk[lane]);
-        controlText(c_, {box.x + (lane >= 2 ? 26 : 11), r.y, l.gutter - (lane >= 2 ? 30 : 15), r.h}, labels[lane],
-                    font::normal, lane < 2 ? light : laneInk[lane], r.h < 19 ? .85f : 1.f);
-    }
+    c_.fill(l.score, ground);
     const Rect pitch = l.lane(1);
-    const bool chromeNotes = count == 16 && pitch.h >= 65 && l.column(0, count).w >= 45;
-    const int labelH = chromeNotes ? std::clamp(pitch.h * 47 / 100, 23, 46) : std::clamp(pitch.h / 3, 13, 25);
-    const int low = pitch.y + pitch.h - labelH - 5, high = pitch.y + 5;
-    int pmin = 0, pmax = 0;
-    if (n)
+    const int noteH = std::clamp(pitch.h * 53 / 100, 24, 64), noteY = pitch.y + pitch.h - noteH;
+    constexpr const char* labels[]{"STEP", "PITCH", "GATE", "ACCENT", "SLIDE"};
+    for (int j = 0; j < 5; ++j)
     {
-        const auto limits = std::minmax_element(pattern_.pitch, pattern_.pitch + n);
-        pmin = *limits.first;
-        pmax = *limits.second;
+        const Rect row = l.lane(j), label{l.score.x, row.y, l.gutter - 4, row.h - (j == 1 ? noteH : 0) - 1};
+        faceplate(c_, label, 0xff32263f, 0xff191329, 0xff736d88);
+        controlText(c_, {label.x + 6, label.y, label.w - 9, label.h}, labels[j], font::normal, light,
+                    label.h < 20 ? .84f : 1.f);
     }
-    auto pitchY = [&](int step)
-    {
-        return pmax == pmin ? (low + high) / 2
-                            : low - int(double(pattern_.pitch[step] - pmin) * (low - high) / (pmax - pmin));
+    const Rect noteLabel{l.score.x, noteY, l.gutter - 4, noteH - 1};
+    faceplate(c_, noteLabel, 0xffdee3f0, 0xff909bb6, 0xff736d88);
+    controlText(c_, {noteLabel.x + 6, noteY, noteLabel.w - 9, noteLabel.h}, "NOTE", font::large, 0xff19172b);
+
+    const int n = std::clamp(int(pattern_.steps), 0, 32), count = columns(), active = focus();
+    const int high = pitch.y + 6, low = noteY - 5;
+    const bool chromeNotes = noteH >= 25 && l.column(0, count).w >= (count == 16 ? 41 : 55);
+    const auto limits = std::minmax_element(pattern_.pitch, pattern_.pitch + n);
+    const auto pitchY = [&](int i) {
+        const int range = std::max(128, int(*limits.second) - int(*limits.first));
+        return low - (pattern_.pitch[i] - *limits.first) * (low - high) / range;
     };
     for (int i = 0; i < count; ++i)
     {
-        const Rect col = l.column(i, count);
-        const bool live = i < n, hit = live && i == active;
-        const uint32_t bed = !live ? 0xff111019 : hit ? 0xff2a2943 : (i / 4) % 2 ? 0xff171320 : 0xff13121e;
-        c_.fill(col, bed);
-        c_.fill(col.x, col.y, i % 4 ? 1 : 2, col.h, i % 4 ? 0xff312a3d : 0xff615770);
-        const Rect ruler = l.lane(0);
-        if (!hit)
-        {
-            if (i == hoverStep_ && live) c_.hline(col.x + 2, ruler.y, col.w - 3, lilac);
-            char number[4];
-            std::snprintf(number, sizeof(number), "%02d", i + 1);
-            controlText(c_, {col.x, ruler.y, col.w, ruler.h}, number, font::normal, live ? muted : quiet, .85f, 1);
-        }
-        for (int lane = 1; lane < 5; ++lane)
-            c_.hline(col.x + 1, l.lane(lane).y, col.w - 1, 0xff382f45);
-        if (hit) c_.fill(col.x + 1, pitch.y, 1, col.y + col.h - pitch.y, mix(bed, lime, .43f));
-        if (!live) continue;
-        const int mid = col.x + col.w / 2, markSize = std::clamp(col.w / 9, 3, 6);
-        const uint32_t bits = uint32_t(1) << i;
-        for (int lane = 2; lane < 5; ++lane)
-        {
-            const Rect row = l.lane(lane);
-            const bool on = ((lane == 2   ? pattern_.gates
-                              : lane == 3 ? pattern_.accents
-                                          : pattern_.slides) &
-                             bits) != 0;
-            if (on)
-            {
-                const uint32_t color = laneInk[lane];
-                const int pad = std::max(3, col.w / 8);
-                const Rect cell{col.x + pad, row.y + 2, col.w - 2 * pad, row.h - 4};
-                c_.fillChamfer(cell, 2, mix(bed, color, hit ? .26f : .15f));
-                mark(c_, lane, mid, row.y + row.h / 2, markSize, color);
-            }
-            else
-                c_.fill(mid - 2, row.y + row.h / 2, 4, 1, quiet);
-        }
-        const Rect note{col.x + 2, low + 3, col.w - 4, labelH};
-        if (chromeNotes)
+        const Rect col = l.column(i, count), ruler = l.lane(0);
+        const bool live = i < n, selected = live && i == active;
+        const int left = col.x + (i && i % 4 == 0 ? 3 : 1), w = col.x + col.w - left - 1, mid = left + w / 2;
+        const uint32_t upper = selected ? 0xff527be7 : !live ? 0xff191622 : (i / 4) % 2 ? 0xff30213f : 0xff262139;
+        const uint32_t lower = selected ? 0xff263b98 : !live ? 0xff100d17 : (i / 4) % 2 ? 0xff1a112c : 0xff141224;
+        const uint32_t lip = selected ? 0xffa4bfff : 0xff52465f;
+        c_.gradient({left, ruler.y, w, ruler.h - 1}, upper, lower);
+        c_.hline(left, ruler.y, w, i == hoverStep_ ? light : lip);
+        if (selected)
+            for (int j = 0; j < 5; ++j) c_.fill(left + 1, ruler.y + 1 + j, 5 - j, 1, light);
+        else if (i % 4 == 0) c_.hline(left + 2, ruler.y + 2, 6, muted);
+        char number[4];
+        std::snprintf(number, sizeof(number), "%02d", i + 1);
+        controlText(c_, {left, ruler.y, w, ruler.h}, number, font::normal, live ? light : quiet, ruler.h < 19 ? .85f : 1.f, 1);
+
+        c_.fill(col.x, pitch.y, col.w, noteY - pitch.y, selected ? 0xff293b80 : 0xff100d1a);
+        c_.fill(col.x, pitch.y, 1, noteY - pitch.y, i % 4 ? 0xff302840 : 0xff655975);
+        for (int line = 0; line < 4; ++line)
+            c_.hline(col.x + 1, high - 2 + line * (low - high + 3) / 3, col.w - 1, 0xff302840);
+        if (selected) c_.fill(col.x + 1, pitch.y, col.w - 1, 2, ice);
+        if (live && ((pattern_.accents >> i) & 1u)) mark(c_, 3, mid, pitch.y + 5, 3, ice);
+
+        const Rect key{left, noteY, w, noteH - 1};
+        const uint32_t bed = selected ? 0xff101629 : 0xff07070c;
+        faceplate(c_, key, bed, bed, selected ? 0xff8ca8fc : 0xff342c43, 4);
+        if (live && chromeNotes)
         {
             constexpr auto& glyph = tbmpc::thorn::pitch;
             std::array<uint32_t, glyph.w * glyph.h> tile;
-            p_->panel->pitchTile(tile.data(), pattern_.pitch[i], bed);
-            c_.blitSharp(tile.data(), glyph.w, glyph.h, fit({0, 0, glyph.w, glyph.h}, note));
+            p_->panel->pitchTile(tile.data(), pattern_.pitch[i], bed, selected);
+            // Trim the transparent margin around the hardware glyphs, including the sharp and octave.
+            const Rect ink{2, 3, glyph.w - 4, glyph.h - 6};
+            c_.blitSharp(tile.data() + ink.y * glyph.w + ink.x, ink.w, ink.h, fit(ink, key.inset(2)), glyph.w);
         }
-        else
+        else if (live)
         {
             const auto name = noteName(pattern_.pitch[i]);
-            const float zoom = std::min(.92f, float(note.w) / textWidth(name, font::normal));
-            controlText(c_, note, name, font::normal, hit ? light : 0xffd1d3e6, zoom, 1);
+            const float zoom = std::min(1.f, float(key.w - 4) / textWidth(name, font::normal));
+            controlText(c_, key, name, font::normal, selected ? light : 0xffd1d3e6, zoom, 1);
+        }
+
+        const int size = std::clamp(std::min(w / 7, l.lane(2).h / 4), 3, 7);
+        for (int j = 2; j < 5; ++j)
+        {
+            const Rect row = l.lane(j);
+            c_.gradient({left, row.y, w, row.h - 1}, upper, lower);
+            c_.hline(left, row.y, w, lip);
+            if (!live) continue;
+            const int cy = row.y + row.h / 2;
+            const bool on = ((j == 2 ? pattern_.gates : j == 3 ? pattern_.accents : pattern_.slides) >> i) & 1u;
+            const uint32_t ink = selected ? 0xffffffff : 0xffd6d9ea;
+            if (j == 2)
+            {
+                const Rect gate{mid - size, cy - size, 2 * size, 2 * size};
+                if (on)
+                {
+                    c_.fill(gate, ink);
+                    for (int k = -1; k <= 1; ++k) c_.fill(mid + k * (size/2), cy + size - 2, 1, 2, lower);
+                }
+                else c_.frame(gate, selected ? light : muted);
+            }
+            else if (!on) c_.fill(mid - 2, cy, 5, 1, selected ? light : quiet);
+            else if (j == 3)
+                for (int k = -size; k <= size; ++k) c_.fill(mid - size + std::abs(k), cy + k, 2 * (size - std::abs(k)) + 1, 1, ink);
+            else mark(c_, 4, mid, cy, size, ink);
         }
     }
-    // Draw the pitch ribbon after the cells so a slide crosses the column divider.
+    // The performance ribbon and the editable switches share the same columns and clock.
     for (int i = 0; i < n; ++i)
     {
         const Rect col = l.column(i, count);
-        const int pad = std::clamp(col.w / 8, 3, 8), y = pitchY(i), x = col.x + pad, end = col.x + col.w - pad;
-        const bool gated = (pattern_.gates >> i) & 1u;
+        const int pad = std::clamp(col.w / 9, 3, 7), y = pitchY(i), x = col.x + pad, end = col.x + col.w - pad;
         if (i && ((pattern_.slides >> (i - 1)) & 1u))
         {
             const Rect prev = l.column(i - 1, count);
-            c_.line(prev.x + prev.w - std::clamp(prev.w / 8, 3, 8), pitchY(i - 1), x, y, 1.6f, laneInk[4]);
+            const int x0 = prev.x + prev.w - std::clamp(prev.w / 9, 3, 7), y0 = pitchY(i - 1);
+            float lastX = float(x0), lastY = float(y0);
+            for (int j = 1; j <= 6; ++j)
+            {
+                const float t = j / 6.f, xx = x0 + (x - x0) * t, yy = y0 + (y - y0) * t * t * (3 - 2 * t);
+                c_.line(lastX, lastY, xx, yy, 1.35f, muted);
+                lastX = xx; lastY = yy;
+            }
         }
-        const uint32_t color = i == active ? 0xffe6ffbe : ice;
-        if (gated)
-        {
-            c_.fillChamfer({x, y - 2, end - x, 5}, 1, mix(color, ground, .4f));
-            c_.gradient({x + 1, y - 2, end - x - 2, 3}, mix(color, light, .45f), color);
-        }
-        else
-            c_.frame({x, y - 2, end - x, 4}, quiet);
+        if ((pattern_.gates >> i) & 1u) c_.fill(x, y - 1, end - x, 4, i == active ? light : steel);
+        else c_.frame({x, y - 2, end - x, 4}, muted);
     }
 }
 
@@ -535,18 +457,15 @@ void PanelUI::paintSection(size_t index)
 {
     const auto& section = sections[index];
     const Rect group = layout_.groups[index];
-    plate(c_, group, 0xff171520);
+    c_.fill(group, ground);
     const int hh = layout_.headerHeight;
-    c_.gradient({group.x + 4, group.y + 1, group.w - 8, hh - 1}, mix(glass, section.ink, .12f), 0xff1b1826);
-    const int mid = group.y + hh / 2, left = group.x + 19, right = group.x + group.w - 9;
-    const float zoom = hh < 25 ? .78f : .88f;
-    const int labelW = int(std::ceil(textWidth(section.name, font::large) * zoom)) + 1;
-    c_.line(group.x + 5, mid + 5, group.x + 11, mid - 5, 2.1f, section.ink);
-    controlText(c_, {left, group.y, labelW, hh}, section.name, font::large, light, zoom);
-    const int rail = left + labelW + 9;
-    const uint32_t etch = mix(glass, section.ink, .25f);
-    c_.line(rail, mid + 3, rail + 5, mid - 2, 1.f, etch);
-    c_.hline(rail + 5, mid - 2, right - rail - 5, etch);
+    const bool active = int(index) == bank_;
+    const Rect heading{group.x + 1, group.y, group.w - 2, hh - 1};
+    faceplate(c_, heading, active ? 0xff323358 : 0xff292034, active ? 0xff1b203d : 0xff161121,
+              active ? 0xff8099d7 : 0xff544a65);
+    controlText(c_, {heading.x + 9, heading.y, heading.w - 17, heading.h}, section.name, font::normal,
+                active ? light : 0xffd7d4e6, hh < 22 ? .84f : .97f);
+    if (active) c_.fill(heading.x + 7, heading.y + heading.h - 2, heading.w - 14, 1, ice);
     for (int j = 0; j < 2 * section.columns; ++j)
         paintSlot(section.slots[j], section.ink);
 }
@@ -556,10 +475,10 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
     const Rect r = layout_.slots[slot];
     const bool hot =
         slot == hover_ || (slot < int(id::count) && paramIndex_[slot] == dragParam_) || slot == dragPlot_;
-    const uint32_t base = hot ? 0xff282336 : 0xff191622;
-    c_.fill({r.x + 1, r.y + 1, r.w - 1, r.h - 1}, base);
-    c_.hline(r.x, r.y, r.w, hot ? ink : 0xff393141);
-    c_.fill(r.x, r.y, 1, r.h, 0xff393141);
+    c_.fill(r, ground);
+    const Rect key{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
+    faceplate(c_, key, hot ? 0xff362e49 : 0xff251d32, hot ? 0xff1e1c31 : 0xff13101e,
+              hot ? ice : 0xff51465f, 3);
     if (slot >= filterPlot)
     {
         paintPlot(slot, ink);
@@ -570,27 +489,21 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
     const auto& param = tbmpc::paramTable[tbmpc::paramIndex(slot)];
     const int pad = std::clamp(r.w / 15, 5, 11), left = r.x + pad;
     const bool choice = param.kind == tbmpc::Kind::choice;
-    const int labelH = std::clamp(r.h * 41 / 100, 15, 27), top = r.y + std::max(1, (r.h - 63) / 3);
-    const bool dial = (slot == int(id::cutoff) || slot == int(id::resonance) || slot == int(id::envMod) ||
-                       slot == int(id::decay) || slot == int(id::accent) || slot == int(id::volume)) &&
-                      reading.cc < 0;
-    const float radius = std::clamp(r.h * .31f, 10.f, 22.f);
-    const int dialW = dial ? int(2 * radius) + 3 : 0, badgeW = reading.cc >= 0 ? 34 : 0;
+    const bool compact = r.h < 40;
+    const int labelH = std::clamp(r.h * 38 / 100, 12, 24), top = r.y + std::max(2, (r.h - 60) / 4);
+    const int badgeW = reading.cc >= 0 ? 34 : 0;
     const char* label = fieldName(slot);
-    const int labelW = r.w - 2 * pad - std::max(dialW, badgeW);
-    const float labelZoom = textWidth(label, font::normal) <= labelW && labelH >= 18 ? .90f : .98f;
+    const int labelW = r.w - 2 * pad - badgeW;
     const auto& face = textWidth(label, font::normal) <= labelW && labelH >= 18 ? font::normal : font::small;
-    controlText(c_, {left, top + 1, labelW, labelH}, label, face, 0xffc0b9cd, labelZoom);
+    const float labelZoom = std::min(.96f, float(labelH + 1) / face.height);
+    controlText(c_, {left, top, labelW, labelH}, label, face, muted, labelZoom);
     if (reading.cc >= 0)
     {
         char badge[10];
         std::snprintf(badge, sizeof(badge), "CC %d", reading.cc);
         controlText(c_, {r.x + r.w - pad - badgeW, top + 1, badgeW, labelH}, badge, font::small, lilac, .82f, 2);
     }
-    if (dial)
-        c_.knob(r.x + r.w - pad - radius, r.y + r.h * .53f, radius, float(norm(paramIndex_[slot])), false, ink,
-                0xff474051, 0xff282532, 0xff7b748c, hot);
-    const int valueY = top + labelH - 1, valueH = std::min(r.y + r.h - 4 - valueY, 33);
+    const int valueY = top + labelH, valueH = std::min(r.y + r.h - (choice ? 3 : 5) - valueY, 33);
     if (slot == int(id::glide))
     {
         const int usable = r.w - 2 * pad;
@@ -598,16 +511,18 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
         {
             const Rect option{left + i * usable / 2, valueY + 1, usable / 2 - 2, valueH - 1};
             const bool chosen = int(reading.value) == i;
-            plate(c_, option, chosen ? 0xff453153 : 0xff1e1b27, chosen ? ink : edge);
-            controlText(c_, option, tbmpc::glideChoices[i], font::normal, chosen ? light : muted, .92f, 1);
+            faceplate(c_, option, chosen ? 0xff4d75de : 0xff292034, chosen ? 0xff202f7f : 0xff141021,
+                      chosen ? 0xffb1c9ff : edge, 3);
+            controlText(c_, option, tbmpc::glideChoices[i], font::normal, chosen ? light : muted,
+                        std::min(.92f, float(option.h + 2) / font::normal.height), 1);
         }
         return;
     }
-    const int valueW = r.w - 2 * pad - dialW - (choice ? 10 : 0);
+    const int valueW = r.w - 2 * pad - (choice ? 10 : 0);
     const bool big = valueH >= 22 && textWidth(reading.text, font::large) <= valueW;
     const auto& valueFace = big ? font::large : font::normal;
-    const float zoom =
-        std::min(1.f, std::max(.72f, float(valueW) / std::max(1, textWidth(reading.text, valueFace))));
+    const float zoom = std::min({1.f, compact ? float(valueH + 2) / valueFace.height : 1.f,
+                                 std::max(.72f, float(valueW) / std::max(1, textWidth(reading.text, valueFace)))});
     controlText(c_, {left, valueY, valueW, valueH}, reading.text, valueFace, light, zoom);
     if (choice)
     {
@@ -615,11 +530,11 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
         c_.line(x - 3, y - 1, x, y + 2, 1.4f, ink);
         c_.line(x, y + 2, x + 3, y - 1, 1.4f, ink);
     }
-    else if (!dial)
+    else
     {
-        const int rail = r.w - 2 * pad, y = r.y + r.h - 4;
-        c_.fill(left, y, rail, 2, 0xff393241);
-        c_.fill(left, y, int(std::lround(norm(paramIndex_[slot]) * rail)), 2, ink);
+        const int rail = r.w - 2 * pad, y = r.y + r.h - 5;
+        c_.fill(left, y, rail, 2, 0xff393247);
+        c_.fill(left, y, int(std::lround(norm(paramIndex_[slot]) * rail)), 2, hot ? ice : 0xff7389c9);
     }
 }
 
@@ -667,14 +582,17 @@ void PanelUI::paintPlot(int slot, uint32_t groupInk)
         }
         else
             y = plot.y + height * (.5 - .45 * amount * std::sin(6.28318530718 * cycles * i / width));
+        if (filter && i % 4 == 0) c_.fill(plot.x + i, int(y), 1, bottom - int(y) + 1, 0xff3b375f);
         if (i) c_.line(plot.x + i - 1, previous, plot.x + i, float(y), 1.5f, color);
         previous = float(y);
     }
     const float xVal = filter ? cutoff : float(std::log(rate / lfoMinRate) / std::log(lfoMaxRate / lfoMinRate));
     const int x = std::clamp(plot.x + int(std::lround(width * xVal)), plot.x + 3, plot.x + width - 3);
     const int y = std::clamp(bottom - int(std::lround(height * (filter ? res : amount))), plot.y + 3, bottom - 3);
-    c_.disc(x, y, 3, 0xff252030);
-    c_.ring(x, y, 1.6f, 3, color);
+    c_.line(x - 3, y, x, y - 3, 1.3f, light);
+    c_.line(x, y - 3, x + 3, y, 1.3f, light);
+    c_.line(x + 3, y, x, y + 3, 1.3f, color);
+    c_.line(x, y + 3, x - 3, y, 1.3f, color);
     c_.resetClip();
 }
 } // namespace hdslave_desktop

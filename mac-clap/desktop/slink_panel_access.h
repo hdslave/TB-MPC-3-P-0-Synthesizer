@@ -8,14 +8,14 @@
 namespace tbmpc
 {
 // Private, main-thread bridge between the desktop editor and its embedded instrument.
-inline constexpr char desktopPanelAccessId[] = "com.hdslave.slink.panel-access/2";
+inline constexpr char desktopPanelAccessId[] = "com.hdslave.slink.panel-access/3";
 struct DesktopPanelAccess
 {
     void (*open)(const void*);
     void (*close)(const void*);
     PatternView (*readPattern)(const clap_plugin_t*);
-    bool (*renderArt)(const clap_plugin_t*, const sixteen_screen_surface_t&, bool full, int selected);
-    void (*pitchTile)(uint32_t* pixels, int cv, uint32_t background);
+    bool (*renderArt)(const clap_plugin_t*, const sixteen_screen_surface_t&, bool full, int selected, int seed, int button);
+    void (*pitchTile)(uint32_t* pixels, int cv, uint32_t background, bool active);
     void (*holdMotion)(const clap_plugin_t*, bool);
     void (*camera)(const clap_plugin_t*, bool cut);
     bool (*localPlay)(const clap_plugin_t*);

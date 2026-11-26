@@ -45,7 +45,7 @@ class PanelUI
     DesktopPlugin* p_;
     Canvas c_;
     ConsoleLayout layout_;
-    std::vector<uint32_t> frame_, art_, previousArt_, mastBacking_, chromeInk_;
+    std::vector<uint32_t> frame_, art_, previousArt_;
     struct Reading
     {
         double value = 0;
@@ -61,6 +61,7 @@ class PanelUI
     double renderMs_ = 0;
     static constexpr int crestHover = -2;
     int lastTouched_ = -1, hover_ = -1, hoverStep_ = -1, hoverLane_ = -1, selected_ = 0, paintedFocus_ = -1;
+    int bank_ = 0, paintedBank_ = -1;
     int paintedHover_ = -1, paintedHoverStep_ = -1, paintedHoverLane_ = -1, paintedPreset_ = -2;
     int dragParam_ = -1, wheelParam_ = -1, dragPlot_ = -1, startStep_ = -1;
     tbmpc::sp16::StepLane dragLane_ = tbmpc::sp16::StepLane::number;
@@ -95,16 +96,15 @@ class PanelUI
     int columns() const { return pattern_.steps > 16 ? 32 : 16; }
     int focus() const;
     void paintToolbar();
-    void paintMast();
+    void paintRibbon();
+    void paintFooter();
     void paintScore();
-    void paintPlayhead(Rect cap);
     void paintSection(size_t group);
     void paintSlot(int slot, uint32_t ink);
     void paintPlot(int slot, uint32_t ink);
     void movePlot(float x, float y);
     void setHover(float x, float y);
-    Rect paintArt(bool repaintMast, bool repaintScore, uint64_t now);
-    void chrome(Rect source, Rect dest, int fadeX, int fadeY, int intensity);
+    Rect paintArt(bool full, bool refreshHeader, uint64_t now);
     void edit(int param, Rect anchor, int button, uint32_t mods, int clicks);
     void finishDrag();
     void endWheelGesture();

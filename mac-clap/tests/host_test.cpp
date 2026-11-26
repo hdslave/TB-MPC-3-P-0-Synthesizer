@@ -377,11 +377,16 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     {
         ConsoleLayout layout;
         layout.arrange(size.first,size.second);
+        int pw=0,ph=0;
+        const auto* resized=ui.ui_render(plug,size.first,size.second,1,&pw,&ph);
+        if (!check(resized && pw==size.first && ph==size.second,"the faceplate renders at each tested aspect ratio")) return false;
         const Rect regen=layout.slots[id::regen];
         if (!check(regen.contains(layout.face.x,layout.face.y) &&
                    regen.contains(layout.face.x+layout.face.w-1,layout.face.y+layout.face.h-1) &&
-                   layout.caption.intersect(layout.play).w==layout.play.w,
-                   "smiley is inside Regen and transport belongs to the score")) return false;
+                   layout.mast.contains(layout.play.x,layout.play.y) &&
+                   layout.mast.contains(layout.play.x+layout.play.w-1,layout.play.y+layout.play.h-1) &&
+                   layout.counter.x>layout.crest.x+layout.crest.w && layout.face.x>layout.play.x+layout.play.w,
+                   "hardware header order and interactive plates")) return false;
         for (int i=0;i<slotCount;++i)
         {
             const Rect r=layout.slots[i];
@@ -393,6 +398,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
                 if (!check(r.intersect(layout.slots[j]).empty(),"control hit targets do not overlap")) return false;
         }
     }
+    render();
     mouse(1,0,0);
     if (!snapDir.empty())
     {
@@ -433,6 +439,42 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         process();
         render();
     }
+    // All six hardware bank keys keep the same score and point the ribbon at real automation targets.
+    if (!ui.preset_load(plug,0)) return false;
+    process(); render();
+    const int oldCutoff=int(value("Cutoff")*1000);
+    for (int bank=0;bank<6;++bank)
+    {
+        mouse(1,0,0);
+        const auto scoreBefore=area(desk.grid);
+        press(desk.bankKeys[bank]);
+        if (!check(area(desk.grid)==scoreBefore,"changing bank preserves the single score")) return false;
+        for (int j=0;j<2;++j)
+        {
+            const Rect r=desk.ribbon[j];
+            const int param=ribbonParams[bank][j], x=r.x+r.w/2, y=r.y+r.h/2;
+            const auto& spec=tbmpc::paramTable[tbmpc::paramIndex(param)];
+            ctx.edited.clear();
+            drag(x,y,x,y+(value(spec.name)>(spec.min+spec.max)/2?22:-22));
+            process();
+            if (!check(ctx.edited.count(param),"bank readout automates its corresponding parameter")) return false;
+        }
+        if (!ui.preset_load(plug,0)) return false;
+        process(); render();
+    }
+    if (!check(int(value("Cutoff")*1000)==oldCutoff,"preset recall after ribbon edits")) return false;
+    for (int i=0;i<2;++i)
+    {
+        const Rect r=desk.keyFields[i];
+        const int x=r.x+r.w/2, y=r.y+r.h/2;
+        ctx.edited.clear();
+        drag(x,y,x,y-24);
+        process();
+        if (!check(ctx.edited.count(i?id::scale:id::root),"the footer edits root and scale")) return false;
+    }
+    if (!ui.preset_load(plug,0)) return false;
+    process(); render();
+    press(desk.bankKeys[0]);
     // Every non-momentary parameter can send an automation event directly from this screen.
     for (int i=0;i<int(id::count);++i)
     {
@@ -486,7 +528,12 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     process();
     if (!check(initialSeed!=value("Seed"),"Regen rolls a locked seed")) return false;
     const double beforeBarcode=value("Seed");
-    dragSlot(id::seed,35,0);
+    const Rect barcode=desk.slots[id::seed];
+    const int bx=barcode.x+barcode.w/2,by=barcode.y+barcode.h/2;
+    const auto beforeSeedDigits=area(desk.slots[id::seedBack]);
+    mouse(0,bx,by); mouse(1,bx+35,by);
+    if (!check(area(desk.slots[id::seedBack])!=beforeSeedDigits,"seed display follows a barcode drag before host flush")) return false;
+    mouse(2,bx+35,by);
     process();
     if (!check(beforeBarcode!=value("Seed"),"seed barcode drag")) return false;
     const auto scaleBox=desk.slots[id::scale];
@@ -606,13 +653,13 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
 
     press(cell(0,0));
     const auto crest=[&] { return area(desk.crest); };
-    const auto storm=[&] { return area(cell(0,0)); };
+    const auto storm=[&] { return area(desk.storm); };
     const auto smile=[&] { return area(desk.face); };
     press(desk.crest);
     const auto held=crest(), moving=storm(), turning=smile(), nextCap=area(cell(1,0));
     std::this_thread::sleep_for(std::chrono::milliseconds(150));
     if (!check(crest()==held && storm()!=moving && smile()!=turning && area(cell(1,0))==nextCap,
-               "held crest, moving Regen and chrome confined to the focused step")) return false;
+               "the held crest, turning smiley and moving footer have independent regions")) return false;
     press(desk.crest);
     std::this_thread::sleep_for(std::chrono::milliseconds(80));
     if (!check(crest()!=held,"crest resumes")) return false;
@@ -628,11 +675,18 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(crest()==frozenCrest && storm()==frozenStorm && smile()==frozenFace,"global motion hold")) return false;
     press(desk.crest,1);
     if (!check(crest()!=frozenCrest && storm()==frozenStorm,"manual cut while global motion is held")) return false;
-    const auto lastCap=area(cell(31,0));
+    const auto lastCap=area(cell(31,0)), firstCap=area(cell(0,0)), firstCounter=area(desk.counter);
     press(cell(31,0)); mouse(1,0,0);
-    if (!check(storm()!=frozenStorm && area(cell(31,0))!=lastCap,"held chrome follows selection to step 32")) return false;
+    if (!check(storm()==frozenStorm && area(cell(31,0))!=lastCap && area(desk.counter)!=firstCounter,
+               "the hardware step counter and score follow selection while artwork is frozen")) return false;
     press(cell(0,0)); mouse(1,0,0);
-    if (!check(storm()==frozenStorm && area(cell(31,0))==lastCap,"a departing playhead leaves a clean ruler")) return false;
+    if (!check(area(cell(0,0))==firstCap && area(cell(31,0))==lastCap && area(desk.counter)==firstCounter,
+               "returning to step one restores both the ruler and hardware counter")) return false;
+    const auto step17=area(cell(16,0));
+    press(desk.counter);
+    if (!check(area(cell(16,0))!=step17 && area(desk.counter)!=firstCounter,"step counter jumps to the second half")) return false;
+    press(desk.counter);
+    if (!check(area(cell(16,0))==step17 && area(desk.counter)==firstCounter,"step counter returns to the first half")) return false;
     return true;
 }
 
