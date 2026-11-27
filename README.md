@@ -17,13 +17,22 @@
 
 [See all six freesp16 pages](docs/screen.md#thorn-crown-on-freesp16) · [Watch the freesp16 panel in motion](docs/slink-sp16.gif) · [See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View Blacklight Transfer](docs/slink-mpc-blacklight.png)
 
-[Download Slink 0.8.0 for MPC Sample, freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.8.0)
+## Downloads
 
-The desktop gallery shows Slink **0.9.10** playing Acid Line. The Thorn Crown editor puts the chrome crest, turning smiley, sequencer and all 34 controls in one window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/667d967e53033010c330d335e746a84e3a3411a8/mac-clap)
+| Platform | Packaged build |
+| --- | --- |
+| MPC Sample with hdslaveOS or Melodee | [Slink 0.8.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.1/Slink-0.8.1-MPC-Sample.zip) |
+| SP-16 with freesp16 | [Slink 0.8.0 for freesp16](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.0/Slink-0.8.0-freesp16.zip) |
+| macOS, Apple Silicon and Intel | [Slink 0.8.0 for macOS](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.0/Slink-0.8.0-macOS-universal.zip) |
+| Windows x64 | [Slink 0.8.0 for Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.0/Slink-0.8.0-Windows-x64.zip) |
+
+The SP-16 gallery shows the newer panel on `main`. [Build the current freesp16 panel](#freesp16-on-sp-16)
+
+The desktop gallery shows Slink **0.9.10** playing Acid Line. The Thorn Crown editor puts the chrome crest, turning smiley, sequencer and all 34 controls in one window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/codex/slink-desktop-sp16/mac-clap)
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.1).
 
-On hdslaveOS 0.8.2, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
+On hdslaveOS 0.8.3, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
 TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, and other MIDI notes transpose it (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
