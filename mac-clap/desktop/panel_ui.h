@@ -48,6 +48,8 @@ class PanelUI
     Canvas c_;
     ConsoleLayout layout_;
     FooterStorm footerStorm_;
+    Smiley smiley_;
+    int lastSmileyPosition_ = -1;
     HeaderPlate crestPlate_, lcdPlate_, transportPlate_, brandPlate_, regenPlate_;
     std::vector<uint32_t> frame_, art_, previousArt_;
     struct Reading

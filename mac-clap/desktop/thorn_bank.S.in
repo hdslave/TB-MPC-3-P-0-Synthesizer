@@ -24,3 +24,8 @@ _slink_desktop_header:
 .p2align 4
 _slink_desktop_type:
 .incbin "@TYPE_BANK@"
+.globl _slink_desktop_smiley
+.private_extern _slink_desktop_smiley
+.p2align 4
+_slink_desktop_smiley:
+.incbin "@SMILEY_BANK@"

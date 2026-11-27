@@ -10,9 +10,11 @@
 
 #ifdef _WIN32
 const uint8_t* desktopHeaderBank();
+const uint8_t* desktopSmileyBank();
 const uint8_t* desktopFontBank();
 #else
-extern "C" const uint8_t slink_desktop_header[], slink_desktop_type[];
+extern "C" const uint8_t slink_desktop_header[], slink_desktop_type[], slink_desktop_smiley[];
+static const uint8_t* desktopSmileyBank() { return slink_desktop_smiley; }
 static const uint8_t* desktopHeaderBank() { return slink_desktop_header; }
 static const uint8_t* desktopFontBank() { return slink_desktop_type; }
 #endif
@@ -23,15 +25,20 @@ const uint8_t* desktopTypeMasks() { return desktopFontBank(); }
 
 bool HeaderPlate::paint(Canvas& canvas, int index, Rect bounds)
 {
-    if (bounds.empty() || index < 0 || index >= 639) return false;
-    const int dw = bounds.w * canvas.s, dh = bounds.h * canvas.s;
+    if (!prepare(desktopHeaderBank(), SLINK_HEADER_BYTES, 639, index,
+                 bounds.w * canvas.s, bounds.h * canvas.s)) return false;
+    draw(canvas, bounds);
+    return true;
+}
+
+bool HeaderPlate::prepare(const uint8_t* bank, uint32_t bytes, int count, int index, int dw, int dh)
+{
+    if (!bank || dw <= 0 || dh <= 0 || index < 0 || index >= count) return false;
     if (index != index_ || dw != width_ || dh != height_)
     {
-        const uint8_t* bank = desktopHeaderBank();
-        if (!bank) return false;
         uint32_t range[2];
         std::memcpy(range, bank + 4 * index, sizeof(range));
-        if (range[0] < 640 * sizeof(uint32_t) || range[1] <= range[0] || range[1] > SLINK_HEADER_BYTES) return false;
+        if (range[0] < (count + 1) * sizeof(uint32_t) || range[1] <= range[0] || range[1] > bytes) return false;
         int w, h, components;
         auto* src = stbi_load_from_memory(bank + range[0], int(range[1] - range[0]), &w, &h, &components, 4);
         if (!src) return false;
@@ -79,11 +86,42 @@ bool HeaderPlate::paint(Canvas& canvas, int index, Rect bounds)
         stbi_image_free(src);
         index_=index; width_=dw; height_=dh;
     }
-    const int x0=bounds.x*canvas.s, y0=bounds.y*canvas.s;
-    const Rect dst=canvas.clip.intersect({x0,y0,dw,dh});
-    if (!dst.empty())
-        for (int y=dst.y;y<dst.y+dst.h;++y)
-            std::copy_n(pixels_.data()+size_t(y-y0)*dw+dst.x-x0,dst.w,canvas.px+size_t(y)*canvas.pw+dst.x);
     return true;
+}
+
+void HeaderPlate::draw(Canvas& canvas, Rect bounds, const HeaderPlate* next, unsigned weight) const
+{
+    const int x0 = bounds.x * canvas.s, y0 = bounds.y * canvas.s;
+    const Rect dst = canvas.clip.intersect({x0, y0, width_, height_});
+    if (dst.empty()) return;
+    for (int y = dst.y; y < dst.y + dst.h; ++y)
+    {
+        const size_t start = size_t(y - y0) * width_ + dst.x - x0;
+        auto* out = canvas.px + size_t(y) * canvas.pw + dst.x;
+        if (!next)
+            std::copy_n(pixels_.data() + start, dst.w, out);
+        else
+            for (int x = 0; x < dst.w; ++x)
+            {
+                const uint32_t a = pixels_[start + x], b = next->pixels_[start + x];
+                const auto blend = [&](uint32_t mask) {
+                    return ((((a & mask) * (256-weight) + (b & mask) * weight) >> 8) & mask);
+                };
+                out[x] = 0xff000000 | blend(0xff00ff) | blend(0x00ff00);
+            }
+    }
+}
+
+void Smiley::paint(Canvas& canvas, int position, Rect bounds)
+{
+    constexpr int count = 33;
+    position = std::clamp(position, 0, (count - 1) * 256);
+    const int low = position / 256, weight = position % 256;
+    const auto load = [&](int frame) {
+        return poses_[frame % 2].prepare(desktopSmileyBank(), SLINK_SMILEY_BYTES, count,
+                                         frame, bounds.w * canvas.s, bounds.h * canvas.s);
+    };
+    if (!load(low) || (weight && !load(low+1))) return;
+    poses_[low % 2].draw(canvas, bounds, weight ? &poses_[(low+1) % 2] : nullptr, weight);
 }
 }

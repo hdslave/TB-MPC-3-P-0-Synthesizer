@@ -251,8 +251,8 @@ Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
     constexpr int sw = SIXTEEN_SCREEN_WIDTH, sh = SIXTEEN_SCREEN_HEIGHT;
     sixteen_screen_surface_t surface{art_.data(), sw, sh, sw, uint32_t(now)};
     const int button = readings_[id::mode].value >= .5 ? 3 : localPlay_ ? 1 : pattern_.running ? 2 : 0;
-    int cameraFrame = 0;
-    if (!p_->panel->renderArt(p_->inner, surface, refreshHeader, selected_, int(readings_[id::seed].value), button, cameraFrame) && !full)
+    int cameraFrame = 0, smileyPosition = 0;
+    if (!p_->panel->renderArt(p_->inner, surface, refreshHeader, selected_, int(readings_[id::seed].value), button, cameraFrame, smileyPosition) && !full)
         return {};
     Rect damage;
     const auto changed = [&](Rect src) {
@@ -331,9 +331,11 @@ Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
         }
         else blit(lcd,dst);
     }
-    if (changed(regen))
+    if (changed(regen) || smileyPosition != lastSmileyPosition_)
     {
         blit(regen,layout_.headRect(regen));
+        smiley_.paint(c_,smileyPosition,layout_.face);
+        lastSmileyPosition_ = smileyPosition;
         regenPlate_.paint(c_,638,layout_.headRect({720,63,53,26}));
     }
     return damage;

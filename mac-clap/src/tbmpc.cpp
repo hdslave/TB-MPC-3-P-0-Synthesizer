@@ -843,7 +843,7 @@ PatternView readDesktopPattern(const clap_plugin_t* plug)
     p.panel.shown=p.patternState.read();
     return p.panel.shown;
 }
-bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& surface,bool full,int selected,int seed,int button,int& cameraFrame)
+bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& surface,bool full,int selected,int seed,int button,int& cameraFrame,int& smileyPosition)
 {
     auto& p=of(plug);
     auto& panel=p.panel;
@@ -852,6 +852,7 @@ bool renderDesktopArt(const clap_plugin_t* plug,const sixteen_screen_surface_t& 
     // The desktop draws the full-width storm directly from its own film.
     const bool changed=panel.thorn.draw(raster,panel.shown,surface.now_ms,full,seed,button,false,false);
     cameraFrame=panel.thorn.cameraFrame();
+    smileyPosition=panel.thorn.smileyPosition();
     return changed;
 }
 void desktopPitchTile(uint32_t* pixels,int cv,uint32_t background,bool active)

@@ -17,6 +17,7 @@ public:
 #ifdef SLINK_DESKTOP
     bool heldMotion = false;
     int cameraFrame() const { return lastCamera; }
+    int smileyPosition() const { return lastFace; }
     void nextCameraCut()
     {
         constexpr uint32_t cuts[]{0,5000,11000,14000,20000};

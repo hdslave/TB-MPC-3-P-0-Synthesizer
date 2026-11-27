@@ -46,3 +46,9 @@ const uint8_t* desktopFontBank()
     static const auto* data = static_cast<const uint8_t*>(bitmapResource(105, SLINK_TYPE_BYTES));
     return data;
 }
+
+const uint8_t* desktopSmileyBank()
+{
+    static const auto* data = static_cast<const uint8_t*>(bitmapResource(106, SLINK_SMILEY_BYTES));
+    return data;
+}
