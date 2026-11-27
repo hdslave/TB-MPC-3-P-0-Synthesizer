@@ -808,15 +808,19 @@ std::vector<Call> hostCalls (uint64_t blocks, double bpm, double rate, const std
     return calls;
 }
 
-// Plays the calls, the song playing throughout; each call's output is added where it goes.
-std::vector<float> playCalls (Instance& a, const std::vector<Call>& calls, double bpm)
+// Plays the calls, the song playing throughout; each call's output is added where it goes. `events (k, list)` adds
+// events to call k.
+std::vector<float> playCalls (Instance& a, const std::vector<Call>& calls, double bpm, const std::function<void (size_t, Events&)>& events = {})
 {
     std::vector<float> l (calls.empty() ? 0 : calls.back().at + calls.back().frames, 0.0f), cl (128), cr (128);
-    Events none;
     OutEvents ignored;
     int64_t steady = 0;
-    for (const auto& c : calls)
+    for (size_t k = 0; k < calls.size(); ++k)
     {
+        const auto& c = calls[k];
+        Events none;
+        if (events)
+            events (k, none);
         clap_event_transport tr {};
         tr.header = { sizeof (clap_event_transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0 };
         tr.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_IS_PLAYING;
@@ -1003,6 +1007,55 @@ void testPositionJitter()
             });
             CHECK (notesNear (found, expect, rate, 2, 2, again ? "locate back 0.08" : "locate back 0.05"));
         }
+    }
+}
+
+// The edges of a jump: the locked pattern (0x5a17, Density 5) at 127 BPM (44.1 kHz), the song from beat 0 in
+// hdslaveOS's blocks of 128, every note against the TB-3PO model for the clocks the song's place makes.
+void testJumpEdges()
+{
+    const double rate = 44100.0, bpm = 127.0, perFrame = bpm / 60.0 / rate;
+    const uint16_t seed = 0x5a17;
+    auto pattern = [&] (Instance& a, std::vector<std::pair<std::string, double>> more = {}) {
+        auto p = timingPatch (seed);
+        p.push_back ({ "Density", 5 });
+        p.insert (p.end(), more.begin(), more.end());
+        a.setup (p);
+    };
+    auto notes = [&] (int clocks, const std::function<double (int)>& frameOf) {
+        return expectedNotesAt (seed, 5, tbmpc::appletDefaultScale, 16, clocks, frameOf);
+    };
+    auto before7 = [&] (std::vector<long> v) { // the notes before beat 7, well inside each song here
+        v.erase (std::lower_bound (v.begin(), v.end(), (long) (7.0 / perFrame)), v.end());
+        return v;
+    };
+    // A place told exactly a 64th note behind where the last block's frames led is no jump, as hdslaveOS has it (a move
+    // of more than a 64th is one): the clock played (beat 1, in sixteenths) is held, whatever the block before was told.
+    // Before, the CLAP rounding of the two places decided, so the same move was a jump after one block (the pattern
+    // stepping once more) and not after another.
+    {
+        const double step = 0.25 / perFrame;
+        const uint64_t blocks = (uint64_t) (8.0 / perFrame / 128.0), at = (uint64_t) (1.02 / perFrame / 128.0) * 128;
+        int wrong = 0;
+        for (double off : { 0.001, -0.001, 0.0013, -0.0007, 0.0002, -0.0019, 0.0, 0.0017 })
+        {
+            Instance a (rate);
+            pattern (a);
+            const double before = (double) (at - 128) * perFrame + off; // the block before, told `off` off its line
+            const auto found = before7 (noteStarts (playCalls (a, hostCalls (blocks, bpm, rate, [&] (uint64_t f) {
+                if (f < at - 128)
+                    return (double) f * perFrame;
+                if (f < at)
+                    return before;
+                return before + (double) (f - at + 128) * perFrame - 1.0 / 16.0;
+            }), bpm)));
+            // Held: the clocks after beat 1 come a 64th later, less `off`. The notes before beat 7 count.
+            const auto expect = before7 (notes (32, [&] (int k) { return k <= 4 ? k * step : (k * 0.25 + 1.0 / 16.0 - off) / perFrame; }));
+            char what[64];
+            std::snprintf (what, sizeof (what), "exactly a 64th back after %+.4f", off);
+            wrong += notesNear (found, expect, rate, 2, (long) (0.002 / perFrame) + 2, what) ? 0 : 1;
+        }
+        CHECK (wrong == 0);
     }
 }
 
@@ -3593,6 +3646,7 @@ int main (int argc, char** argv)
     testStopRestartJump();
     testLoopsAndClockChanges();
     testPositionJitter();
+    testJumpEdges();
     testBlockSizes();
     testSeed();
     testTranspose();

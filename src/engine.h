@@ -59,6 +59,8 @@ constexpr double clockSlack = 1.0e-3;
 // block's edge, MTC's trim: up to 0.0021 of a quarter), and a plug-in two tracks play is run twice a block (its second
 // call told a block on, the next block's first a block back).
 constexpr double jumpBeats = 1.0 / 16.0;
+// CLAP rounds the place to 2^-31 beats: a move told as exactly a 64th note can read a hair over it.
+constexpr double jumpSlack = 1.0e-9;
 // The host's tempo is held to this range (see Engine::transport).
 constexpr double minBpm = 1.0, maxBpm = 1000.0;
 // Mode: Notes, the note sounding let go on the very frame it was played (hdslaveOS sends a note shorter than its
@@ -338,8 +340,8 @@ public:
         lastBlock = frames;
         const bool started = ! playing;
         const double moved = std::fabs (beats - position);
-        // A place moved by less than a 64th note is not a jump either (jumpBeats): drift, followed as it is.
-        const bool relocateClock = started || (moved > 0.5 * perFrame && moved >= window * perFrame && moved >= jumpBeats);
+        // A place moved by up to a 64th note is not a jump either (jumpBeats): drift, followed as it is.
+        const bool relocateClock = started || (moved > 0.5 * perFrame && moved >= window * perFrame && moved > jumpBeats + jumpSlack);
         voice.syncLfos (frameCount, perFrame, isPlaying && relocateClock, beats);
         if (! isPlaying)
         {

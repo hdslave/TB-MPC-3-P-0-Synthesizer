@@ -153,13 +153,14 @@ played there stands for the downbeat, and the pattern does not step twice (a bar
 comes when the host tells, at most a block late). A tempo change inside a block moves the host's place a few frames
 from where the clocks counted: followed as it is, no clock played twice.
 
-So does a place a little off its line, either way, by less than a 64th note: hdslaveOS works the place out from its
+So does a place a little off its line, either way, by up to a 64th note: hdslaveOS works the place out from its
 ticks, so a swung tick, a tick on a block's edge or MTC's trim puts it up to 0.0021 of a quarter off from block to
 block, and a plug-in two tracks play is run twice a block (its next block's first call told a block back). A step back
 holds the clocks already played until the song is past them again. Before 0.8.2 a step back of more than the call's
 own frames counted as a jump: with the calls in parts, at slow tempos or run twice a block, a clock could come twice or
 be lost and the pattern step out of place (at 40 BPM with the place up to 0.002 of a quarter off, only the first 9 of
-65 notes stayed in place). A move of a 64th note or more is a jump, as before.
+65 notes stayed in place). A move of more than a 64th note is a jump, as before (exactly a 64th, as hdslaveOS has it,
+is not).
 
 ## MIDI notes and pads
 
