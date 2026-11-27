@@ -20,7 +20,7 @@ These six captures show the ARM plug-in playing the same 16-step pattern at its 
 
 | Pattern | Voice |
 | --- | --- |
-| [![Pattern with chrome notes on black keys, gate squares, accent diamonds and slide arrows](slink-sp16-thorn.png)](slink-sp16-thorn.png) | [![Voice with its cutoff and resonance cursor on the filter response](slink-sp16-voice.png)](slink-sp16-voice.png) |
+| [![Pattern with a pitch trace above chrome notes on black keys, gate squares, accent diamonds and slide arrows](slink-sp16-thorn.png)](slink-sp16-thorn.png) | [![Voice with the cutoff and resonance cursor over the Twin Peak filter response](slink-sp16-voice.png)](slink-sp16-voice.png) |
 | **Perform** | **Slide** |
 | [![Perform with cutoff, resonance and a numbered pitch ribbon](slink-sp16-perform.png)](slink-sp16-perform.png) | [![Slide with TB-3PO and 303 buttons, pitch transitions and gate lengths](slink-sp16-glide.png)](slink-sp16-glide.png) |
 | **LFO** | **Clock** |
