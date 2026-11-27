@@ -87,6 +87,11 @@ Each **Speed** knob goes from four beats per cycle to an eighth of a beat per cy
 Virtual detents lock the cycle to **1/1**, **3/4**, **1/2**, or **1/3** of a beat, with continuous speeds in between.
 Both LFOs run when playing notes with transport stopped. Each Amount starts at zero.
 
+While the song plays they keep to its place: a Play or a jump sets them on it, and so does the place drifting more
+than 0.0025 of a quarter from their own count (MTC's speed trim adds up; before 0.8.2 they drifted off the song
+without limit, about a sixth of a cycle by beat 32 at 1 cycle a beat). Told a place behind their count (a plug-in two
+tracks play is run twice a block), they hold until the song is past it, so they still go round once a beat of the song.
+
 ### Filter
 
 - **Diode**: the 303's 4-pole diode ladder (as before). Its stages are coupled, so with Resonance at 0 its passband

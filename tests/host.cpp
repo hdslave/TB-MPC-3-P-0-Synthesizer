@@ -1095,6 +1095,7 @@ void testJumpEdges()
     }
 }
 
+
 void testBlockSizes()
 {
     // The same transport and events in blocks of 128, 37, 1 and 4096 frames: the same output, to the bit (with knobs
@@ -2369,6 +2370,78 @@ double frequency (const std::vector<float>& x, size_t from, size_t to, float h =
         }
     }
     return n > 1 ? (n - 1) * rate48 / (last - first) : 0.0;
+}
+
+// The tone LFOs keep to the song's place while it plays: a held note (Mode: Notes, key 72) bent by the pitch LFO at one
+// cycle a beat. Its pitch, in a window every quarter beat, as semitones.
+// `scale` places a beat of the song in the output (2: a plug-in run twice a block, heard in its own stream).
+std::vector<double> lfoPitches (const std::vector<float>& l, double perFrame, double beats, double scale = 1.0, double every = 0.25)
+{
+    std::vector<double> out;
+    for (double b = 0.5; b + 0.05 < beats; b += every)
+    {
+        const double at = b / perFrame * scale, span = 0.04 / perFrame * scale;
+        if (at + span >= (double) l.size())
+            break;
+        out.push_back (12.0 * std::log2 (frequency (l, (size_t) (at - span), (size_t) (at + span)) / 523.2511));
+    }
+    return out;
+}
+
+void testLfoSync()
+{
+    const double rate = 44100.0, bpm = 127.0;
+    auto bent = [&] (Instance& a) {
+        a.setup ({ { "Mode", 1 }, { "Filter", 2 }, { "Cutoff", 0.6 }, { "Resonance", 0 }, { "Env Mod", 0 }, { "Accent", 0 },
+                   { "Pitch LFO Amount", 1.0 }, { "Cutoff LFO Amt", 0.0 }, { "Pitch LFO Speed", 1.0 }, { "Cutoff LFO Speed", 1.0 } });
+    };
+    // Struck again every 32 calls (the voice dies away under a held key), so it always sounds.
+    auto key = [] (size_t k, Events& e) { if (k % 32 == 0) e.note (0, CLAP_EVENT_NOTE_ON, 72, 0.7); };
+    // MTC's trim: the song's place runs 0.5 % faster than the tempo told. Against a host telling that tempo itself (the
+    // same places), the LFO is where the song is, not where its own frames counted from Play would put it (0.16 beat
+    // behind by beat 32: before, only a locate set it on the song).
+    {
+        const double fast = bpm * 1.005, perFast = fast / 60.0 / rate;
+        const uint64_t blocks = (uint64_t) (32.0 / perFast / 128.0);
+        auto place = [&] (uint64_t f) { return (double) f * perFast; };
+        Instance a (rate), b (rate);
+        bent (a), bent (b);
+        const auto trimmed = lfoPitches (playCalls (a, hostCalls (blocks, bpm, rate, place), bpm, key), perFast, 32.0);
+        const auto told = lfoPitches (playCalls (b, hostCalls (blocks, fast, rate, place), fast, key), perFast, 32.0);
+        double worst = 0.0;
+        for (size_t k = 0; k < trimmed.size() && k < told.size(); ++k)
+            worst = std::max (worst, std::fabs (trimmed[k] - told[k]));
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug LFO under MTC's trim: %zu windows, worst %.3f semitone off\n", trimmed.size(), worst);
+        CHECK (trimmed.size() > 100 && trimmed.size() == told.size());
+        CHECK (worst < 0.25);
+    }
+    // Run twice a block (two tracks play it): the LFO counts each block's stretch of the song once, so heard as the
+    // plug-in plays it (its calls one after another, twice the song's frames) it goes round once a beat of the song,
+    // not once a beat of its own frames (twice as often).
+    {
+        const double perFrame = bpm / 60.0 / rate;
+        const uint64_t blocks = (uint64_t) (16.0 / perFrame / 128.0);
+        Instance a (rate);
+        bent (a);
+        const auto own = lfoPitches (playCalls (a, hostCalls (blocks, bpm, rate, [&] (uint64_t f) { return (double) f * perFrame; }, {}, true), bpm,
+                                                key), perFrame, 16.0, 2.0, 1.0 / 16.0);
+        double mid = 0.0; // the note's own pitch: the LFO's middle
+        for (double p : own)
+            mid += p / (double) own.size();
+        int rounds = 0; // the pitch rising through it, from a semitone under to a semitone over
+        bool under = false;
+        for (double p : own)
+        {
+            if (p < mid - 1.0)
+                under = true;
+            else if (under && p > mid + 1.0)
+                ++rounds, under = false;
+        }
+        if (std::getenv ("TBMPC_DEBUG"))
+            std::printf ("debug LFO run twice: %d rounds in 16 beats of the song\n", rounds);
+        CHECK (rounds >= 14 && rounds <= 16);
+    }
 }
 
 void testToneLfos()
@@ -3683,6 +3756,7 @@ int main (int argc, char** argv)
     testLoopsAndClockChanges();
     testPositionJitter();
     testJumpEdges();
+    testLfoSync();
     testBlockSizes();
     testSeed();
     testTranspose();

@@ -346,7 +346,7 @@ public:
         const bool relocateClock = started
                                    || (moved > 0.5 * perFrame && moved >= window * perFrame
                                        && (moved > jumpBeats + jumpSlack || (beats > position && clockAtOrBefore (beats) > lastClock + 1)));
-        voice.syncLfos (frameCount, perFrame, isPlaying && relocateClock, beats);
+        voice.syncLfos (frameCount, perFrame, isPlaying && relocateClock, beats, isPlaying);
         if (! isPlaying)
         {
             if (playing)

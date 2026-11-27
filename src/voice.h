@@ -150,9 +150,9 @@ public:
             dirty = true;
     }
 
-    void syncLfos (uint64_t frame, double beatsPerFrame, bool locate, double beat)
+    void syncLfos (uint64_t frame, double beatsPerFrame, bool locate, double beat, bool playing)
     {
-        lfoClock.set (frame, beatsPerFrame, locate, beat);
+        lfoClock.set (frame, beatsPerFrame, locate, beat, playing);
         if (locate)
         {
             pitchLfo.sync();

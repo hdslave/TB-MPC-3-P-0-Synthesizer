@@ -22,24 +22,47 @@ inline const LfoDetent* lfoDetent (float rate)
     return nullptr;
 }
 
+// The tone LFOs' clock: beats counted on at the tempo from the song's place at a locate. While the song plays it keeps
+// to the song's place, beyond this many quarters (a little over hdslaveOS's own error from block to block, 0.0021).
+constexpr double lfoSlack = 0.0025;
+
 class LfoClock
 {
 public:
-    double beatAt (uint64_t frame) const { return beat + (double) (frame - anchor) * step; }
+    double beatAt (uint64_t frame) const
+    {
+        const double b = beat + (double) (frame - anchor) * step;
+        return b < held ? held : b;
+    }
 
-    void set (uint64_t frame, double beatsPerFrame, bool locate, double songBeat)
+    // At a process call's start: the plug-in's frame, the tempo's beats a frame, a locate (Play, a jump) and, `playing`,
+    // the song's place. Playing, a clock behind the song by more than lfoSlack (MTC's speed trim adds up; a tempo change
+    // inside a block) is set on it; one ahead of it (a plug-in two tracks play is run twice a block, the next block's
+    // first call told a block back) holds where it got to until the song is past it, so no stretch is counted twice.
+    void set (uint64_t frame, double beatsPerFrame, bool locate, double songBeat, bool playing)
     {
         if (locate || step != beatsPerFrame)
         {
             beat = locate ? songBeat : beatAt (frame);
             anchor = frame;
             step = beatsPerFrame;
+            held = -1.0e300;
+        }
+        if (! playing || locate)
+            return;
+        const double at = beatAt (frame), off = songBeat - at;
+        if (off > lfoSlack || off < -lfoSlack)
+        {
+            held = off > 0.0 ? -1.0e300 : at;
+            beat = songBeat;
+            anchor = frame;
         }
     }
 
 private:
     uint64_t anchor = 0;
     double beat = 0.0, step = 0.0;
+    double held = -1.0e300; // the beat it holds at until the song is past it (none: -1e300)
 };
 
 class SineLfo
