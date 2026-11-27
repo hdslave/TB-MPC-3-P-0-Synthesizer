@@ -30,19 +30,19 @@
 
 The desktop gallery shows Slink **0.9.10** playing Acid Line. The Thorn Crown editor puts the chrome crest, turning smiley, sequencer and all 34 controls in one window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.10/mac-clap)
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.2).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.9.0).
 
 On hdslaveOS 0.8.3, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
-TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, and other MIDI notes transpose it (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
+TB-3PO's pattern generator, RNG, quantizer, and step/gate/accent/slide logic are ported line-for-line from Ornament & Crime's Hemisphere firmware (as in the Benisphere Suite): the same seed, density, and scale produce the exact same acid line as on the Eurorack module, verified tick-by-tick in the test suite (see [Tests](#tests)). The host transport drives clock and reset; the pads play the pattern's steps one at a time, on any bank an octave apart (see [MIDI notes and pads](#midi-notes-and-pads)). Under **hdslaveOS**, its **Press Plate** screen displays every step's note, gate, accent, and slide — with a **Blacklight Transfer** theme one press away (see [The screen](#the-screen)).
 
 ## Signal flow
 
 ```
 host transport ──clock (Clock Div)──► TB-3PO ──pitch CV (with its slide)──► VCO (saw or square)
                ──reset (Reset)─────►        ──gate (3 V; 5 V = accent)──► MEG, VEG, accent
-MIDI note ──transpose (as CV 1)───►
-pad (note 36 on) ──its step, once: the step's pitch and gate──► the voice (the play head stays)
+Transpose knob ──transpose (as CV 1)───►
+pad (any key: (key - 36) mod 16) ──its step, once: the step's pitch (an octave per bank) and gate──► the voice (the play head stays)
 
 VCO ──► Filter: Diode ladder / Twin Peak / 18 dB (cutoff: Cutoff, Env Mod x MEG, accent sweep)
     ──► VCA (VEG + accent) ──► Drive ──► Volume ──► out
@@ -51,6 +51,7 @@ VCO ──► Filter: Diode ladder / Twin Peak / 18 dB (cutoff: Cutoff, Env Mod 
 On the MPC it draws its own page on the screen (see [The screen](#the-screen)).
 
 Not yet run on the MPC itself: tested in hdslaveOS's own CLAP host code (`clap_check`) and this repository's tests.
+The drum map and bank rule of 0.9.0 (see [MIDI notes and pads](#midi-notes-and-pads)) are untested on the device too.
 
 ## Controls
 
@@ -135,9 +136,9 @@ for Diode and 18 dB, the band's lower edge for Twin Peak. So with Resonance at 0
 | Scale | 128 scales | The firmware's quantizer scales, from Semitone on (its four user scales and Off are left out). Starts on Gunakri, as the applet does. |
 | Root | C – B | The root, a step of the scale (a scale with fewer than 12 notes has that many roots). |
 | Octave | -3 – +3 | The octave offset (one span of the scale). |
-| Steps | 1 – 32 | The pattern's length. Over 16, the notes after pad 16 (52 on) play steps 17 to the last. |
+| Steps | 1 – 32 | The pattern's length. The pads reach steps 1 – 16; steps 17 – 32 are the sequencer's (before 0.9.0, notes 52 on played them). |
 | Gate | 10 – 95 % | — (new): how long a step's gate stays open, as a share of the step (50 %: the applet's half clock). A pad's step lasts as long. |
-| Transpose | ±36 semitones | CV 1: added to the last MIDI note played (C4 plays the pattern as it is) and quantized to the scale from C, as the applet does with its transpose CV. The step pads (notes 36 – 51, or up to the last step when Steps is over 16) play steps instead and leave the transposition as it is. |
+| Transpose | ±36 semitones | CV 1, quantized to the scale from C, as the applet does with its transpose CV. Since 0.9.0 no MIDI note transposes on the MPC: every key is a step pad, and the pads leave the transposition as it is. (On SP-16, notes outside its step pads still add to it, C4 as it is.) |
 
 CV 2 (density) has no control of its own: a host's automation of Density does what it did.
 
@@ -170,15 +171,22 @@ once, not twice on one frame.
 
 ## MIDI notes and pads
 
-On a plug-in track at hdslaveOS's defaults (octave 2, key C, Chromatic), pads A01 – A16 send notes 36 – 51, pad 1 at
-the bottom left.
+The plug-in carries Melodee's drum map (`"pad_layout":"drums"`, sixteen voices **Step 1** – **Step 16** on notes
+36 – 51). With it, hdslaveOS plays a plug-in track on Slink as **Drums**: pads A01 – A16 send notes 36 – 51 whatever
+the track's octave, key or scale, pad 1 at the bottom left, and the Keys page names them. **−** / **+** then move the
+**bank** instead of the octave: bank B sends 52 – 67, C 68 – 83, D 84 – 99.
 
-**Sequencer on (Mode: Sequence): pads 1-16 play steps 1-16; off (Mode: Notes): the pads play notes.**
+**The bank rule (Mode: Sequence).** Every key is read as a step pad: its slot is (key − 36) mod 16, and its bank
+(key − 36) / 16 rounded down, held to −2 .. +3. Each bank plays the same sixteen steps, an octave apart: bank B one
+octave above A, C two, D three.
+
+**Sequencer on (Mode: Sequence): pads 1-16 play steps 1-16, on any bank; off (Mode: Notes): the pads play notes.**
 
 - **A pad plays its step once**, as the sequencer plays that step: its pitch (with the scale, root, octave, its own
-  octave jump and the transposition), its accent (or the pad's, hit at velocity 100 or more), for Gate's share of a
-  step at the tempo, at once (no slide). A rest plays too. Use it with the host stopped to hear a pattern step by step,
-  or while it plays.
+  octave jump and the transposition, plus 12 semitones a bank), its accent (or the pad's, hit at velocity 100 or
+  more), for Gate's share of a step at the tempo, at once (no slide). A rest plays too. Use it with the host stopped to
+  hear a pattern step by step, or while it plays. Bank B's pad 1 (52) plays step 1 an octave up: never another step,
+  never silence.
 - **Nothing moves.** The play head, the seed, Seed Back's memory and the transposition stay as they were. While the
   host plays, the sequencer's next step takes the voice back, as it would have played. A pad hit on the very frame a
   step comes (Play, say) gives way to that step.
@@ -188,11 +196,20 @@ the bottom left.
   envelopes from the start). Two pads at once (in one block): the louder plays, once; on a tie, the later. A host's
   choke of the pad, or All Sound Off (CC 120), stops it; all notes off (CC 123) does not. All Sound Off (and a choke
   of every key) also stops a sequencer gate still sounding, slid steps included, until the next step.
-- **Steps over 16**: the notes after pad 16 play steps 17 to the last (with Steps 32, notes 52 – 67), so C4 (60)
-  transposes nothing in the usual case.
-- **Every other note transposes**, as before: from the next step, held until another note (C4: as it is).
+- **Steps over 16**: steps 17 – 32 play from the sequencer only. The pads stay on steps 1 – 16 in every bank, so that
+  an unnoticed − / + never moves a pad to another step.
+- **No note transposes.** The Transpose knob does.
 
-Mode: Notes is the keyboard below: every note, pads included, plays the voice at its own pitch.
+What the bank rule replaced (0.8.2 and before): in Mode: Sequence, notes 36 – 51 were the step pads, notes 52 on
+played steps 17 on when Steps was over 16, and every other note transposed the pattern from the next step (C4 as it
+is), held until the next note. A − / + on the MPC therefore turned the pads into transposing notes.
+
+Mode: Notes is untouched: the keyboard below, chromatic, every note at its own pitch, as in 0.8.2 to the bit. Pads
+A01 – A16 play C2 – D#3; on bank B, pad 1 (52) plays E3, 16 semitones above pad 1 of bank A, and so on up.
+
+On **SP-16** (freesp16) none of this changes: notes 60 – 75 (up to 91 with a longer pattern) audition the steps,
+other notes transpose, and Mode: Notes is chromatic. The macOS and Windows build (`mac-clap/`) keeps its own engine
+and its keyboard mapping as before: a desktop keyboard has no banks.
 
 ## Mode: Notes
 
@@ -385,17 +402,19 @@ statically and needs only the MPC's libc and libm.
   note, the accent at velocity 100, a key played again while held, TB-3PO silent, a switch back), Gate (20 and 90 %),
   Mutate (each step from the new seed's pattern or the old one's, as the new seed picks; 0 and 100 % whole; Locked
   unchanged), pitch bend and the mod wheel (the same sound as Tuning and Cutoff turned as far; all notes off),
-  transposing by MIDI note and by knob, the accent, Cutoff, both slides, Drive (brighter as it turns, its level within
+  transposing by knob, the accent, Cutoff, both slides, Drive (brighter as it turns, its level within
   -3 .. +6 dB of the dry voice), Slide Time (15 ms there, 600 ms under half way, 100 ms on), Accent Decay (and Decay's
   after a slide out of an accent), the filters (the 500 Hz calibration in each, Twin Peak's band, their levels,
   Cutoff's text by Resonance and Filter and the host asked to read it again), the screen's page (it draws, its
   controls set the values the host then hears, its buttons press; pictures in `build/screen-*.png`), the step pads
-  (each of 24 steps, rests too, the same to the bit as Mode: Notes playing the step's pitch for Gate's share of a step,
+  (each of 16 steps, rests too, the same to the bit as Mode: Notes playing the step's pitch for Gate's share of a step,
+  and on banks B, C, D, past D and below, an octave a bank held to -2 .. +3, Steps 24 too,
   accented as the step or the pad's velocity says, its note off doing nothing; the steps a pattern waiting for its
   clock will play; two pads on one frame; on, on, off; chokes, notes off and Melodee's silence; while the host plays
   and as it stops; the play head and the transposition left as they were, every sequenced note where and at the pitch
-  it was; Play's frame and a clock's frame; the notes outside the pads transposing as the knob does; Mode: Notes
-  chromatic and the switches between the modes; any block size), the tempo's bounds (0.0001, 120, 1000, 5000 BPM and
+  it was; Play's frame and a clock's frame; keys outside 36 – 51 transposing nothing; Mode: Notes
+  chromatic (52, 68, 84 and 35 at their own pitches, as 0.8.2) and the switches between the modes; the drum map in the binary (16
+  steps on 36 – 51); any block size), the tempo's bounds (0.0001, 120, 1000, 5000 BPM and
   none, the sequencer and the pads: the same to the bit as at the nearest bound, and the output a number within full
   scale), the 0.5.2 fixes (All Sound Off closing a sequencer gate, a scale change requantizing the transposition,
   the seed told DONT_RECORD, nan and inf refused as text, a null flush, CC 121 centring bend and the wheel, a

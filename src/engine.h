@@ -5,8 +5,8 @@
 //   Reset (the applet's Regen input): when Play starts (Reset: Play), or on every 1, 2, 4 or 8 bars from the song's
 //     top (a Play or a jump between them places the pattern as if it had run from the last one), or never (Off).
 //     Each one makes the pattern again, from a new seed unless the seed is locked. The Regen button is one too.
-//   CV 1 (transpose): the Transpose knob plus the last MIDI note played (C4 is no transposition), held as a CV
-//     keyboard holds its last note.
+//   CV 1 (transpose): the Transpose knob; on SP-16 plus the last MIDI note played outside the step pads (C4 is no
+//     transposition), held as a CV keyboard holds its last note.
 //   CV 2 (density): the Density knob (a host's automation of it does what CV 2 did).
 //   The gate's half-step timer: half a clock at the host's tempo, held to 1 - 1000 BPM. (The applet measures it from
 //     the last two clocks: the same while the tempo holds; on the module the first note after the clock starts is
@@ -24,15 +24,18 @@
 //     voice for shortGateFrames, as if its off came then: keys let go in that time leave it alone, and at its end the
 //     voice goes to the newest key still held, or the gate shuts. A choke of it ends it at once; All Notes Off, All
 //     Sound Off or a Mode switch shut the gate; a new note takes the voice as after its off.
-//   Mode: Sequence's step pads: notes 36 .. 36 + max (16, Steps) - 1 play steps 1 .. (hdslaveOS's pads A01 - A16 at
-//     its default octave and key), host playing or not. A pad plays its step once, as the sequencer would play it
+//   Mode: Sequence's step pads: on hdslaveOS every key is one (params.h, padOf): its slot (key - 36) mod 16 plays
+//     steps 1 - 16 (pads A01 - A16, which the drum map holds at 36 - 51 whatever the track's octave or key), its bank
+//     an octave per bank (B, 52 - 67, an octave up; D, 84 - 99, three; held to -2 .. +3). On SP-16, notes 60 .. 60 +
+//     max (16, Steps) - 1 play steps 1 .. . Host playing or not, a pad plays its step once, as the sequencer would play it
 //     (its pitch with the scale, root, octave and transposition, from the pattern its next clock plays; its accent,
 //     or the pad's if hit at accentVelocity or louder), at once (no slide), gated or a rest, for Gate's share of a
 //     clock (120 BPM until the host tells a tempo); its note off does nothing, a choke or All Sound Off stops it.
 //     The play head, the seed, Seed Back's memory and the transposition stay as they are: the pad's step has the
 //     voice until the sequencer's next clock, which takes it back as it would have been (a pad on a clock's own
-//     frame gives way to the clock's step). Two pads on one frame: the louder plays, on a tie the later. Other notes
-//     transpose, as before.
+//     frame gives way to the clock's step). Two pads on one frame: the louder plays, on a tie the later. On SP-16
+//     other notes transpose; on hdslaveOS no key does (the Transpose knob does). Mode: Notes is chromatic on both:
+//     every key plays its own pitch, as before 0.9 (52 plays 52).
 #pragma once
 
 #include "params.h"
@@ -160,19 +163,21 @@ public:
     const Tb3po& sequencer() const { return seq; }
     bool running() const { return playing && ! notesMode; }
 
-    // A MIDI note. TB-3PO: a step pad plays its step (at the next sound, after this frame's other events, so a note
-    // transposing or a knob turned on the same frame applies to it); any other note transposes the pattern from the
-    // next step, and holds (as a CV keyboard's last note does). Notes: it plays.
+    // A MIDI note. TB-3PO: a step pad plays its step (at the next sound, after this frame's other events, so a knob
+    // turned on the same frame applies to it); on SP-16 any other note transposes the pattern from the next step, and
+    // holds (as a CV keyboard's last note does). Notes: it plays, at its own pitch.
     void note (int key, float velocity)
     {
         if (! notesMode)
         {
-            const int s = key - firstStepPad;
-            if (s >= 0 && s < std::max (stepPads, seq.stepCount()))
+            // hdslaveOS: every key is a pad, its slot's step in its bank's octave. SP-16: the window of step pads.
+            const PadKey pad = padOf (key);
+            const int s = padBanks ? pad.slot : key - firstStepPad;
+            if (padBanks || (s >= 0 && s < std::max (stepPads, seq.stepCount())))
             {
                 // Two pads on one frame: the louder plays, once; on a tie the later.
                 if (! padWanted || velocity >= wantedVelocity)
-                    padWanted = true, wantedStep = s, wantedKey = key, wantedVelocity = velocity;
+                    padWanted = true, wantedStep = s, wantedShift = padBanks ? pad.shift : 0, wantedKey = key, wantedVelocity = velocity;
                 return;
             }
             midiTranspose = key - 60;
@@ -597,7 +602,7 @@ private:
             next.regenerate();
             from = &next;
         }
-        const int32_t cv = from->pitchOfStep (wantedStep);
+        const int32_t cv = from->pitchOfStep (wantedStep) + wantedShift * 128; // its bank's octave
         const bool accent = from->accented (wantedStep) || wantedVelocity >= accentVelocity - 1.0e-6f;
         voice.pitch (cv, cv);
         voice.gate (false, false);
@@ -689,7 +694,7 @@ private:
     // Step pads (TB-3PO): the one asked for on this frame (the loudest; it plays at the next sound), and the one that
     // has the voice until the next clock (its gate open until padOffIn runs out).
     bool padWanted = false, padHasVoice = false, padOffPending = false;
-    int wantedStep = 0, wantedKey = -1, padKey = -1;
+    int wantedStep = 0, wantedShift = 0, wantedKey = -1, padKey = -1;
     float wantedVelocity = 0.0f;
     uint32_t padOffIn = 0;
     // Seed Back: the seeds whose patterns played, oldest first.

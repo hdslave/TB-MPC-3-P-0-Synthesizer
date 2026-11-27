@@ -4,6 +4,7 @@
 
 #include "scales.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -14,7 +15,7 @@
 #include "lfo.h"
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.8.2"
+#define TBMPC_VERSION "0.9.0"
 #endif
 
 namespace tbmpc
@@ -213,15 +214,33 @@ inline const char* const modeChoices[] = { "Sequence", "Notes" };
 constexpr float accentVelocity = 100.0f / 127.0f;
 // 0 V is C2: in Mode: Notes, MIDI note 36 (C2) plays the pitch the sequencer's 0 V does.
 constexpr int noteAtZeroVolts = 36;
-// Mode: Sequence: the step pads. Note 36 (hdslaveOS's pad A01 at its default octave and key) plays step 1, and the
-// notes after it the steps after: 16 pads, or as many as Steps when it is longer (so C4, 60, still transposes by
-// nothing in the usual case). The other notes transpose.
+// Mode: Sequence: the step pads.
+//   hdslaveOS (the drum map in tbmpc.cpp: pads A01 - A16 send 36 - 51 whatever the track's octave, key or scale, and
+//   - / + move the bank, B = 52 - 67, C = 68 - 83, D = 84 - 99): every key is a pad. Its slot, (key - 36) mod 16,
+//   is the step it plays (steps 1 - 16), and its bank, floor ((key - 36) / 16) held to -2 .. +3, an octave up or down
+//   a bank (padOf): A - D are 0, +1, +2, +3 octaves. No key transposes: the Transpose knob does. Steps 17 - 32 are the
+//   sequencer's alone. Mode: Notes is not touched by this: every key plays its own pitch (52 plays 52).
+//   SP-16 (freesp16 SCALE, chromatic, its centre window from 60): notes 60 .. 60 + max (16, Steps) - 1 play steps 1 ..
+//   (its panel auditions any of the 32 steps so), the other notes transpose, and Mode: Notes is chromatic.
 #ifdef TBMPC_SP16
-constexpr int firstStepPad = 60; // freesp16 SCALE, chromatic, centre window
+constexpr int firstStepPad = 60;
+constexpr bool padBanks = false;
 #else
 constexpr int firstStepPad = 36;
+constexpr bool padBanks = true;
 #endif
 constexpr int stepPads = 16;
+// A key under the bank rule: the pad's slot (0 - 15) and its bank's shift in semitones (-24 .. +36).
+struct PadKey
+{
+    int slot, shift;
+};
+inline PadKey padOf (int key)
+{
+    const int from = key - firstStepPad;
+    const int bank = from >= 0 ? from / stepPads : -((-from + stepPads - 1) / stepPads);
+    return { from - bank * stepPads, 12 * std::clamp (bank, -2, 3) };
+}
 // Pitch bend's range, and how far the mod wheel at its top opens the cutoff.
 constexpr float bendSemitones = 2.0f, modWheelOctaves = 3.0f;
 inline const char* const rootChoices[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };

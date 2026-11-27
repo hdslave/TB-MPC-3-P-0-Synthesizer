@@ -271,7 +271,8 @@ std::vector<Scenario> scenarios()
     }
     // 0.5: the step pads (Mode: TB-3PO, notes 36 on, Steps 24 so up to 59), stopped and playing: a pad every 50 blocks
     // (loud ones as CLAP notes, soft ones as MIDI), two on one frame, a pad on, on, off, All Sound Off over one, a
-    // transposing note and a pad after it; the same played in blocks of 37.
+    // transposing note and a pad after it; the same played in blocks of 37. Since 0.9 (the bank rule) notes 52 - 59
+    // and 64 are bank B's pads, steps 1 - 8 and 13 an octave up, and no note transposes.
     for (bool playing : { false, true })
     {
         Scenario s;
@@ -307,6 +308,25 @@ std::vector<Scenario> scenarios()
             s.block = 37;
             list.push_back (s);
         }
+    }
+    // 0.9: the bank rule. Step pads on every bank (Mode: Sequence, Steps 24): A - D and past D (an octave a bank, held to
+    // -2 .. +3), below A, stopped. And Mode: Notes on the same keys, chromatic as before 0.9 (the same hash on 0.8.2).
+    for (bool notes : { false, true })
+    {
+        Scenario s;
+        s.name = notes ? "notes-banks" : "step-pads-banks";
+        s.preset = notes ? "note-bass" : "acid-line";
+        s.values = { { "Seed Mode", 1.0 }, { "Steps", 24.0 } };
+        s.seconds = 4.0;
+        s.transport = [] (uint64_t, double, double) -> std::pair<bool, double> { return { false, 0.0 }; };
+        const int keys[] = { 36, 52, 68, 84, 100, 20, 4, 47, 63, 79, 95, 111, 31, 99 };
+        for (int i = 0; i < 14; ++i)
+        {
+            const uint64_t at = 128 * (uint64_t) (10 + i * 90);
+            s.events.push_back ({ at, Event::noteOn, "", (double) keys[i] });
+            s.events.push_back ({ at + 6000, Event::noteOff, "", (double) keys[i] });
+        }
+        list.push_back (s);
     }
     return list;
 }

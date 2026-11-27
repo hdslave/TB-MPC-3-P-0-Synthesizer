@@ -36,6 +36,29 @@ const clap_plugin_descriptor descriptor {
     features,
 };
 
+#ifndef TBMPC_SP16
+// The pads as Melodee reads them from a plug-in's library: with this, hdslaveOS plays a plug-in track on Slink as
+// Drums, pads A01 - A16 sending notes 36 - 51 (steps 1 - 16) whatever the track's octave, key or scale, names them
+// on the Keys page, and - / + move the bank (B = 52 - 67: in Mode: Sequence an octave up, params.h, padOf; in Mode:
+// Notes the keys' own pitches). Kept in the binary by
+// padsJson(), called from pluginInit. Not on SP-16, whose step pads start at 60.
+[[gnu::used]] const char padMapJson[] =
+    "{\"pad_layout\":\"drums\",\"name\":\"hdslave Slink\",\"levels\":{"
+    "\"s1\":{\"name\":\"Step 1\",\"note\":36},\"s2\":{\"name\":\"Step 2\",\"note\":37},"
+    "\"s3\":{\"name\":\"Step 3\",\"note\":38},\"s4\":{\"name\":\"Step 4\",\"note\":39},"
+    "\"s5\":{\"name\":\"Step 5\",\"note\":40},\"s6\":{\"name\":\"Step 6\",\"note\":41},"
+    "\"s7\":{\"name\":\"Step 7\",\"note\":42},\"s8\":{\"name\":\"Step 8\",\"note\":43},"
+    "\"s9\":{\"name\":\"Step 9\",\"note\":44},\"s10\":{\"name\":\"Step 10\",\"note\":45},"
+    "\"s11\":{\"name\":\"Step 11\",\"note\":46},\"s12\":{\"name\":\"Step 12\",\"note\":47},"
+    "\"s13\":{\"name\":\"Step 13\",\"note\":48},\"s14\":{\"name\":\"Step 14\",\"note\":49},"
+    "\"s15\":{\"name\":\"Step 15\",\"note\":50},\"s16\":{\"name\":\"Step 16\",\"note\":51}}}";
+const char* padsJson()
+{
+    const char* volatile json = padMapJson;
+    return json;
+}
+#endif
+
 struct Plugin
 {
     clap_plugin clap {};
@@ -553,6 +576,9 @@ bool pluginInit (const clap_plugin* plugin)
         p.applied[i] = paramTable[i].def;
     }
     p.engine.start (defaults);
+#ifndef TBMPC_SP16
+    (void) padsJson();
+#endif
     p.hostParams = static_cast<const clap_host_params*> (p.host->get_extension (p.host, CLAP_EXT_PARAMS));
     p.hostScreen = static_cast<const melodee_screen_host_t*> (p.host->get_extension (p.host, MELODEE_SCREEN_CLAP_HOST));
     p.shownPattern.steps = -1; // nothing shown yet
