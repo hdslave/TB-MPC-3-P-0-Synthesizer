@@ -767,6 +767,245 @@ void testLoopsAndClockChanges()
     }
 }
 
+// --- The song's place a little off its line ------------------------------------------------------------------------
+// hdslaveOS tells the place only at its own 128-frame blocks, worked out from its ticks, and it is not quite a straight
+// line from block to block: a swung tick moves it by up to 0.2 tick (0.0021 of a quarter at swing 60), a tick on a
+// block's edge and MTC's speed trim by less, and a plug-in two tracks play is run twice a block (its second call told a
+// block on, the next block's first call a block back). None of that is a locate: no step may play twice, none be lost.
+
+// One process call: its frames, the place it is told, and where its output goes in the song (from its frame).
+struct Call
+{
+    uint32_t frames;
+    double beats;
+    uint64_t at;
+};
+
+// The calls hdslaveOS makes over `blocks` of its blocks at `bpm` and `rate`: each block told the place `place (frame)`
+// at its start, counted on through it. `cut (block)` in 1..127 plays a block in two calls split there (an instrument
+// is played in parts, split where a note falls); `twice` runs every block twice (a plug-in two tracks share).
+std::vector<Call> hostCalls (uint64_t blocks, double bpm, double rate, const std::function<double (uint64_t)>& place,
+                             const std::function<uint32_t (uint64_t)>& cut = {}, bool twice = false)
+{
+    const double perFrame = bpm / 60.0 / rate;
+    std::vector<Call> calls;
+    for (uint64_t b = 0; b < blocks; ++b)
+    {
+        const uint64_t at = b * 128;
+        for (int run = 0; run < (twice ? 2 : 1); ++run)
+        {
+            const double told = place (at) + run * 128 * perFrame;
+            const uint32_t s = cut ? cut (b) : 0;
+            if (s > 0 && s < 128)
+            {
+                calls.push_back ({ s, told, at });
+                calls.push_back ({ 128 - s, told + s * perFrame, at + s });
+            }
+            else
+                calls.push_back ({ 128, told, at });
+        }
+    }
+    return calls;
+}
+
+// Plays the calls, the song playing throughout; each call's output is added where it goes.
+std::vector<float> playCalls (Instance& a, const std::vector<Call>& calls, double bpm)
+{
+    std::vector<float> l (calls.empty() ? 0 : calls.back().at + calls.back().frames, 0.0f), cl (128), cr (128);
+    Events none;
+    OutEvents ignored;
+    int64_t steady = 0;
+    for (const auto& c : calls)
+    {
+        clap_event_transport tr {};
+        tr.header = { sizeof (clap_event_transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0 };
+        tr.flags = CLAP_TRANSPORT_HAS_TEMPO | CLAP_TRANSPORT_HAS_BEATS_TIMELINE | CLAP_TRANSPORT_IS_PLAYING;
+        tr.tempo = bpm;
+        tr.song_pos_beats = (clap_beattime) std::llround (c.beats * (double) CLAP_BEATTIME_FACTOR);
+        std::fill (cl.begin(), cl.end(), 0.0f);
+        std::fill (cr.begin(), cr.end(), 0.0f);
+        float* outs[2] = { cl.data(), cr.data() };
+        clap_audio_buffer buffer {};
+        buffer.data32 = outs;
+        buffer.channel_count = 2;
+        clap_process p {};
+        p.steady_time = steady;
+        p.frames_count = c.frames;
+        p.transport = &tr;
+        p.audio_outputs = &buffer;
+        p.audio_outputs_count = 1;
+        p.in_events = &none.in;
+        p.out_events = &ignored.out;
+        CHECK (a.plugin->process (a.plugin, &p) != CLAP_PROCESS_ERROR);
+        steady += c.frames;
+        for (uint32_t i = 0; i < c.frames; ++i)
+            l[(size_t) (c.at + i)] += cl[i];
+    }
+    return l;
+}
+
+// hdslaveOS's place at a frame with the sequencer's swing (`swing` %): its ticks (96 a quarter) are swing/50 of their
+// length in the first sixteenth of each eighth and (100 - swing)/50 in the second, and the place is the next tick's
+// number less the frames still to it in plain ticks (EngineHost: song = (tick_now - until_tick / tick_length) / 96).
+// So it stands 0.2 tick back at each long tick's start (swing 60), 0.2 on at each short one's; never before the top.
+struct SwungPlace
+{
+    double base;   // frames a plain tick
+    double swing;
+    std::vector<double> starts { 0.0 }; // each tick's first frame
+    size_t from = 0;                    // the tick the last frame asked for was in
+    SwungPlace (double bpm, double rate, double swingPercent) : base (rate * 60.0 / bpm / 96.0), swing (swingPercent) {}
+    double length (size_t k) const { return (k % 48) < 24 ? base * swing / 50.0 : base * (100.0 - swing) / 50.0; }
+    // The first frame of tick k.
+    double tickAt (size_t k)
+    {
+        while (starts.size() <= k + 1)
+            starts.push_back (starts.back() + length (starts.size() - 1));
+        return starts[k];
+    }
+    double operator() (uint64_t frame)
+    {
+        size_t k = tickAt (from) <= (double) frame ? from : 0;
+        while (tickAt (k + 1) <= (double) frame)
+            ++k;
+        from = k;
+        return std::max (0.0, ((double) k + 1.0 - (tickAt (k + 1) - (double) frame) / base) / 96.0);
+    }
+};
+
+
+// Where notes start: the first frame above `threshold` after at least `gap` frames below `quiet`. A dip inside a note
+// (a zero crossing as it starts) neither starts another nor disarms the one starting.
+std::vector<long> noteStarts (const std::vector<float>& x, float threshold = 1e-3f, float quiet = 1e-4f, long gap = 96)
+{
+    std::vector<long> found;
+    long silent = gap;
+    bool armed = true;
+    for (long i = 0; i < (long) x.size(); ++i)
+    {
+        const float a = std::fabs (x[(size_t) i]);
+        if (a < quiet)
+        {
+            if (++silent >= gap)
+                armed = true;
+            continue;
+        }
+        silent = 0;
+        if (armed && a > threshold)
+            found.push_back (i), armed = false;
+    }
+    return found;
+}
+
+// Each note found near where expected: its onset from `before` frames early to a millisecond and `after` frames late.
+bool notesNear (const std::vector<long>& found, const std::vector<long>& expect, double rate, long before, long after, const char* what)
+{
+    bool ok = found.size() == expect.size() && expect.size() >= 6;
+    long worst = 0;
+    for (size_t i = 0; ok && i < found.size(); ++i)
+    {
+        ok = found[i] >= expect[i] - before && found[i] < expect[i] + (long) (rate / 1000) + after;
+        worst = std::max (worst, std::labs (found[i] - expect[i]));
+    }
+    if (std::getenv ("TBMPC_DEBUG"))
+    {
+        size_t same = 0; // notes where expected, from the start
+        while (same < found.size() && same < expect.size() && found[same] >= expect[same] - before
+               && found[same] < expect[same] + (long) (rate / 1000) + after)
+            ++same;
+        std::printf ("debug jitter %s: expected %zu notes, found %zu, the first %zu in place, worst %ld frames\n", what,
+                     expect.size(), found.size(), same, ok ? worst : -1L);
+    }
+    return ok;
+}
+
+void testPositionJitter()
+{
+    // A locked pattern (Density 5, 16 steps) in sixteenths at 44.1 kHz: its notes, found in the output, against where
+    // the TB-3PO model puts them for the clocks the song's place makes. A clock played twice steps the pattern on (every
+    // later note out of place), one lost holds it back.
+    const double rate = 44100.0;
+    const uint16_t seed = 0x5a17;
+    for (double bpm : { 127.0, 40.0 })
+    {
+        const double perFrame = bpm / 60.0 / rate, step = 0.25 / perFrame;
+        const double beats = bpm > 100.0 ? 64.0 : 24.0;
+        const uint64_t blocks = (uint64_t) (beats / perFrame / 128.0);
+        const uint64_t frames = blocks * 128;
+        const int clocks = (int) std::ceil ((double) frames / step - 1e-9);
+        const long offBy = (long) (0.003 / perFrame) + 2; // the place's own error
+        // Only the notes up to half a step before the song's last clock count: the place told near its end may bring
+        // the next clock in early.
+        const long limit = (long) ((std::floor ((double) (frames - 1) / step) - 0.5) * step);
+        auto before = [&] (std::vector<long> v) {
+            v.erase (std::lower_bound (v.begin(), v.end(), limit), v.end());
+            return v;
+        };
+        auto song = [&] (const std::vector<Call>& calls) {
+            Instance a (rate);
+            auto p = timingPatch (seed);
+            p.push_back ({ "Density", 5 });
+            a.setup (p);
+            return before (noteStarts (playCalls (a, calls, bpm)));
+        };
+        auto expect = [&] (const std::function<double (int)>& frameOf) {
+            return before (expectedNotesAt (seed, 5, tbmpc::appletDefaultScale, 16, clocks + 1, frameOf));
+        };
+        char name[64];
+        auto named = [&] (const char* what) { std::snprintf (name, sizeof (name), "%.0f BPM %s", bpm, what); return name; };
+        const auto straightAt = expect ([&] (int k) { return k * step; });
+        CHECK (notesNear (song (hostCalls (blocks, bpm, rate, [&] (uint64_t at) { return (double) at * perFrame; })), straightAt, rate, 0, 0,
+                          named ("straight")));
+
+        // Up to 0.002 quarter off the line, either way, block by block; then each block played in two parts split
+        // where a note falls.
+        std::mt19937 random (7);
+        std::vector<double> off (blocks + 1);
+        for (auto& o : off)
+            o = std::uniform_real_distribution<double> (-0.002, 0.002) (random);
+        auto jittered = [&] (uint64_t at) { return std::max (0.0, (double) at * perFrame + off[at / 128]); };
+        CHECK (notesNear (song (hostCalls (blocks, bpm, rate, jittered)), straightAt, rate, offBy, offBy, named ("off 0.002")));
+        std::vector<uint32_t> cuts (blocks);
+        for (auto& c : cuts)
+            c = 1 + (uint32_t) (random() % 127);
+        CHECK (notesNear (song (hostCalls (blocks, bpm, rate, jittered, [&] (uint64_t b) { return cuts[b]; })), straightAt, rate, offBy, offBy,
+                          named ("off 0.002, in parts")));
+
+        // The sequencer's swing at 60 %: the clocks fall where the swung ticks put them.
+        SwungPlace swung (bpm, rate, 60.0);
+        const auto swungAt = expect ([&] (int k) { return swung.tickAt ((size_t) k * 24); });
+        CHECK (notesNear (song (hostCalls (blocks, bpm, rate, [&] (uint64_t at) { return swung (at); })), swungAt, rate, offBy, offBy,
+                          named ("swing 60")));
+
+        // Run twice a block (two tracks play it): each clock comes once, in the run told its place first (a block early).
+        const auto earlyAt = expect ([&] (int k) { return k == 0 ? 0.0 : k * step - 128.0; });
+        CHECK (notesNear (song (hostCalls (blocks, bpm, rate, [&] (uint64_t at) { return (double) at * perFrame; }, {}, true)), earlyAt, rate, 2,
+                          2, named ("run twice")));
+    }
+    // A real locate still counts: the place moved back across a clock by more than a 64th note plays that clock again
+    // when the song reaches it (the pattern steps once more); by less, the clock is held. 127 BPM, the place moved back
+    // 0.03 quarter after the clock at beat 1 (clock 4).
+    {
+        const double bpm = 127.0, perFrame = bpm / 60.0 / rate, step = 0.25 / perFrame;
+        const uint64_t blocks = (uint64_t) (8.0 / perFrame / 128.0), at = (uint64_t) (1.03 / perFrame / 128.0) * 128;
+        for (double by : { 0.05, 0.08 })
+        {
+            Instance a (rate);
+            auto p = timingPatch (seed);
+            p.push_back ({ "Density", 5 });
+            a.setup (p);
+            const auto found = noteStarts (playCalls (a, hostCalls (blocks, bpm, rate, [&] (uint64_t f) { return (double) f * perFrame - (f >= at ? by : 0.0); }), bpm));
+            const bool again = by >= 1.0 / 16.0;
+            const auto expect = expectedNotesAt (seed, 5, tbmpc::appletDefaultScale, 16, again ? 33 : 32, [&] (int k) {
+                if (k <= 4)
+                    return k * step;
+                return ((k - (again ? 1 : 0)) * 0.25 + by) / perFrame; // clock 4 again, then 5 on; or 5 on, later
+            });
+            CHECK (notesNear (found, expect, rate, 2, 2, again ? "locate back 0.08" : "locate back 0.05"));
+        }
+    }
+}
+
 void testBlockSizes()
 {
     // The same transport and events in blocks of 128, 37, 1 and 4096 frames: the same output, to the bit (with knobs
@@ -3353,6 +3592,7 @@ int main (int argc, char** argv)
     testTiming();
     testStopRestartJump();
     testLoopsAndClockChanges();
+    testPositionJitter();
     testBlockSizes();
     testSeed();
     testTranspose();

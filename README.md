@@ -30,7 +30,7 @@
 
 The desktop gallery shows Slink **0.9.10** playing Acid Line. The Thorn Crown editor puts the chrome crest, turning smiley, sequencer and all 34 controls in one window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.10/mac-clap)
 
-Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.1).
+Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.2).
 
 On hdslaveOS 0.8.3, select **Stage → Panel** to open Slink’s custom screen. Edit opens the host parameter list. On hdslaveOS 0.7.1, the custom screen also opens directly in Edit. Both use the `melodee.screen/1` extension. An MPC instance that has never received a screen callback uses 413,832 fewer bytes than in 0.5.3. It creates the page on first use.
 
@@ -152,6 +152,14 @@ even when it plays a plug-in in smaller parts), so the clocks run on to the loop
 played there stands for the downbeat, and the pattern does not step twice (a bar reset the downbeat would have made
 comes when the host tells, at most a block late). A tempo change inside a block moves the host's place a few frames
 from where the clocks counted: followed as it is, no clock played twice.
+
+So does a place a little off its line, either way, by less than a 64th note: hdslaveOS works the place out from its
+ticks, so a swung tick, a tick on a block's edge or MTC's trim puts it up to 0.0021 of a quarter off from block to
+block, and a plug-in two tracks play is run twice a block (its next block's first call told a block back). A step back
+holds the clocks already played until the song is past them again. Before 0.8.2 a step back of more than the call's
+own frames counted as a jump: with the calls in parts, at slow tempos or run twice a block, a clock could come twice or
+be lost and the pattern step out of place (at 40 BPM with the place up to 0.002 of a quarter off, only the first 9 of
+65 notes stayed in place). A move of a 64th note or more is a jump, as before.
 
 ## MIDI notes and pads
 
@@ -362,7 +370,9 @@ statically and needs only the MPC's libc and libm.
   where the pattern puts it at several tempos and rates, gates half a step long, stop, restart and jumps, a loop
   wrapping inside a block and told a block late (every note where a song with no loop puts it, and the very sound of a
   host telling the wrap on its frame, in whole blocks and in Melodee's smaller parts, with Reset at Play and every
-  bar), a tempo change inside a block, Clock Div changed on a downbeat, a button pressed through a flush and one
+  bar), a tempo change inside a block, the place off its line (up to 0.002 of a quarter either way, also in parts;
+  swing 60's ticks; run twice a block; at 127 and 40 BPM: every note where the pattern puts it) and moved back under
+  and over a 64th note, Clock Div changed on a downbeat, a button pressed through a flush and one
   stamped past its block, the same output for any block size, Random and Locked seeds and Regen, Seed Back (locked and random, twice, with nothing to go
   back to), Swing (notes and gate lengths), Mode: Notes (a note's pitch, a glide without a new note, back to a held
   note, the accent at velocity 100, a key played again while held, TB-3PO silent, a switch back), Gate (20 and 90 %),
