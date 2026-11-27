@@ -2,9 +2,9 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink’s one-screen desktop editor during local playback](assets/thorn-crown-desktop.png)
+![Slink 0.9.10 playing a 16-step pattern on macOS, with the chrome crest, turning smiley and six control groups](assets/thorn-crown-desktop.png)
 
-[View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [Watch the editor during playback](assets/desktop-preview.gif) · [Watch the full-width storm at 60 fps](assets/footer-storm.mp4) · [Preview the footer as a GIF](assets/footer-detail.gif) · [View the Windows editor under CrossOver](assets/windows-preview.png)
+[Watch 20 seconds with audio](assets/slink-desktop-playback.mp4?raw=1) · [See the turning chrome smiley at Retina resolution](assets/chrome-smiley.webp) · [View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [View the silent playback GIF](assets/desktop-preview.gif) · [Watch the full-width storm at 60 fps](assets/footer-storm.mp4) · [Preview the footer as a GIF](assets/footer-detail.gif) · [View the Windows editor under CrossOver](assets/windows-preview.png)
 
 Slink **0.9.10** uses the freesp16 Thorn Crown faceplate. The chrome logo sits above the seed and barcode, the thorn camera fills the center, and the glass step counter shares its panel with the cobalt transport key. Above **Regen**, the chrome smiley turns through 33 poses rebuilt from the original 600-pixel painting. The desktop blends adjacent poses at display resolution. The crest is rendered from its mesh at 1328 × 360 inside its bezel. The glass counter and transport use four-times-resolution artwork, and the control labels use Barlow masks sized for the display. All 34 parameters fit in one resizable window, down to 960 × 540.
 

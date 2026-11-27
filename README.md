@@ -11,7 +11,7 @@
   <tr>
     <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
     <td align="center"><a href="docs/screen.md#thorn-crown-on-freesp16"><img src="docs/slink-sp16-thorn.png" alt="Thorn Crown playing a sixteen-step pattern on freesp16"></a></td>
-    <td align="center"><a href="mac-clap/README.md"><img src="mac-clap/assets/thorn-crown-desktop.png" alt="Slink's desktop editor with its single step grid and all six control groups"></a></td>
+    <td align="center"><a href="mac-clap/README.md"><img src="mac-clap/assets/thorn-crown-desktop.png" alt="Slink 0.9.10 on macOS with the chrome smiley, 16-step sequencer and six control groups"></a></td>
   </tr>
 </table>
 
@@ -19,7 +19,7 @@
 
 [Download Slink 0.6.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.1) · [Download Slink 0.6.0 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0)
 
-Slink 0.9.10 for desktop brings the freesp16 Thorn Crown panel to a single-screen editor. Its blue-violet chrome whips cross the full footer in a longer composition drawn at the scale of the original panel. All six control banks are open below. The pitch ribbon and Gate, Accent and Slide rows share one 16- or 32-step score. [Desktop build and controls](mac-clap/)
+Slink 0.9.10 for desktop brings the freesp16 Thorn Crown panel to a single-screen editor. Its blue-violet chrome whips cross the full footer in a longer composition drawn at the scale of the original panel. All six control banks are open below. The pitch ribbon and Gate, Accent and Slide rows share one 16- or 32-step score. [Watch and hear Slink 0.9.10](mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop build and controls](mac-clap/)
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.6.3).
 
