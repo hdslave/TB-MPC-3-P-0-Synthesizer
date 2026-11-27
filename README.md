@@ -22,13 +22,13 @@
 | Platform | Packaged build |
 | --- | --- |
 | MPC Sample with hdslaveOS or Melodee | [Slink 0.8.1 for MPC Sample](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.1/Slink-0.8.1-MPC-Sample.zip) |
-| SP-16 with freesp16 | [Slink 0.8.0 for freesp16](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.0/Slink-0.8.0-freesp16.zip) |
-| macOS, Apple Silicon and Intel | [Slink 0.8.0 for macOS](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.0/Slink-0.8.0-macOS-universal.zip) |
-| Windows x64 | [Slink 0.8.0 for Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.8.0/Slink-0.8.0-Windows-x64.zip) |
+| SP-16 with freesp16 | [Slink 0.9.10 for freesp16](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.9.10/Slink-0.9.10-freesp16.zip) |
+| macOS, Apple Silicon and Intel | [Slink 0.9.10 for macOS](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.9.10/Slink-0.9.10-macOS-universal.zip) |
+| Windows x64 | [Slink 0.9.10 for Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/download/v0.9.10/Slink-0.9.10-Windows-x64.zip) |
 
-The SP-16 gallery shows the newer panel on `main`. [Build the current freesp16 panel](#freesp16-on-sp-16)
+[0.9.10 release notes and checksums](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.10) · [Build the freesp16 panel](#freesp16-on-sp-16)
 
-The desktop gallery shows Slink **0.9.10** playing Acid Line. The Thorn Crown editor puts the chrome crest, turning smiley, sequencer and all 34 controls in one window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/codex/slink-desktop-sp16/mac-clap)
+The desktop gallery shows Slink **0.9.10** playing Acid Line. The Thorn Crown editor puts the chrome crest, turning smiley, sequencer and all 34 controls in one window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.10/mac-clap)
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.1).
 
@@ -296,7 +296,7 @@ nothing until it is hit (then a step's pitch, or a pattern made again once when 
 
 ## freesp16 on SP-16
 
-The ARMv7 build is version **0.8.1**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
+The ARMv7 build is version **0.9.10**. Its panel uses freesp16’s custom-screen extension and six physical encoders. Choose **Track Type → Plugin → Select Plugin → hdslave Slink → Open UI**. The release ZIP installs the plug-in at `freesp16-data/freesp16/Plugins/TB-MPC-3-P-0.clap` on a stick with a plug-in-capable freesp16 build.
 
 Slink on freesp16 opens on the **Thorn Crown Pattern** page. A pitch trace between the step numbers and black note keys shows the shape of all sixteen steps. Filled marks sound, hollow marks are rests, and a rising or falling connector shows a slide. A blue-violet column follows playback. Its note key stays black, with a lit outline around the chrome pitch. The note row uses Razor Choir, with hooked chrome pitch letters and matching octave numerals. The numbered headers and panel controls use Barlow SemiBold. The octave sits low to the right of each letter, with the sharp directly above it when present. Press a numbered header to audition its step. Drag a point on the trace or its note key vertically to edit the pitch in semitones. Tap Gate, Accent or Slide to toggle it, or drag across the row to paint the same setting. The first edit locks a random pattern to its displayed seed. The project saves edits with that seed. During playback the grid follows steps 17–32 automatically. When stopped, tap the large step counter to switch halves of a long pattern.
 
