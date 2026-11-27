@@ -17,7 +17,7 @@
 
 [See all six freesp16 pages](https://github.com/hdslave/hdslave-Slink-Synth/blob/main/docs/screen.md#thorn-crown-on-freesp16) · [Watch the freesp16 panel in motion](https://github.com/hdslave/hdslave-Slink-Synth/blob/main/docs/slink-sp16.gif) · [See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View Blacklight Transfer](docs/slink-mpc-blacklight.png)
 
-[Download Slink for MPC Sample, freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth#downloads)
+[Download Slink 0.9.10 for freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.10) · [MPC Sample download](https://github.com/hdslave/hdslave-Slink-Synth#downloads)
 
 Slink 0.9.10 for desktop brings the freesp16 Thorn Crown panel to a single-screen editor. Its blue-violet chrome whips cross the full footer in a longer composition drawn at the scale of the original panel. All six control banks are open below. The pitch ribbon and Gate, Accent and Slide rows share one 16- or 32-step score. [Watch and hear Slink 0.9.10](mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop build and controls](mac-clap/)
 
