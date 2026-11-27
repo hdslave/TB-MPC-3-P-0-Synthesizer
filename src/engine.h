@@ -85,6 +85,7 @@ public:
         voice.gate (false, false);
         playing = false;
         lastClock = -1;
+        reached = -1.0e300;
         gateOffPending = false;
         regenPressed = false;
         frameCount = 0;
@@ -366,6 +367,8 @@ public:
         // them until the song is past them again), one passed is played at once.
         if (relocateClock)
             relocate (beats, window, started);
+        else if (beats < position)
+            reached = std::max (reached, position); // held: where the clocks got to, for a Clock Div change meanwhile
         playing = true;
         position = beats;
     }
@@ -509,6 +512,7 @@ private:
         const bool played = ! started && std::fabs ((double) ((int64_t) frameCount - clockedAt) - late) <= 2.0;
         lastClock = played ? b : b - (late < playWindow ? 1 : 0);
         position = beats;
+        reached = -1.0e300;
         regridWanted = false;
         if (played && resetClock (b) && ! clockedReset)
             resetPulse();
@@ -530,10 +534,11 @@ private:
     }
 
     // Clock Div changed: count clocks on the new grid from here, without a burst of them. A clock of the new grid due
-    // on this frame (in the last frame's time) still comes.
+    // on this frame (in the last frame's time) still comes. Here is where the clocks got to: while the place is held
+    // behind them, not the place.
     void regrid()
     {
-        lastClock = clockAtOrBefore (position - perFrame * (1.0 - clockSlack));
+        lastClock = clockAtOrBefore (std::max (position, reached) - perFrame * (1.0 - clockSlack));
         regridWanted = false;
     }
 
@@ -667,6 +672,7 @@ private:
     Tb3po seq;
     Voice voice;
     double rate = 48000.0, perFrame = 0.0, position = 0.0, bar = 4.0;
+    double reached = -1.0e300; // the furthest place the clocks got to while the place stepped back (a hold); none
     float knob[ParamId::count] {};
     int transposeKnob = 0, midiTranspose = 0;
     bool playing = false, regridWanted = false, gateOffPending = false, regenPressed = false, notesMode = false;

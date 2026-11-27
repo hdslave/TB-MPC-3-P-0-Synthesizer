@@ -1078,6 +1078,21 @@ void testJumpEdges()
         got.erase (std::lower_bound (got.begin(), got.end(), (long) ((double) blocks * 128.0 - 6000.0)), got.end());
         CHECK (notesNear (got, expect, rate, 2, 2, "two clocks passed"));
     }
+    // Clock Div changed while the place is held behind a clock that lies on both grids: the new grid counts on from where
+    // the clocks got to, not from the place told, so that clock is not played again (the pattern would step once more).
+    // 1/16 to 1/8 at the first block after beat 1 (0.0014 quarter after it), the place told 0.01 behind from there.
+    {
+        const double step = 0.25 / perFrame;
+        const uint64_t at = (uint64_t) std::ceil (1.0 / perFrame / 128.0) * 128, blocks = (uint64_t) (8.0 / perFrame / 128.0);
+        Instance a (rate);
+        pattern (a);
+        const double toEighths = a.valueOf ("Clock Div", "1/8");
+        const auto found = before7 (noteStarts (playCalls (a, hostCalls (blocks, bpm, rate, [&] (uint64_t f) {
+            return (double) f * perFrame - (f >= at ? 0.01 : 0.0); }), bpm, [&] (size_t k, Events& e) {
+            if (k == at / 128) a.set (e, "Clock Div", toEighths); })));
+        const auto expect = before7 (notes (20, [&] (int k) { return k <= 4 ? k * step : (1.0 + (k - 4) * 0.5 + 0.01) / perFrame; }));
+        CHECK (notesNear (found, expect, rate, 2, 2, "regrid while held"));
+    }
 }
 
 void testBlockSizes()
