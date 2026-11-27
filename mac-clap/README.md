@@ -30,7 +30,7 @@ During internal Play, browsing through Note Bass suspends the sequence and displ
 
 The CLAP ID, parameter IDs and choice order, factory preset keys, MIDI note behavior, and desktop state envelope stay compatible with previous builds. Older projects load without manual step edits. A raw state from the freesp16 build can also carry the shared step-edit records.
 
-Build from this checkout for the new editor. The [0.6.0 release](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.6.0) contains the older desktop downloads. On upgrade, keep the installed filename if the host stores plug-ins by path. Install one copy per host.
+Build this checkout for the 0.9.10 editor, or choose a packaged build from the [macOS and Windows downloads](https://github.com/hdslave/hdslave-Slink-Synth#downloads). On upgrade, keep the installed filename if the host stores plug-ins by path. Install one copy per host.
 
 ## Build & Install (macOS)
 
