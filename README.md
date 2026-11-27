@@ -11,7 +11,7 @@
   <tr>
     <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
     <td align="center"><a href="docs/screen.md#thorn-crown-on-freesp16"><img src="docs/slink-sp16-thorn.png" alt="Thorn Crown playing a sixteen-step pattern on freesp16"></a></td>
-    <td align="center"><a href="mac-clap/assets/desktop-preview.gif"><img src="mac-clap/assets/desktop-preview.gif" alt="Slink acid bass sequencer and voice controls during playback"></a></td>
+    <td align="center"><a href="docs/slink-desktop-0.9.10.png"><img src="docs/slink-desktop-0.9.10.png" alt="Slink 0.9.10 on macOS with the chrome smiley, 16-step sequencer and six control groups"></a></td>
   </tr>
 </table>
 
@@ -19,7 +19,7 @@
 
 [Download Slink 0.8.0 for MPC Sample, freesp16, macOS or Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.8.0)
 
-The desktop Thorn Crown panel brings the animated chrome crest, live pattern and all 34 controls into one window. [Desktop build and controls](mac-clap/)
+The desktop gallery shows Slink **0.9.10** playing Acid Line. The Thorn Crown editor puts the chrome crest, turning smiley, sequencer and all 34 controls in one window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/667d967e53033010c330d335e746a84e3a3411a8/mac-clap)
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.8.1).
 

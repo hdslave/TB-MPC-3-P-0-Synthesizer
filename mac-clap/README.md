@@ -2,9 +2,13 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink’s Razor Choir panel playing the Default preset on macOS](assets/desktop-preview.gif)
+![Slink 0.9.10 playing Acid Line in the Thorn Crown desktop editor](../docs/slink-desktop-0.9.10.png)
 
-[View the Windows panel at full size](assets/windows-preview.png)
+[Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/667d967e53033010c330d335e746a84e3a3411a8/mac-clap) · [Watch playback with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [View all 32 steps](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/thorn-crown-desktop-32.png) · [See the turning chrome smiley](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/chrome-smiley.webp)
+
+## Desktop 0.8.1 on main
+
+[Earlier playback GIF](assets/desktop-preview.gif) · [Earlier Windows capture](assets/windows-preview.png)
 
 This desktop copy is versioned 0.8.1 with the MPC build, but its engine is older than the MPC's. From 0.8.1 it has the clean filter after a long note. It lacks the MPC build's Mode: Notes fix for a note whose on and off come on one frame, as it lacks the step pads and the MPC build's handling of chokes (a choke here is a note off) and All Sound Off. Desktop hosts send note offs at their own frames, so such a note is rare there.
 
