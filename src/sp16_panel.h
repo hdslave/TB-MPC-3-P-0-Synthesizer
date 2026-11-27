@@ -4,6 +4,7 @@
 #include "tb3po.h"
 #include "sixteen_screen.h"
 #include "sp16_graphics.h"
+#include "../assets/sp16-thorn/index.h"
 #include <array>
 
 namespace tbmpc::sp16
@@ -20,8 +21,14 @@ inline constexpr Bank banks[] = {
     {"Pattern", {seedMode, seed, mutate, density, scale, root}},
     {"Clock",   {clockDiv, swing, reset, steps, mode, SIXTEEN_INVALID_PARAM_ID}}
 };
+inline constexpr uint32_t voiceControls[] = {filter, peakSpread, cutoff, resonance};
+inline bool controlEnabled(uint32_t id, int filterMode, int slideMode, int playMode)
+{
+    return (id!=peakSpread || filterMode==filterTwinPeak) && (id!=slideTime || slideMode==1 || playMode==1);
+}
 using hdui::Ink;
 constexpr Ink bg = 0xff080812, cell = 0xff100d1a, grid = 0xff302840;
+constexpr Ink inactive = 0xff787583;
 constexpr Ink paper = 0xfff1efff, muted = 0xffb9b1cb, steel = 0xffb6c8fa, ice = 0xff96b7ff;
 constexpr int bodyTop = 100, tabTop = 247, tabLeft = 300, tabWidth = 79, stormX = 127;
 constexpr int gridLeft = 8, gridWidth = 764, gridTop = 131, gridHeight = 113;
@@ -70,11 +77,11 @@ struct Raster : hdui::Raster
         dest = 0xff000000u | (red<<16) | (green<<8) | blue;
     }
 
-    // A vertical slice of a 1.5 px trace, with fractional coverage at each end.
-    void trace(int x, double from, double to, Ink fg) const
+    // A vertical slice of a trace, with fractional coverage at each end.
+    void trace(int x, double from, double to, Ink fg, int halfWidth=12) const
     {
-        const int upper = int(std::lround(16*std::min(from,to))) - 12;
-        const int lower = int(std::lround(16*std::max(from,to))) + 12;
+        const int upper = int(std::lround(16*std::min(from,to))) - halfWidth;
+        const int lower = int(std::lround(16*std::max(from,to))) + halfWidth;
         for (int y = upper/16; y <= lower/16; ++y)
         {
             const int coverage = std::min(lower,(y+1)*16) - std::max(upper,y*16);
@@ -86,8 +93,9 @@ struct Raster : hdui::Raster
         { label(x,y,end,s,fg,large ? rave::large : rave::normal); }
     void text(int x,int y,const char* s,Ink fg) const { label(x,y,SIXTEEN_SCREEN_WIDTH,s,fg,rave::small); }
     void right(int end,int y,const char* s,Ink fg) const { label(end-measure(s,rave::small),y,end,s,fg,rave::small); }
-    // Cut opposite corners and shade the face towards its lower bevel.
-    void plate(int x,int y,int width,int height,Ink upper,Ink lower,Ink edge) const
+    // Cut opposite corners and leave a one-pixel rim around the face.
+    template <typename Face>
+    void plateRows(int x,int y,int width,int height,Ink edge,Face face) const
     {
         constexpr int bevel = 4;
         for (int row=0; row<height; ++row)
@@ -96,13 +104,27 @@ struct Raster : hdui::Raster
             const int right = std::max(0, bevel-row);
             const int span = width-left-right;
             box(x+left,y+row,span,1,edge);
-            if (row==0 || row==height-1) continue;
+            if (row>0 && row<height-1)
+                box(x+left+1,y+row,span-2,1,face(row));
+        }
+    }
+
+    void plate(int x,int y,int width,int height,Ink upper,Ink lower,Ink edge) const
+    {
+        plateRows(x,y,width,height,edge,[&](int row) {
             auto channel = [&](int shift) {
                 const int a=(upper>>shift)&255, b=(lower>>shift)&255;
                 return unsigned(a+(b-a)*row/(height-1))<<shift;
             };
-            box(x+left+1,y+row,span-2,1,0xff000000u|channel(16)|channel(8)|channel(0));
-        }
+            return 0xff000000u|channel(16)|channel(8)|channel(0);
+        });
+    }
+
+    void selectedPlate(int x,int y,int width,int height) const
+    {
+        plateRows(x,y,width,height,thorn::selectionEdge,[=](int row) {
+            return thorn::selectionRamp[(2*row+1)*std::size(thorn::selectionRamp)/(2*height)];
+        });
     }
 };
 
@@ -118,6 +140,7 @@ class Panel
     int ribbonControls() const
     {
         if (bank == performPage) return 2;
+        if (bank == voicePage) return int(std::size(voiceControls));
         return bank == slidePage || bank == clockPage ? 5 : 0;
     }
     Card ribbonCard(int index) const
@@ -125,7 +148,7 @@ class Panel
         if (bank == performPage || (bank == slidePage && index == 0))
             return {gridLeft+190*index,186};
         const int first = bank == slidePage ? gridLeft+190 : gridLeft;
-        const int count = bank == slidePage ? 4 : 5;
+        const int count = ribbonControls() - (bank == slidePage ? 1 : 0);
         const int slot = bank == slidePage ? index-1 : index;
         const int available = gridLeft+gridWidth-first+4;
         const int x = first + slot*available/count;
@@ -136,7 +159,11 @@ class Panel
 public:
     int bank = patternPage;
     ThornPage thorn;
-    static constexpr int plotLeft=44, plotRight=729, plotTop=142, plotBottom=219;
+    static constexpr int plotLeft=40, plotRight=732, plotTop=135, plotBottom=225;
+    static constexpr int lfoTop=134, lfoBottom=226, lfoCardWidth=373;
+    static constexpr int lfoCardLeft(int lane) { return 12+382*lane; }
+    static constexpr int lfoLeft(int lane) { return lfoCardLeft(lane)+7; }
+    static constexpr int lfoRight(int lane) { return lfoCardLeft(lane)+lfoCardWidth-8; }
     enum class Gesture { none, filterXY, lfoXY, parameter, steps };
     Gesture gesture = Gesture::none;
     StepLane lane = StepLane::number;
@@ -174,10 +201,10 @@ public:
     }
     static StepLane patternLane(int y)
     {
-        if (y<125) return StepLane::number;
-        if (y<166) return StepLane::pitch;
-        if (y<193) return StepLane::gate;
-        return y<219 ? StepLane::accent : StepLane::slide;
+        if (y<thorn::scoreRow::pitch) return StepLane::number;
+        if (y<thorn::scoreRow::gate) return StepLane::pitch;
+        if (y<thorn::scoreRow::accent) return StepLane::gate;
+        return y<thorn::scoreRow::slide ? StepLane::accent : StepLane::slide;
     }
     int ribbonTop(int step) const { return gridTop + (step/16)*gridHeight/(shown.steps>16 ? 2 : 1); }
     int ribbonBottom(int row) const { return gridTop + (row+1)*gridHeight/(shown.steps>16 ? 2 : 1) - 1; }
@@ -222,9 +249,8 @@ public:
         return index < shown.steps ? index : -1;
     }
 
-    bool render(const sixteen_screen_surface_t& s, bool full, const PatternState& pattern, const std::atomic<float>* params)
+    bool render(const sixteen_screen_surface_t& s, bool full, const PatternView& next, const std::atomic<float>* params)
     {
-        const auto next = pattern.read();
         const bool layoutChanged = full || dirty;
         const bool sequenceChanged = !(shown == next);
         shown = next;
@@ -249,7 +275,9 @@ public:
         if (bank==voicePage)
         {
             const uint32_t dt=s.now_ms-voiceMs;
-            const float weight=voiceInitialized ? -std::expm1(-float(dt)/30.f) : 1.f;
+            // Follow the finger more tightly than an encoder or automation step.
+            const float response=gesture==Gesture::filterXY ? 16.f : 28.f;
+            const float weight=voiceInitialized ? -std::expm1(-float(dt)/response) : 1.f;
             auto track=[weight](float& display,float target) {
                 const float before=display;
                 display+=(target-display)*weight;
@@ -272,7 +300,7 @@ public:
         {
             bodyChanged |= sequenceChanged;
             if (bank==performPage) bodyChanged |= changed({cutoff,resonance,filter,peakSpread});
-            if (bank==slidePage) bodyChanged |= changed({glide,slideTime,gate,octave,transpose});
+            if (bank==slidePage) bodyChanged |= changed({glide,slideTime,gate,octave,transpose,mode});
             if (bank==clockPage) bodyChanged |= changed({clockDiv,swing,reset,steps,mode});
             if (bodyChanged) drawPattern(r);
         }
@@ -302,15 +330,15 @@ private:
         {
             const int x = tabLeft+i*tabWidth;
             const bool active = i==bank;
-            r.plate(x,tabTop+2,tabWidth-2,33,active?0xff4d75de:0xff2b203b,
-                    active?0xff202f7f:0xff100d1b,active?0xffb1c9ff:0xff675a79);
+            if (active) r.selectedPlate(x,tabTop+2,tabWidth-2,33);
+            else r.plate(x,tabTop+2,tabWidth-2,33,0xff2b203b,0xff100d1b,0xff675a79);
             if (i == slidePage)
             {
                 const char* label = "SLIDE";
                 r.text(x+(tabWidth-2-Raster::measure(label,rave::small))/2,tabTop+11,label,paper);
             }
             else ThornPage::bankLabel(r,i,x,tabTop+8);
-            if (active) r.box(x+9,tabTop+30,tabWidth-20,2,0xffbbd1ff);
+            if (active) r.box(x+9,tabTop+30,tabWidth-20,2,thorn::selectionEdge);
         }
     }
     void drawSlideSwitch(const Raster& r) const
@@ -320,8 +348,8 @@ private:
         {
             const int x = slideChoiceX+i*(slideChoiceWidth+slideChoiceGap);
             const bool active = i == int(value(glide));
-            r.plate(x,ribbonY+2,slideChoiceWidth,ribbonHeight-4,active?0xff456ac4:0xff1d192d,
-                    active?0xff242e72:0xff14101e,active?0xff95b7fd:0xff514761);
+            if (active) r.selectedPlate(x,ribbonY+2,slideChoiceWidth,ribbonHeight-4);
+            else r.plate(x,ribbonY+2,slideChoiceWidth,ribbonHeight-4,0xff1d192d,0xff14101e,0xff514761);
             const char* label = glideChoices[i];
             r.text(x+(slideChoiceWidth-Raster::measure(label,rave::small))/2,109,label,active?paper:muted);
         }
@@ -333,13 +361,15 @@ private:
         for (int i=0; i<ribbonControls(); ++i)
         {
             const auto [x,width] = ribbonCard(i);
-            r.plate(x,ribbonY,width,ribbonHeight,0xff292036,0xff151121,0xff514761);
+            const uint32_t id = banks[bank].ids[i];
+            const bool enabled = controlEnabled(id,int(value(filter)),int(value(glide)),int(value(mode)));
+            r.plate(x,ribbonY,width,ribbonHeight,enabled ? 0xff292036 : 0xff1c1b24,
+                    enabled ? 0xff151121 : 0xff13121a,enabled ? 0xff514761 : 0xff3a3744);
             if (bank == slidePage && i == 0)
             {
                 drawSlideSwitch(r);
                 continue;
             }
-            const uint32_t id = banks[bank].ids[i];
             const auto& param = paramTable[paramIndex(id)];
             char text[64];
             formatParam(param,value(id),text,sizeof(text),ctx);
@@ -347,8 +377,8 @@ private:
             if (id == slideTime) label = "303 Time";
             if (id == gate) label = "Gate Length";
             if (id == clockDiv) label = "Division";
-            r.text(x+9,109,label,muted);
-            r.right(x+width-10,109,text,paper);
+            r.text(x+9,109,label,enabled ? muted : inactive);
+            r.right(x+width-10,109,text,enabled ? paper : inactive);
         }
 
         if (bank == performPage)
@@ -411,11 +441,11 @@ private:
             const int bottom = ribbonBottom(row);
             const int plotEnd = ribbonPitchTop(row);
             r.box(gridLeft, top, gridWidth, plotEnd-top, cell);
-            const int focus = finger >= 0 ? finger : shown.running ? shown.current : -1;
+            const int focus = finger >= 0 ? finger : thorn.focusStep(shown);
             if (focus >= row*16 && focus < (row+1)*16)
             {
                 const int col = focus%16;
-                r.box(stepX(col), top, stepX(col+1)-stepX(col), plotEnd-top, 0xff293b80);
+                r.box(stepX(col), top, stepX(col+1)-stepX(col), plotEnd-top, 0xff302c62);
             }
             if (bank == clockPage) drawClockRuler(r,row,top,plotEnd,focus);
             else
@@ -432,12 +462,13 @@ private:
                 const int col = i%16, x = stepX(col), w = stepX(col+1)-x, y = pitchY(i);
                 char number[16];
                 std::snprintf(number,sizeof(number),"%02d",i+1);
-                r.box(x+1,numberTop,w-2,14,focus==i?0xff28396c:0xff181322);
+                if (focus==i) r.selectedPlate(x+1,numberTop,w-2,14);
+                else r.box(x+1,numberTop,w-2,14,0xff181322);
                 r.text(x+(w-Raster::measure(number,rave::small))/2,numberTop,number,focus==i?paper:muted);
                 const bool hit = focus == i, gated = (shown.gates >> i) & 1u;
                 if (bank != clockPage)
                 {
-                    if (hit) r.box(x, top, w, 2, ice);
+                    if (hit) r.box(x, top, w, 2, thorn::selectionEdge);
                     const bool sliding = (shown.slides >> i) & 1u;
                     if (sliding && col < 15 && i+1 < shown.steps)
                     {
@@ -473,9 +504,9 @@ private:
                         }
                     }
                 }
-                r.plate(x+1,plotEnd,w-2,bottom-plotEnd+1,hit?0xff151c32:0xff09090e,
-                        hit?0xff080b16:0xff020204,hit?0xff8ca8fc:0xff292333);
-                ThornPage::pitchLabel(r,shown.pitch[i],hit,x+(w-42)/2,plotEnd+(rows==1?0:-3));
+                r.plateRows(x+1,plotEnd,w-2,bottom-plotEnd+1,hit?thorn::selectionEdge:0xff292333,
+                            [](int) { return 0xff000000u; });
+                ThornPage::pitchLabel(r,shown.pitch[i],x+(w-42)/2,plotEnd+(rows==1?0:-3));
 
             }
         }
@@ -488,13 +519,13 @@ private:
     {
         for (int lane = 0; lane < 2; ++lane)
         {
-            const int x = 12 + lane * 382;
+            const int x=lfoCardLeft(lane);
             const auto amount = value(lane ? cutoffLfoAmount : pitchLfoAmount);
             const auto rate = value(lane ? cutoffLfoSpeed : pitchLfoSpeed);
             const auto* detent = lfoDetent(rate);
             const double cycles = detent ? detent->cyclesPerBeat : rate;
             const Ink color = lane ? 0xffd1afff : steel;
-            r.plate(x,103,373,141,0xff20192d,0xff0d0c15,0xff706580);
+            r.plate(x,103,lfoCardWidth,141,0xff20192d,0xff0d0c15,0xff706580);
             ThornPage::plotTitle(r,3+lane,x+12,107);
             char depth[40];
             std::snprintf(depth, sizeof(depth), lane ? "%.2f oct" : "%.2f st",
@@ -503,93 +534,152 @@ private:
             formatParam(paramTable[paramIndex(lane ? cutoffLfoSpeed : pitchLfoSpeed)],rate,speed,sizeof(speed),{});
             r.text(x+154,114,speed,muted);
             r.reading(x+275, 111, x+367, depth, paper);
-            const int left = x+12, w = 348, mid = 178;
-            for (int k=0; k<=4; ++k) r.box(left + k*w/4, 139, 1, 77, grid);
-            r.box(left, mid, w, 1, grid);
+            const int left=lfoLeft(lane), w=lfoRight(lane)-left;
+            constexpr int mid=(lfoTop+lfoBottom)/2, amplitude=(lfoBottom-lfoTop)/2-4;
+            r.box(left,lfoTop,w+1,lfoBottom-lfoTop+1,0xff110e1e);
+            for (int k=0; k<=4; ++k) r.box(left+k*w/4,lfoTop,1,lfoBottom-lfoTop+1,grid);
+            r.box(left,mid,w,1,grid);
             double prev = mid;
             for (int j=0; j<=w; ++j)
             {
-                const double y = mid - 36*amount*std::sin(6.283185307179586*cycles*j/w);
+                const double y = mid - amplitude*amount*std::sin(6.283185307179586*cycles*j/w);
                 r.trace(left+j, prev+2, y+2, 0xff51448a);
                 r.trace(left+j, prev, y, color);
                 prev = y;
             }
-            r.text(left, 224, "0", muted);
-            r.right(left+w, 224, "1 beat", muted);
+            r.text(left,229,"0",muted);
+            r.right(left+w,229,"1 beat",muted);
         }
     }
 
     void drawVoice(const Raster& r) const
     {
-        const TextContext ctx {value(resonance), value(filter), value(peakSpread)};
+        const TextContext ctx {voiceRes, value(filter), value(peakSpread)};
         const int kind = int(ctx.filter);
         const double nominal = nominalHz(kind, voiceCutoff);
         const double feedback = feedbackOf(kind, voiceRes);
-        const double minHz = cutoffHz(0,ctx);
+        // Fix the frequency ruler for each filter. Twin Peak needs space for its second peak.
+        constexpr int lowerOctaves[] = {4, 2, 2};
+        constexpr int upperOctaves[] = {2, 5, 3};
+        const double minHz = std::ldexp(nominalHz(kind, 0), -lowerOctaves[kind]);
+        const double span = cutoffOctaves + lowerOctaves[kind] + upperOctaves[kind];
         constexpr int w=plotRight-plotLeft, h=plotBottom-plotTop;
-        auto dbY = [](double db) { return plotTop + (18-std::clamp(db,-36.,18.))*h/54.; };
-        r.plate(8,103,764,141,0xff241a32,0xff100c1a,0xff76678f);
-        ThornPage::plotTitle(r,kind,21,106);
-        r.text(182,114,"FILTER RESPONSE",muted);
+        constexpr int traceTop=plotTop+4, traceBottom=plotBottom-4;
+        auto hzX = [&](double hz) { return plotLeft+w*std::log2(hz/minHz)/span; };
+        auto dbY = [](double db) {
+            return traceTop + (36-std::clamp(db,-36.,36.))*(traceBottom-traceTop)/72.;
+        };
         char readout[48];
-        formatParam(paramTable[paramIndex(cutoff)], value(cutoff), readout, sizeof(readout), ctx);
-        r.text(406,114,"X  CUTOFF",ice);
-        r.reading(472,109,583,readout,paper);
-        r.text(592,114,"Y  RES",0xffcfa7ff);
-        std::snprintf(readout,sizeof(readout),"%.0f %%",100.*ctx.resonance);
-        r.reading(650,109,754,readout,paper);
-        r.box(plotLeft,plotTop,w+1,h+1,0xff100d1c);
-        for (int db : {18, 0, -18, -36})
+        for (int i=0; i<int(std::size(voiceControls)); ++i)
+        {
+            const auto [x,width] = ribbonCard(i);
+            const auto id = voiceControls[i];
+            const bool enabled = id!=peakSpread || kind==filterTwinPeak;
+            const auto& param = paramTable[paramIndex(id)];
+            const float displayed = id==cutoff ? voiceCutoff : id==resonance ? voiceRes : value(id);
+            formatParam(param,displayed,readout,sizeof(readout),ctx);
+            r.plate(x,ribbonY,width,ribbonHeight,enabled ? 0xff292036 : 0xff1c1b24,
+                    enabled ? 0xff151121 : 0xff13121a,enabled ? 0xff635473 : 0xff3a3744);
+            const char* label = id==cutoff ? "X  Cutoff" : id==resonance ? "Y  Resonance" : param.name;
+            const Ink ink = id==cutoff ? ice : id==resonance ? 0xffcfa7ff : muted;
+            const int end = x+width-10;
+            r.text(x+10,109,label,enabled ? ink : inactive);
+            r.reading(end-Raster::readingWidth(readout),106,end,readout,enabled ? paper : inactive);
+        }
+
+        r.plate(gridLeft,131,gridWidth,113,0xff241a32,0xff100c1a,0xff76678f);
+        r.box(plotLeft-1,plotTop-1,w+3,h+3,0xff514461);
+        for (int y=plotTop; y<=plotBottom; ++y)
+            r.box(plotLeft,y,w+1,1,y%2 ? 0xff111020 : 0xff131123);
+        for (int db : {36, 18, 0, -18, -36})
         {
             const int y=int(std::lround(dbY(db)));
-            r.box(plotLeft,y,w+1,1,db==0?0xff5e5179:0xff31273e);
+            r.box(plotLeft,y,w+1,1,db==0?0xff584e77:0xff2a243c);
             std::snprintf(readout,sizeof(readout),"%+d",db);
-            r.right(plotLeft-6,y-5,readout,muted);
+            r.right(plotLeft-6,y-6,db==0 ? "0 dB" : readout,muted);
         }
-        r.text(15,127,"dB",steel);
-        r.right(765,127,"RES %",0xffcfa7ff);
         for (int n : {0,50,100})
         {
-            std::snprintf(readout,sizeof(readout),"%d",n);
-            r.text(plotRight+7,plotBottom-n*h/100-5,readout,muted);
+            const int y=plotBottom-n*h/100;
+            std::snprintf(readout,sizeof(readout),"%d%%",n);
+            r.text(plotRight+6,std::clamp(y-6,plotTop-3,plotBottom-8),readout,muted);
         }
-        for (int hz : {10,20,50,100,200,500,1000,2000,5000,10000,20000,50000})
+        for (int hz : {5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000,100000})
         {
-            const double pos=std::log2(hz/minHz)/cutoffOctaves;
-            if (pos<0 || pos>1) continue;
-            const int x=plotLeft+int(std::lround(w*pos));
-            for (int y=plotTop; y<plotBottom; y+=4) r.box(x,y,1,2,0xff4a3d64);
+            const int x=int(std::lround(hzX(hz)));
+            if (x<plotLeft+8 || x>plotRight-8) continue;
+            for (int y=plotTop+2; y<plotBottom; y+=4) r.box(x,y,1,2,0xff383052);
             if (hz>=1000) std::snprintf(readout,sizeof(readout),"%dk",hz/1000);
             else std::snprintf(readout,sizeof(readout),"%d",hz);
-            r.text(x-5,225,readout,steel);
+            r.text(x-Raster::measure(readout,rave::small)/2,229,readout,steel);
         }
-        r.text(15,225,"Hz",steel);
+        r.text(12,229,"Hz",steel);
+
         const double ref = filterGain2(kind, feedback, ctx.spread, kind == filterTwinPeak ? std::exp2(ctx.spread*.5) : 1e-3);
-        double prev=0, hz=minHz;
-        const double ratio=std::exp2(double(cutoffOctaves)/w);
-        for (int j=0; j<=w; ++j,hz*=ratio)
+        const double floorGain=ref*std::pow(10.,-3.6);
+        const double ceilingGain=ref*std::pow(10.,3.6);
+        auto responseY = [&](double relativeHz) {
+            const double gain=filterGain2(kind,feedback,ctx.spread,relativeHz);
+            if (gain<=floorGain) return double(traceBottom);
+            if (gain>=ceilingGain) return double(traceTop);
+            return dbY(10*std::log10(gain/ref));
+        };
+        const double cutoffFrequency=cutoffHz(voiceCutoff,ctx);
+        const double edgeX=std::clamp(hzX(cutoffFrequency),double(plotLeft+3),double(plotRight-3));
+        const double edgeY=responseY(cutoffFrequency/nominal);
+        const double touchX=std::clamp(plotLeft+w*double(voiceCutoff),double(plotLeft+4),double(plotRight-4));
+        const double touchY=plotBottom-h*double(voiceRes);
+        const double railY=std::clamp(touchY,plotTop+.5,plotBottom-.5);
+        const double reticleY=std::clamp(touchY,double(plotTop+5),double(plotBottom-5));
+        for (int x=int(touchX)+4; x<=plotRight; x+=4)
+            r.trace(x,railY,railY,0xff826ba9,5);
+
+        double frequency=minHz/nominal;
+        const double ratio=std::exp2(span/w);
+        double previous=responseY(frequency);
+        for (int x=plotLeft; x<=plotRight; ++x,frequency*=ratio)
         {
-            const double gain=filterGain2(kind, feedback, ctx.spread, hz/nominal);
-            const double y=dbY(10*std::log10(gain/ref+1e-12));
-            if (!j) prev=y;
-            const int x=plotLeft+j;
-            if ((j%5)==0)
-                r.box(x,int(y)+2,1,plotBottom-int(y)-1,0xff333058);
-            r.trace(x,prev+1.5,y+1.5,0xff655bb8);
-            r.trace(x,prev,y,0xffd9e4ff);
-            prev=y;
+            const double y=responseY(frequency);
+            const int depth=plotBottom-int(y);
+            if (depth>6)
+            {
+                r.box(x,int(y)+3,1,depth/2,0xff232043);
+                if ((x-plotLeft)%4==0) r.box(x,int(y)+3,1,depth-3,0xff38315c);
+            }
+            if (y==traceBottom && previous==traceBottom)
+                r.trace(x,y,y,0xff555578,8);
+            else
+            {
+                r.trace(x,previous,y,0xff5156a0,26);
+                r.trace(x,previous,y,0xffdce8ff,11);
+            }
+            previous=y;
         }
-        const int cx=plotLeft+int(std::lround(w*voiceCutoff));
-        const int cy=plotBottom-int(std::lround(h*voiceRes));
-        for (int y=plotTop; y<=plotBottom; y+=5) r.box(cx,y,1,2,0xff8faaff);
-        for (int x=plotLeft; x<=plotRight; x+=7) r.box(x,cy,2,1,0xffa68bc9);
-        for (int d=-5; d<=5; ++d)
+
+        const int column=int(edgeX);
+        const unsigned fraction=unsigned(std::lround((edgeX-column)*15));
+        for (int y=int(edgeY)+4; y<plotBottom; y+=4)
+            for (int dy=0; dy<2; ++dy)
+            {
+                r.blend(column,y+dy,0xff566fa5,15-fraction);
+                r.blend(column+1,y+dy,0xff566fa5,fraction);
+            }
+
+        // The hollow reticle follows the pad. The brighter marker marks the cutoff on the response.
+        for (int x=int(touchX)-3; x<=int(touchX)+4; ++x)
         {
-            const int dy=5-std::abs(d);
-            r.box(cx+d,cy-dy,1,1,paper);
-            r.box(cx+d,cy+dy,1,1,paper);
+            const double d=4-std::abs(x-touchX);
+            if (d<=0) continue;
+            r.trace(x,reticleY-d,reticleY-d,0xffbb9ce5,8);
+            r.trace(x,reticleY+d,reticleY+d,0xffbb9ce5,8);
         }
-        r.box(cx-1,cy-1,3,3,0xffc4a8ff);
+        for (int x=column-2; x<=column+3; ++x)
+        {
+            const double half=2.5-std::abs(x-edgeX);
+            if (half<=0) continue;
+            r.trace(x,edgeY-half,edgeY+half,0xff7598f2,13);
+            r.trace(x,edgeY-half*.6,edgeY+half*.6,paper,6);
+        }
     }
 
     float value(uint32_t id) const { return values[paramIndex(id)]; }

@@ -82,16 +82,15 @@ function chromeLetter(letter) {
 }
 
 const silverFigure = [[0,'#fff'],[.38,'#d4dbf1'],[.49,'#9aa6cf'],[.54,'#f8faff'],[1,'#d3d5ed']];
-const steelFigure = [[0,'#3f507d'],[.35,'#161d33'],[.44,'#657295'],[.51,'#303753'],[.62,'#10162e'],[1,'#31354c']];
 
-function scoreFigures(ctx, text, x, cy, cap, maxWidth, light) {
+function scoreFigures(ctx, text, x, cy, cap, maxWidth) {
   const width = text.length*19+(text.length-1)*2.5+1;
   ctx.save();
   ctx.translate(x, cy-cap/2);
   ctx.scale(Math.min(cap/24, maxWidth/width), cap/24);
   ctx.translate(-width/2, 0);
   const gradient = ctx.createLinearGradient(0, 0, 4, 24);
-  for (const [position,color] of (light ? silverFigure : steelFigure)) gradient.addColorStop(position,color);
+  for (const [position,color] of silverFigure) gradient.addColorStop(position,color);
   ctx.fillStyle = gradient;
   for (const ch of text) {
     ctx.fill(scoreGlyphs.get(ch).path, 'evenodd');
@@ -100,7 +99,7 @@ function scoreFigures(ctx, text, x, cy, cap, maxWidth, light) {
   ctx.restore();
 }
 
-function scorePitch(ctx, note, x, cy, height, maxWidth, selected) {
+function scorePitch(ctx, note, x, cy, height, maxWidth) {
   const sharp = note[1] === '#', octave = note.slice(sharp ? 2 : 1);
   const letterWidth = height*1.20, letterHeight = height*1.40, registerSize = height*.50;
   const rightWidth = Math.max(registerSize*.82, registerSize*.72*octave.length);
@@ -110,7 +109,7 @@ function scorePitch(ctx, note, x, cy, height, maxWidth, selected) {
   ctx.scale(Math.min(1,maxWidth/width),1);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(chromeLetter(note[0]), -width/2, -letterHeight/2, letterWidth, letterHeight);
-  if (sharp) scoreText(ctx,'#',right,-height*.28,height*.38,rightWidth,selected?'#fff':'#171b30');
-  scoreFigures(ctx,octave,right,height*.23,registerSize,rightWidth+1,selected);
+  if (sharp) scoreText(ctx,'#',right,-height*.28,height*.38,rightWidth,'#fff');
+  scoreFigures(ctx,octave,right,height*.23,registerSize,rightWidth+1);
   ctx.restore();
 }

@@ -2868,6 +2868,63 @@ void testSp16Panel(const std::string& folder)
     constexpr int stride = 789, h = SIXTEEN_SCREEN_HEIGHT;
     std::vector<uint32_t> pixels(stride*h, 0x12345678);
     sixteen_screen_surface_t surface {pixels.data(), SIXTEEN_SCREEN_WIDTH, h, stride, 0};
+    // Opening before the first process callback must show the same score as the first stopped block.
+    // A preset recalled after an earlier publication must replace that score immediately too.
+    {
+        Instance cold;
+        ui->on_open(cold.plugin);
+        for (const char* preset : {static_cast<const char*>(nullptr), "acid-line", "square-lead"})
+        {
+            if (preset) CHECK(cold.loadPreset(preset));
+            CHECK(ui->render(cold.plugin,&surface,true));
+            const auto beforeAudio = pixels;
+            cold.setup({});
+            ui->render(cold.plugin,&surface,true);
+            CHECK(beforeAudio==pixels);
+            CHECK(ui->touch(cold.plugin,SIXTEEN_TOUCH_DOWN,85,113));
+            CHECK(ui->touch(cold.plugin,SIXTEEN_TOUCH_UP,85,113));
+        }
+        ui->on_close(cold.plugin);
+    }
+    // Selection moves the note rim without changing the black face or its chrome glyph.
+    {
+        Instance keys;
+        ui->on_open(keys.plugin);
+        for (int steps : {16,32})
+        {
+            keys.setup({{"Steps",double(steps)}});
+            for (int page : {0,2,4,5})
+            {
+                CHECK(ui->touch(keys.plugin,SIXTEEN_TOUCH_DOWN,339+page*79,264));
+                CHECK(ui->render(keys.plugin,&surface,true));
+                const bool pattern = page==4;
+                const int left = pattern ? 65 : 9, nextLeft = pattern ? 108 : 56;
+                const int top = pattern ? 143 : steps==16 ? 202 : 158;
+                const int height = pattern ? 33 : steps==16 ? 42 : 29;
+                auto select = [&](int x) {
+                    CHECK(ui->touch(keys.plugin,SIXTEEN_TOUCH_DOWN,x,top+12));
+                    CHECK(ui->touch(keys.plugin,SIXTEEN_TOUCH_UP,x,top+12));
+                    CHECK(ui->render(keys.plugin,&surface,false));
+                };
+                select(left+18);
+                const auto firstSelected = pixels;
+                select(nextLeft+18);
+                for (int x : {left,nextLeft})
+                {
+                    CHECK(pixels[top*stride+x+12]!=firstSelected[top*stride+x+12]);
+                    CHECK(pixels[(top+4)*stride+x+5]==0xff000000u);
+                    bool sameFace = true;
+                    for (int y=top+3; y<top+height-3; ++y)
+                    {
+                        const auto line = y*stride+x+4;
+                        sameFace &= std::equal(pixels.begin()+line,pixels.begin()+line+34,firstSelected.begin()+line);
+                    }
+                    CHECK(sameFace);
+                }
+            }
+        }
+        ui->on_close(keys.plugin);
+    }
     CHECK(ui->render(touch.plugin, &surface, true));
     CHECK(!ui->render(touch.plugin, &surface, false));
     for (int row = 0; row < h; ++row)
@@ -2900,6 +2957,10 @@ void testSp16Panel(const std::string& folder)
             openBank(bank);
         }
         CHECK(writePng((folder+"/thorn-"+bankNames[bank]+".png").c_str(),pixels.data(),780,h,stride,1));
+        const double originalFilter=touch.value("Filter"), originalSlide=touch.value("Slide");
+        if (bank==1) touch.setup({{"Filter",1}});
+        if (bank==2) touch.setup({{"Slide",1}});
+        CHECK(ui->knobs(touch.plugin,ids,label));
         for (int knob=0; knob<SIXTEEN_KNOB_COUNT; ++knob)
         {
             const char* name=bankParams[bank][knob];
@@ -2911,6 +2972,8 @@ void testSp16Panel(const std::string& folder)
             CHECK(std::find(reachable.begin(),reachable.end(),id)==reachable.end());
             reachable.push_back(id);
         }
+        if (bank==1) touch.setup({{"Filter",originalFilter}});
+        if (bank==2) touch.setup({{"Slide",originalSlide}});
     }
     for (const auto& item : touch.ids)
         if (item.first != "Regen" && item.first != "Seed Back")
@@ -2923,8 +2986,19 @@ void testSp16Panel(const std::string& folder)
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,88,115));
     CHECK(touch.value("Slide")==0 && touch.value("Slide Time")==oldSlideTime);
     ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,88,115);
+    CHECK(ui->knobs(touch.plugin,ids,label) && ids[1]==SIXTEEN_INVALID_PARAM_ID);
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,250,115));
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,280,115));
+    CHECK(touch.value("Slide Time")==oldSlideTime);
+    touch.setup({{"Mode",1}});
+    CHECK(ui->knobs(touch.plugin,ids,label) && ids[1]==touch.id("Slide Time"));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,250,115));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,250,115));
+    touch.setup({{"Mode",0}});
+    CHECK(ui->knobs(touch.plugin,ids,label) && ids[1]==SIXTEEN_INVALID_PARAM_ID);
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,150,115));
     ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,150,115);
+    CHECK(ui->knobs(touch.plugin,ids,label) && ids[1]==touch.id("Slide Time"));
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,250,115));
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,280,115));
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,280,115));
@@ -3002,14 +3076,60 @@ void testSp16Panel(const std::string& folder)
     }
     openBank(1);
     CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,400,188));
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,44,219));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,40,225));
     CHECK(touch.value("Cutoff")==0 && touch.value("Resonance")==0);
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,800,-20));
     CHECK(touch.value("Cutoff")==1 && touch.value("Resonance")==1);
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,387,181));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,386,180));
     CHECK(std::abs(touch.value("Cutoff")-.5)<.01 && std::abs(touch.value("Resonance")-.5)<.01);
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,800,-20));
     CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,44,142));
+    // The response moves during an XY sweep while the frequency ruler stays fixed.
+    for (int model=0; model<3; ++model)
+    {
+        touch.setup({{"Filter",model},{"Cutoff",0},{"Resonance",0},{"Peak Spread",1.5}});
+        openBank(1);
+        const bool twin=model==1;
+        CHECK(ui->knobs(touch.plugin,ids,label) && ids[3]==(twin ? touch.id("Peak Spread") : SIXTEEN_INVALID_PARAM_ID));
+        // The painted cards and their hit boxes share both edges, leaving the four-pixel gutters clear.
+        for (int column=0; column<4; ++column)
+        {
+            const int x=8+192*column;
+            const bool enabled=column!=1 || twin;
+            for (int edge : {x,x+187})
+            {
+                CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,edge,115)==enabled);
+                CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,edge,115)==enabled);
+            }
+            CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,x+188,115));
+            CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,x+94,129));
+        }
+        CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,310,114)==twin);
+        CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,345,114)==twin);
+        CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,345,114)==twin);
+        CHECK(twin ? touch.value("Peak Spread")>1.5 : touch.value("Peak Spread")==1.5);
+        ui->render(touch.plugin,&surface,false);
+        const auto before = pixels;
+        CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,40,225));
+        for (int n=1; n<=5; ++n)
+        {
+            CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,40+n*138,225-n*18));
+            surface.now_ms += n%2 ? 16 : 17;
+            CHECK(ui->render(touch.plugin,&surface,false));
+            CHECK(!std::equal(pixels.begin()+stride*135,pixels.begin()+stride*226,before.begin()+stride*135));
+            CHECK(std::equal(pixels.begin()+stride*229,pixels.begin()+stride*242,before.begin()+stride*229));
+            auto redraw=pixels;
+            auto checkSurface=surface;
+            checkSurface.pixels=redraw.data();
+            CHECK(ui->render(touch.plugin,&checkSurface,true));
+            CHECK(redraw==pixels);
+            CHECK(!ui->render(touch.plugin,&surface,false));
+        }
+        CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,730,135));
+        surface.now_ms+=300;
+        CHECK(ui->render(touch.plugin,&surface,false));
+        CHECK(!ui->render(touch.plugin,&surface,false));
+    }
     // The shared face animates on the LFO page during playback.
     CHECK(touch.loadPreset("root-pulse"));
     touch.setup({});
@@ -3071,10 +3191,16 @@ void testSp16Panel(const std::string& folder)
     CHECK(touch.value("Cutoff")==1.0);
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,220,112));
     openBank(3);
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,24,216));
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,372,139));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,19,226));
+    CHECK(touch.value("Pitch LFO Amount")==0 && touch.value("Pitch LFO Speed")==tbmpc::lfoMinRate);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,377,134));
     CHECK(touch.value("Pitch LFO Amount")==1 && touch.value("Pitch LFO Speed")==tbmpc::lfoMaxRate);
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,372,139));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,377,134));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,401,226));
+    CHECK(touch.value("Cutoff LFO Amt")==0 && touch.value("Cutoff LFO Speed")==tbmpc::lfoMinRate);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_MOVE,759,134));
+    CHECK(touch.value("Cutoff LFO Amt")==1 && touch.value("Cutoff LFO Speed")==tbmpc::lfoMaxRate);
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_UP,759,134));
     openBank(4);
     // A host Play takes over a local preview. The screen becomes a sync
     // indicator, and the host Stop must not restart the preview.
@@ -3124,7 +3250,11 @@ void testSp16Panel(const std::string& folder)
     auto drag=[&](int x,int y){return ui->touch(editor.plugin,SIXTEEN_TOUCH_MOVE,x,y);};
     auto lift=[&](int x,int y){return ui->touch(editor.plugin,SIXTEEN_TOUCH_UP,x,y);};
     CHECK(press(561,40)); // second bank
-    CHECK(press(85,145) && drag(85,117) && lift(85,117)); // step 17, +4 semitones
+    repaint(editor);
+    const auto beforeRail = rendered;
+    CHECK(press(85,133) && drag(85,105) && lift(85,105)); // pitch trace, step 17, +4 semitones
+    repaint(editor);
+    CHECK(!std::equal(rendered.begin()+123*stride,rendered.begin()+143*stride,beforeRail.begin()+123*stride));
     for (int y : {178,206,231})
         CHECK(press(85,y) && drag(213,y) && lift(213,y)); // jump across four columns
     repaint(editor);
@@ -3159,8 +3289,17 @@ void testSp16Panel(const std::string& folder)
         c.pos+=count;
         return count;
     }};
+    // The live sequencer already has the saved seed, generated with a different density.
+    recalled.setup({{"Density",-7},{"Seed",0x4320}});
+    recalled.setup({{"Seed",0x4321}});
     CHECK(recalled.state->load(recalled.plugin,&input));
+    // Read the restored second bank, including its manual overrides, before audio runs again.
+    CHECK(ui->render(recalled.plugin,&editSurface,true));
+    CHECK(ui->touch(recalled.plugin,SIXTEEN_TOUCH_DOWN,561,40));
+    CHECK(ui->render(recalled.plugin,&editSurface,false));
+    const auto beforeRecallAudio=rendered;
     repaint(recalled);
+    CHECK(rendered==beforeRecallAudio);
     CHECK(writeState(recalled)==saved);
     CHECK(press(85,113) && lift(85,113));
     editor.render(1024,64,left,right,stopped);

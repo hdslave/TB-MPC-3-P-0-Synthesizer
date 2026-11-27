@@ -1,6 +1,7 @@
 // Two flexible metal ribbons crossing a bank of forked lightning.
-function makeWhipStorm(ctx){
-  const left=201.5,top=253.5,width=167,height=24,tau=2*Math.PI;
+const thornStudyPattern=[[1,1,1,1,0,0,1,1,0,1,1,1,0,1,1,0],[0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],[0,0,1,0,0,0,1,0,0,0,0,0,1,0,0,1]];
+function makeWhipStorm(ctx,{left=201.5,top=253.5,composition,detail=1}={}){
+  const width=composition?.width??167,height=24,tau=2*Math.PI;
   const cosine=Math.cos,sine=Math.sin,clip=(n,lo,hi)=>Math.min(hi,Math.max(lo,n));
   const pack=(r,g,b)=>(255<<24)|(clip(b,0,255)<<16)|(clip(g,0,255)<<8)|clip(r,0,255);
   const gradient=[
@@ -34,7 +35,7 @@ function makeWhipStorm(ctx){
   const metal=document.createElement('canvas'),metalCtx=metal.getContext('2d');
   const scene=document.createElement('canvas'),ink=scene.getContext('2d');
   let scale=0,W,H,pixels,colour,depth;
-  const stations=93;
+  const stations=92*detail+1;
   const projected=new Float32Array(stations*2*5);
   function triangle(ia,ib,ic,map,charge){
     const v=projected;
@@ -59,10 +60,11 @@ function makeWhipStorm(ctx){
       }
     }
   }
-  const ribbons=[
+  const shapes=composition?.ribbons??[
     {points:[[-13,19],[10,16],[31,5],[52,7],[69,17],[84,18],[94,12],[89,6],[82,5],[100,4],[133,9]],width:1,hand:1},
     {points:[[179,4],[155,6],[140,16],[124,19],[109,15],[107,9],[116,6],[111,3.4],[92,6.5],[64,17],[45,13]],width:.77,hand:-1}
   ];
+  const ribbons=shapes.map(r=>({x:0,phase:0,...r}));
   const cross=[[-1,0,polish],[-.90,.11,blue],[-.52,.24,silver],[-.30,.27,bore],[-.24,.29,silver],
     [.06,.44,silver],[.48,.27,blue],[.84,.14,polish],[1,0,polish],[.77,-.12,blue],[.04,-.24,inlay],[-.72,-.11,blue]];
   const lanes=cross.length;
@@ -84,10 +86,10 @@ function makeWhipStorm(ctx){
     for(let j=0;j<stations;j++){
       const u=j/(stations-1),k=j*4,p=phase+offset-3.9*u;
       const surge=(.5+.5*cosine(p))**4;
-      const index=(r.rest[j][0]/width*16),lo=clip(Math.floor(index),0,15),hi=Math.min(15,lo+1),f=clip(index-lo,0,1);
+      const index=(r.rest[j][0]/167*16),lo=clip(Math.floor(index),0,15),hi=Math.min(15,lo+1),f=clip(index-lo,0,1);
       const mix=row=>row[lo]*(1-f)+row[hi]*f;
       const gate=mix(gates),acc=mix(accents),slide=mix(slides);
-      spine[k]=r.rest[j][0]+hand*u*u*(29*(surge-.40)+9*sine(p*2+.44)) + hand*slide*u*2;
+      spine[k]=r.x+r.rest[j][0]+hand*u*u*(29*(surge-.40)+9*sine(p*2+.44))+hand*slide*u*2;
       spine[k+1]=r.rest[j][1]+(1.4+6.2*u)*sine(p*2+.8*u)*(.72+.28*gate)+2.7*(surge-.5);
       spine[k+2]=(hand===1?1.6:-.9)+3*sine(5.6*u+phase+offset)+slide;
       spine[k+3]=.30+1.03*sine(phase*2-7.6*u+offset)+.53*sine(phase-12*u+.4)+.26*acc;
@@ -134,12 +136,12 @@ function makeWhipStorm(ctx){
       for(let j=0;j<stations-1;j++){
         const i=j*10;
         // A slit milled into each belly reveals the other lash or a lightning fork beneath.
-        if((l===2||l===3||l===10)&&j>25&&j<39)continue;
+        if((l===2||l===3||l===10)&&j>25*detail&&j<39*detail)continue;
         // Each silver bevel and the violet reverse can catch the same travelling
         // light. The depth buffer still cuts it off where the whips cross.
         let charge=0;
         if((l===2||l===4||l===5||material===polish||material===inlay) && pulseAge>=0 && pulseAge<.48){
-          const distance=(j-pulseStation)/11;
+          const distance=(j-pulseStation)/(11*detail);
           charge=155*Math.max(0,1-distance*distance)**2;
         }
         triangle(i,i+15,i+10,base,charge);triangle(i,i+5,i+15,base,charge);
@@ -149,7 +151,7 @@ function makeWhipStorm(ctx){
 
   // Each strike grows along a different, repeatable fracture. Side channels inherit a parent
   // junction, and the bright return stroke retraces the same path after the leader passes.
-  function strike(seed){
+  function strike(seed,edgeToEdge){
     let state=seed;const noise=()=>{state=(Math.imul(1664525,state)+1013904223)>>>0;return state/4294967296;};
     const reverse=noise()>.5,entry=-5+noise()*16,exit=15+noise()*13;
     // Subdivide the channel recursively: broad changes of direction break into finer,
@@ -172,7 +174,11 @@ function makeWhipStorm(ctx){
       return {pts,join,weight,full};
     }
     const dir=reverse?-1:1;
-    const main=crack(reverse?176:-9,entry,reverse?-9:176,exit,7,17),arcs=[branch(main,0,1)];
+    // Inside a panorama a channel enters through the sky or ground. Its endpoints
+    // can then overlap the next storm without ending on a vertical cut.
+    const entersHigh=entry<3;
+    const startY=edgeToEdge?(entersHigh?-8:32):entry,endY=edgeToEdge?(entersHigh?32:-8):exit;
+    const main=crack(reverse?176:-9,startY,reverse?-9:176,endY,7,17),arcs=[branch(main,0,1)];
     for(let j=0;j<8;j++){
       const i=8+Math.floor(j*14+noise()*9),[x,y]=main[i],ex=x+dir*(12+noise()*35),ey=y+(noise()>.48?1:-1)*(8+noise()*21);
       const fork=crack(x,y,ex,ey,5,6.3);arcs.push(branch(fork,i/128,.74-.13*noise()));
@@ -189,12 +195,14 @@ function makeWhipStorm(ctx){
     }
     return arcs;
   }
-  const storms=Array.from({length:6},(_,i)=>strike(1222+i*33461));
-  function drawStorm(arcs,age,accent,front){
+  const cells=(composition?.cells??[{x:0,seed:1222,beat:.40}]).map(cell=>({
+    ...cell,storms:Array.from({length:6},(_,i)=>strike(cell.seed+i*33461,!!composition))
+  }));
+  function drawStorm(arcs,age,accent,front,gain){
     if(age<0||age>2)return;
     const leader=clip(age/.37,0,1),fade=Math.exp(-1.95*Math.max(0,age-.33));
     const returnStroke=Math.exp(-((age-.49)**2)/.008)+.6*Math.exp(-((age-.83)**2)/.015);
-    const energy=clip(age/.12,0,1)*clip((2-age)/.36,0,1)*fade*(.80+.37*returnStroke+.12*accent);
+    const energy=clip(age/.12,0,1)*clip((2-age)/.36,0,1)*fade*(.80+.37*returnStroke+.12*accent)*gain;
     if(energy<.008)return;
     ink.save();ink.lineJoin='round';ink.lineCap='round';ink.globalCompositeOperation='lighter';
     for(let j=0;j<arcs.length;j++){
@@ -223,18 +231,29 @@ function makeWhipStorm(ctx){
       const pts=arcs[0].pts,idx=clip((age-.30)/.63,0,1)*(pts.length-1);
       const pulse=sine(Math.PI*clip((age-.28)/.71,0,1))**2;
       for(let k=Math.max(1,Math.floor(idx)-5);k<=Math.min(pts.length-1,Math.ceil(idx)+4);k++){
-        const heat=pulse*Math.exp(-.10*(k-idx)**2);
+        const heat=pulse*Math.exp(-.10*(k-idx)**2)*gain;
         ink.globalAlpha=heat*.86;ink.strokeStyle='#e7eaff';ink.lineWidth=.92;
         ink.beginPath();ink.moveTo(...pts[k-1]);ink.lineTo(...pts[k]);ink.stroke();
       }
     }
     ink.restore();
   }
+  function lightning(time,phase,accents,front){
+    for(const cell of cells){
+      const beat=time*6/8+cell.beat,index=Math.floor(beat),age=beat-index;
+      const active=index%6,previous=(index+5)%6;
+      const gain=composition ? .38+.62*(.5+.5*cosine(phase-cell.phase))**2 : 1;
+      ink.save();ink.translate(cell.x,0);
+      if(!front)drawStorm(cell.storms[previous],age+1,accents[previous*3],false,gain);
+      drawStorm(cell.storms[active],age,accents[active*3],front,gain);
+      ink.restore();
+    }
+  }
   // A very dark warped checker runs below the two polished surfaces like ink on a rave flyer.
+  const fields=composition?.fields??[{x:10,band:0},{x:56,band:1},{x:133,band:2}];
   function printedField(phase){
     ink.fillStyle='#070516';ink.fillRect(0,0,width,height);
-    for(let band=0;band<3;band++){
-      const offset=band===0?10:band===1?56:133;
+    for(const {x:offset,band} of fields){
       ink.fillStyle=['#22113e','#151437','#1b1236'][band];
       const tile=new Path2D();
       const loc=(i,j)=>{
@@ -249,15 +268,15 @@ function makeWhipStorm(ctx){
     }
   }
   function tipLight(r,phase,power){
-    const s=r.spine,j=r.hand===1?stations-3:stations-7;
+    const s=r.spine,j=stations-1-(r.hand===1?2:6)*detail;
     ink.save();ink.globalCompositeOperation='lighter';
     // Shift two hairline contours off the narrowing tip, like a violet screen-print misregistration.
     for(let pass=1;pass<=2;pass++){
       ink.beginPath();
-      for(let k=61;k<stations;k++){
-        const u=(k-61)/(stations-62),d=pass*sine(Math.PI*u)*(.65+.6*power);
+      for(let k=61*detail;k<stations;k++){
+        const u=(k-61*detail)/(31*detail),d=pass*sine(Math.PI*u)*(.65+.6*power);
         const x=s[k*4]+d*2.1,y=s[k*4+1]+d*r.hand;
-        if(k===61)ink.moveTo(x,y);else ink.lineTo(x,y);
+        if(k===61*detail)ink.moveTo(x,y);else ink.lineTo(x,y);
       }
       ink.globalAlpha=(.19+.22*power)/pass;ink.strokeStyle=pass===1?'#8758ff':'#4681ff';
       ink.lineWidth=.27;ink.stroke();
@@ -280,15 +299,15 @@ function makeWhipStorm(ctx){
     }
     const time=((seconds%8)+8)%8,phase=tau*time/8;
     ink.setTransform(scale,0,0,scale,0,0);printedField(phase);
-    const beat=time*6/8+.40,index=Math.floor(beat),age=beat-index;
-    const active=storms[index%6],previous=storms[(index+5)%6],acc=accents[(index%6)*3],priorAcc=accents[((index+5)%6)*3];
-    drawStorm(previous,age+1,priorAcc,false);drawStorm(active,age,acc,false);
+    lightning(time,phase,accents,false);
     colour.fill(0);depth.fill(-1e5);
-    for(const r of ribbons)renderLash(r,phase,gates,accents,slides,pulseAge);
+    for(const r of ribbons)renderLash(r,phase+r.phase,gates,accents,slides,pulseAge);
     metalCtx.putImageData(pixels,0,0);ink.setTransform(1,0,0,1,0,0);ink.drawImage(metal,0,0);
-    ink.setTransform(scale,0,0,scale,0,0);drawStorm(active,age,acc,true);
-    tipLight(ribbons[0],phase,(.5+.5*cosine(phase*3-.6))**3);
-    tipLight(ribbons[1],phase,(.5+.5*cosine(phase*3+2.2))**4);
+    ink.setTransform(scale,0,0,scale,0,0);lightning(time,phase,accents,true);
+    for(const r of ribbons){
+      const p=phase+r.phase;
+      tipLight(r,p,r.hand===1?(.5+.5*cosine(p*3-.6))**3:(.5+.5*cosine(p*3+2.2))**4);
+    }
     ctx.drawImage(scene,left,top,width,height);
   };
 }

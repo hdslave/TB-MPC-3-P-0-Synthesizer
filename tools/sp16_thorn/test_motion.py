@@ -16,12 +16,13 @@ def difference(a, b):
 def check(browser):
     page = browser.new_page()
     page.set_content('<canvas width="334" height="48"></canvas>')
+    page.add_script_tag(path=Path(__file__).resolve().parents[2]/'mac-clap/tools/footer-art/whip-panorama.js')
     page.add_script_tag(path=Path(__file__).with_name('whip-storm.js'))
     page.evaluate("""() => {
         const canvas = document.querySelector('canvas');
         const context = canvas.getContext('2d');
         context.setTransform(2, 0, 0, 2, -403, -507);
-        const draw = makeWhipStorm(context);
+        const draw = makeWhipStorm(context,{composition:makeFooterPanorama(167),detail:2});
         const pattern = [
             [1,1,1,1,0,0,1,1,0,1,1,1,0,1,1,0],
             [0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1],

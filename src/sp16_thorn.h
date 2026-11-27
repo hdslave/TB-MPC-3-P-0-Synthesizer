@@ -1,9 +1,6 @@
 // Shared Thorn Crown panel artwork. The sequencer owns all musical state.
 #pragma once
-#include "../assets/sp16-thorn/index.h"
 #include "animation_phase.h"
-#include <memory>
-#include <new>
 
 extern "C" const unsigned char slink_sp16_thorn_bank[];
 namespace tbmpc::sp16
@@ -16,14 +13,19 @@ public:
 
     static int columnX(int i) { return 65 + (i*693+8)/16 + (i/4)*5; }
 
+    int focusStep(const PatternView& v) const
+    {
+        return v.running ? v.current : std::min(selected,int(v.steps)-1);
+    }
+
     int first(const PatternView& v) const
     {
         if (capturedBank>=0) return capturedBank;
-        return v.steps>16 && (v.running ? v.current : selected)>=16 ? 16 : 0;
+        return v.steps>16 && focusStep(v)>=16 ? 16 : 0;
     }
     int stepAt(const PatternView& v,int x,int y) const
     {
-        if (y<103 || y>=245) return -1;
+        if (y<thorn::scoreRow::step || y>=thorn::scoreRow::end) return -1;
         for (int i=0; i<16; ++i)
         {
             const int step=first(v)+i;
@@ -31,10 +33,10 @@ public:
         }
         return -1;
     }
-    static void pitchLabel(const Raster& r, int cv, bool active, int x, int y)
+    static void pitchLabel(const Raster& r, int cv, int x, int y)
     {
         const int pitch = std::clamp(int(std::lround(cv / 128.0)) + 256, 0, 512);
-        image(r, active ? thorn::pitchSelected : thorn::pitch, pitch, x, y);
+        image(r, thorn::pitch, pitch, x, y);
     }
     static void bankLabel(const Raster& r, int bank, int x, int y)
     {
@@ -46,9 +48,6 @@ public:
         image(r, thorn::plotTitle, index, x, y);
     }
 
-    void open() { if (!media) media.reset(new (std::nothrow) Media); }
-    void close() { media.reset(); }
-
     bool draw(const Raster& r,const PatternView& v,uint32_t now,bool full,bool updateHeader,bool updateScore,
               int seed,int button)
     {
@@ -56,9 +55,11 @@ public:
         initialized = true;
         lastMs = now;
         if (!heldCamera) cameraMs += elapsed;
-        const auto camera = slink::motion::loop(cameraMs,20,thorn::crest.count);
-        const auto storm = slink::motion::loop(now,8,thorn::storm.count);
-        const auto face = slink::motion::smile(now,thorn::face.count);
+        // The bank contains one native-size image for each 60 Hz sample.
+        const auto wallTick=slink::motion::tick(now);
+        const int camera=int(slink::motion::tick(cameraMs)%thorn::crest.count);
+        const int storm=int(wallTick%thorn::storm.count);
+        const int face=int(wallTick%thorn::face.count);
 
         if (updateHeader)
         {
@@ -74,7 +75,7 @@ public:
                 restore(r,778,0,2,58);
             }
             const int offset=first(v), count=std::clamp(int(v.steps)-offset,0,16);
-            const int focus=v.running?v.current:std::min(selected,int(v.steps)-1);
+            const int focus=focusStep(v);
             const int col=focus-offset;
             image(r,thorn::counter, std::clamp(focus+1,0,32),528,20);
             image(r,thorn::button,button,622,55);
@@ -105,15 +106,15 @@ public:
         {
             restore(r,0,bodyTop,780,tabTop-bodyTop);
             const int offset = first(v), count = std::clamp(int(v.steps)-offset,0,16);
-            const int focus = v.running ? v.current : std::min(selected,int(v.steps)-1);
+            const int focus = focusStep(v);
             drawScore(r,v,offset,count,focus-offset);
         }
         const bool crestChanged = full || camera!=lastCamera;
         const bool faceChanged = full || face!=lastFace;
         const bool stormChanged = full || storm!=lastStorm;
-        if (crestChanged) drawMedia(r,thorn::crest,camera,186,6,media ? &media->crest : nullptr);
-        if (faceChanged) drawMedia(r,thorn::face,face,717,0,media ? &media->face : nullptr);
-        if (stormChanged) drawMedia(r,thorn::storm,storm,stormX,253,media ? &media->storm : nullptr);
+        if (crestChanged) image(r,thorn::crest,camera,186,6);
+        if (faceChanged) image(r,thorn::face,face,717,0);
+        if (stormChanged) image(r,thorn::storm,storm,stormX,253);
         lastCamera=camera; lastFace=face; lastStorm=storm;
         return updateHeader || updateScore || crestChanged || faceChanged || stormChanged;
     }
@@ -122,20 +123,7 @@ private:
     uint32_t lastMs = 0;
     uint64_t cameraMs = 0;
     bool initialized = false;
-    slink::motion::Frame lastCamera{-1,-1,0}, lastFace{-1,-1,0}, lastStorm{-1,-1,0};
-
-    template <int Width, int Height> struct Tile
-    {
-        std::array<Ink,Width*Height> pixels[2];
-        int index[2]{-1,-1};
-    };
-    struct Media
-    {
-        Tile<thorn::crest.w,thorn::crest.h> crest;
-        Tile<thorn::face.w,thorn::face.h> face;
-        Tile<thorn::storm.w,thorn::storm.h> storm;
-    };
-    std::unique_ptr<Media> media;
+    int lastCamera=-1, lastFace=-1, lastStorm=-1;
 
     static void restore(const Raster& r,int x,int y,int w,int h)
     {
@@ -144,64 +132,74 @@ private:
             std::memcpy(r.px+row*r.w+x,plate+4*(row*thorn::backdrop.w+x),4*w);
     }
 
-    template <int W, int H>
-    static void drawMedia(const Raster& r,const thorn::Images& clip,slink::motion::Frame frame,int x,int y,Tile<W,H>* cache)
+    static void drawPitchRail(const Raster& r,const PatternView& v,int offset,int count,int col)
     {
-        if (!cache)
+        if (count<=0) return;
+        constexpr int top=thorn::scoreRow::pitch, bottom=thorn::scoreRow::note;
+        const auto limits=std::minmax_element(v.pitch,v.pitch+v.steps);
+        const int span=std::max(128,int(*limits.second)-int(*limits.first));
+        int previousEnd=0, previousY=0;
+        for (int i=0; i<count; ++i)
         {
-            image(r,clip,frame.first,x,y);
-            return;
-        }
-        const auto load = [&](int index,int slot) {
-            if (cache->index[slot]==index) return;
-            Raster tile{cache->pixels[slot].data(),W,H};
-            image(tile,clip,index,0,0);
-            cache->index[slot]=index;
-        };
-        const int slot = cache->index[1]==frame.first ? 1 : 0;
-        load(frame.first,slot);
-        if (frame.weight) load(frame.next,1-slot);
-        const auto* a = cache->pixels[slot].data();
-        const auto* b = cache->pixels[1-slot].data();
-        for (int row=0; row<H; ++row)
-        {
-            auto* out = r.px+(y+row)*r.w+x;
-            if (!frame.weight) std::memcpy(out,a+row*W,W*sizeof(Ink));
-            else for (int col=0; col<W; ++col)
-                out[col]=slink::motion::blend(a[row*W+col],b[row*W+col],frame.weight);
+            const int step=offset+i, x=columnX(i), left=x+4, right=x+38;
+            const int y=bottom-4-(int(v.pitch[step])-*limits.first)*(bottom-top-9)/span;
+            const Ink ink=i==col ? paper : steel;
+            if (i && ((v.slides>>(step-1))&1u))
+            {
+                double last=previousY;
+                for (int px=previousEnd; px<=left; ++px)
+                {
+                    const double t=double(px-previousEnd)/(left-previousEnd);
+                    const double next=previousY+(y-previousY)*t*t*(3-2*t);
+                    r.trace(px,last,next,muted,9);
+                    last=next;
+                }
+            }
+            if ((v.gates>>step)&1u) r.box(left,y-1,right-left+1,3,ink);
+            else r.frame(left,y-1,right-left+1,3,ink);
+            if ((v.accents>>step)&1u)
+            {
+                r.box(x+20,top+2,2,1,steel);
+                r.box(x+19,top+3,4,1,steel);
+            }
+            previousEnd=right;
+            previousY=y;
         }
     }
 
     static void drawScore(const Raster& r,const PatternView& v,int offset,int count,int col)
     {
-        if (col>=0 && col<count) image(r,thorn::selected,0,columnX(col),103);
+        namespace row=thorn::scoreRow;
+        if (col>=0 && col<count) image(r,thorn::selected,0,columnX(col),row::step);
+        drawPitchRail(r,v,offset,count,col);
+        constexpr int gateY=(row::gate+row::accent)/2, accentY=(row::accent+row::slide)/2;
+        constexpr int slideY=(row::slide+row::end)/2;
         for (int i=0; i<count; ++i)
         {
             const int index=offset+i,x=columnX(i),cx=x+21;
             const bool active=i==col;
             const Ink mark=active?0xffffffff:0xffd6d9ea, dash=active?0xffd6dcfa:0xff938aa8;
-            image(r,thorn::number,index,x,104);
-            pitchLabel(r,v.pitch[index],active,x,127);
+            image(r,thorn::number,index,x,row::step);
+            pitchLabel(r,v.pitch[index],x,(row::note+row::gate-thorn::pitch.h)/2);
             if ((v.gates>>index)&1u)
             {
-                r.box(cx-5,174,10,10,mark);
-                for (int cut=-3;cut<=3;cut+=3) r.box(cx+cut,181,1,2,active?0xff33499a:0xff5a5b84);
+                r.box(cx-5,gateY-5,10,10,mark);
+                for (int cut=-3;cut<=3;cut+=3) r.box(cx+cut,gateY+2,1,2,active?0xff33499a:0xff5a5b84);
             }
-            else r.frame(cx-5,174,10,10,mark);
+            else r.frame(cx-5,gateY-5,10,10,mark);
             if ((v.accents>>index)&1u)
-                for (int dy=-5;dy<=5;++dy) { int w=5-std::abs(dy);r.box(cx-w,206+dy,2*w+1,1,mark); }
-            else r.box(cx-3,205,6,2,dash);
+                for (int dy=-5;dy<=5;++dy) { int w=5-std::abs(dy);r.box(cx-w,accentY+dy,2*w+1,1,mark); }
+            else r.box(cx-3,accentY-1,6,2,dash);
             if ((v.slides>>index)&1u)
             {
-                for(int j=0;j<11;++j) r.box(cx-6+j,235-j*8/10,1,2,mark);
-                for(int j=0;j<5;++j) r.box(cx+j,228-j/3,5-j,1+j/2,mark);
+                for(int j=0;j<11;++j) r.box(cx-6+j,slideY+3-j*8/10,1,2,mark);
+                for(int j=0;j<5;++j) r.box(cx+j,slideY-4-j/3,5-j,1+j/2,mark);
             }
-            else r.box(cx-3,231,6,2,dash);
+            else r.box(cx-3,slideY-1,6,2,dash);
         }
     }
 
-    // Each scanline is packet encoded. Score frames share a translucent palette.
-    // The opaque animation frames carry their own palette before the packets.
+    // Each scanline is packet encoded. A group may share a palette across its frames.
     static void image(const Raster& r,const thorn::Images& img,int frame,int x,int y)
     {
         const auto* data=slink_sp16_thorn_bank+img.offsets[frame];
@@ -215,7 +213,7 @@ private:
             {
                 const int code=*data++,len=(code&127)+1;
                 const bool repeat=(code&128)!=0;
-                if (!img.paletteOffset)
+                if (!img.alpha)
                 {
                     if (repeat) std::fill_n(dest+col,len,palette[*data]);
                     else for (int i=0;i<len;++i) dest[col+i]=palette[data[i]];

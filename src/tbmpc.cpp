@@ -64,6 +64,9 @@ struct Plugin
     uint32_t audioEditVersion = 0;
     std::atomic<bool> panelOpen { false };
     std::atomic<bool> previewRequested { false };
+    // A recalled score can be drawn on the UI thread before the host runs another audio block.
+    std::atomic<uint32_t> recallSerial {1}, publishedRecall {0};
+    bool recallDirty = true; // UI thread
     bool previewRunning = false; // audio thread only
     std::atomic<int> touchedStep { -1 };
     std::atomic<uint64_t> touchedAt { 0 };
@@ -354,6 +357,22 @@ bool readAll (const clap_istream* s, void* data, uint64_t size)
     return true;
 }
 
+PatternView scoreOf(const Tb3po& seq)
+{
+    PatternView score {};
+    score.steps = seq.stepCount();
+    score.current = seq.currentStep();
+    score.seed = seq.playingSeed();
+    for (int s=0; s<Tb3po::maxSteps; ++s)
+    {
+        score.pitch[s] = int16_t(std::clamp<int32_t>(seq.pitchOfStep(s),-32768,32767));
+        score.gates |= uint32_t(seq.gated(s)) << s;
+        score.slides |= uint32_t(seq.slid(s)) << s;
+        score.accents |= uint32_t(seq.accented(s)) << s;
+    }
+    return score;
+}
+
 // Every value at once, from the main thread (a state or a preset loaded).
 void setAll (Plugin& p, const float* values)
 {
@@ -368,6 +387,10 @@ void setAll (Plugin& p, const float* values)
     }
     else
         p.settleWanted.store (true, std::memory_order_release);
+#ifdef TBMPC_SP16
+    p.recallDirty = true;
+    p.recallSerial.fetch_add(1,std::memory_order_release);
+#endif
     // Cutoff's text may read differently now, and the screen shows the new values.
     p.textStale.store (true, std::memory_order_release);
     if (p.host != nullptr && p.host->request_callback != nullptr)
@@ -595,6 +618,7 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
     auto& p = of (plugin);
     FlushDenormals flush;
 #ifdef TBMPC_SP16
+    const auto recallSerial = p.recallSerial.load(std::memory_order_acquire);
     sp16::StepEdits edits;
     if (p.stepExchange.readIfChanged(p.audioEditVersion,edits)) p.engine.setStepEdits(edits);
 #endif
@@ -718,33 +742,12 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
 #endif
     if (publishPattern)
     {
-        PatternView v {};
         const Tb3po& seq = p.engine.sequencer();
-        v.steps = seq.stepCount();
+        const bool scoreChanged = seq.revision()!=p.shownRevision || seq.stepCount()!=p.shownPattern.steps;
+        auto v = scoreChanged ? scoreOf(seq) : p.shownPattern;
+        p.shownRevision = seq.revision();
         v.current = seq.currentStep();
-        v.seed = seq.playingSeed();
         v.running = p.engine.running() ? 1 : 0;
-        // The 32 pitches (a division each, in the quantizer's lookup) are worked out again only when something they
-        // are made from changed; between changes the shown ones stand.
-        if (seq.revision() != p.shownRevision || v.steps != p.shownPattern.steps)
-        {
-            p.shownRevision = seq.revision();
-            for (int s = 0; s < 32; ++s)
-            {
-                v.pitch[s] = (int16_t) std::clamp<int32_t> (seq.pitchOfStep (s), -32768, 32767);
-                v.gates |= (uint32_t) seq.gated (s) << s;
-                v.slides |= (uint32_t) seq.slid (s) << s;
-                v.accents |= (uint32_t) seq.accented (s) << s;
-            }
-        }
-        else
-        {
-            for (int s = 0; s < 32; ++s)
-                v.pitch[s] = p.shownPattern.pitch[s];
-            v.gates = p.shownPattern.gates;
-            v.slides = p.shownPattern.slides;
-            v.accents = p.shownPattern.accents;
-        }
         if (! (v == p.shownPattern))
         {
             p.shownPattern = v;
@@ -753,6 +756,11 @@ clap_process_status pluginProcess (const clap_plugin* plugin, const clap_process
         }
         else if (p.hostScreen != nullptr && (p.valuesMoved || p.screenAnimating.load (std::memory_order_relaxed)))
             p.hostScreen->redraw (p.host, 0);
+#ifdef TBMPC_SP16
+        // With a matching seed but a new density or scale size, the engine regenerates on the next clock.
+        if (p.publishedRecall.load(std::memory_order_relaxed)!=recallSerial && (v.running || !seq.patternWaiting()))
+            p.publishedRecall.store(recallSerial,std::memory_order_release);
+#endif
     }
     p.valuesMoved = false;
     // Never "sleep": the sequencer must hear the next Play, which is no event. (Melodee puts an idle instrument to
@@ -878,7 +886,6 @@ void panelOpen(const void* plugin)
 {
     auto& p = panelPlugin(plugin);
     p.panel.dirty = true;
-    p.panel.thorn.open();
     p.panelOpen.store(true, std::memory_order_release);
     wakePanel(p);
 }
@@ -887,9 +894,31 @@ void panelClose(const void* plugin)
     auto& p = panelPlugin(plugin);
     p.panelOpen.store(false, std::memory_order_release);
     p.panel.release();
-    p.panel.thorn.close();
     p.previewRequested.store(false, std::memory_order_release);
     p.touchedStep.store(-1, std::memory_order_release);
+}
+PatternView panelPattern(Plugin& p)
+{
+    const uint32_t serial = p.recallSerial.load(std::memory_order_relaxed);
+    if (p.publishedRecall.load(std::memory_order_acquire)==serial)
+        return p.patternState.read();
+
+    // Before the first block for this state, use the same seed generator and saved step overrides
+    // as the instrument. The live engine and its clock belong to the audio thread.
+    using namespace ParamId;
+    bool refresh = p.recallDirty;
+    for (const auto id : {seed,density,scale,root,octave,transpose,steps})
+        refresh |= valueOf(p,id)!=p.panel.values[paramIndex(id)];
+    if (!refresh) return p.panel.shown;
+
+    float values[paramCount];
+    for (uint32_t i=0; i<paramCount; ++i)
+        values[i] = p.values[i].load(std::memory_order_relaxed);
+    Engine preview;
+    preview.start(values);
+    preview.setStepEdits(p.manual);
+    p.recallDirty = false;
+    return scoreOf(preview.sequencer());
 }
 bool panelRender(const void* plugin, const sixteen_screen_surface_t* s, bool full)
 {
@@ -899,12 +928,18 @@ bool panelRender(const void* plugin, const sixteen_screen_surface_t* s, bool ful
     const bool preview=p.previewRequested.load(std::memory_order_acquire);
     p.panel.dirty |= preview!=p.panel.localPlay;
     p.panel.localPlay=preview;
-    return p.panel.render(*s, full, p.patternState, p.values);
+    return p.panel.render(*s, full, panelPattern(p), p.values);
+}
+bool panelControlEnabled(const Plugin& p,uint32_t id)
+{
+    return sp16::controlEnabled(id,int(valueOf(p,ParamId::filter)),int(valueOf(p,ParamId::glide)),int(valueOf(p,ParamId::mode)));
 }
 bool panelKnobs(const void* plugin, uint32_t ids[6], char label[SIXTEEN_TAB_NAME_SIZE])
 {
-    const auto& bank = sp16::banks[panelPlugin(plugin).panel.bank];
-    std::copy(bank.ids.begin(), bank.ids.end(), ids);
+    const auto& p=panelPlugin(plugin);
+    const auto& bank=sp16::banks[p.panel.bank];
+    for (std::size_t i=0; i<bank.ids.size(); ++i)
+        ids[i]=panelControlEnabled(p,bank.ids[i]) ? bank.ids[i] : SIXTEEN_INVALID_PARAM_ID;
     std::snprintf(label, SIXTEEN_TAB_NAME_SIZE, "%s", bank.name);
     return true;
 }
@@ -926,6 +961,7 @@ void publishStepEdit(Plugin& p)
         applyScreenEdits(p,lock);
     }
     p.stepExchange.publish(p.manual);
+    p.recallDirty = true;
     const auto* state=static_cast<const clap_host_state*>(p.host->get_extension(p.host,CLAP_EXT_STATE));
     if (state && state->mark_dirty) state->mark_dirty(p.host);
     wakePanel(p);
@@ -942,7 +978,7 @@ bool dragStep(Plugin& p,int x,int y,bool down)
     if (lane==sp16::StepLane::number && !down && y!=panel.startY)
     {
         // Only another numbered header may sound during a horizontal scrub.
-        if (panel.bank==sp16::patternPage ? (y<103 || y>=125)
+        if (panel.bank==sp16::patternPage ? (y<thorn::scoreRow::step || y>=thorn::scoreRow::pitch)
               : (y<panel.ribbonTop(step) || y>=panel.ribbonTop(step)+14)) return true;
     }
     const int previous=panel.finger;
@@ -996,13 +1032,16 @@ bool dragControl(Plugin& p,int x,int y)
     }
     else if (panel.gesture==Panel::Gesture::lfoXY)
     {
-        const int left=24+382*panel.lfoLane;
-        const float u=float(std::clamp(x-left,0,348))/348.f;
+        const int left=Panel::lfoLeft(panel.lfoLane), right=Panel::lfoRight(panel.lfoLane);
+        const float u=float(std::clamp(x,left,right)-left)/(right-left);
         edits.set(panel.lfoLane ? cutoffLfoSpeed : pitchLfoSpeed,lfoMinRate*std::pow(lfoMaxRate/lfoMinRate,u));
-        edits.set(panel.lfoLane ? cutoffLfoAmount : pitchLfoAmount,float(216-std::clamp(y,139,216))/77.f);
+        const float depth=float(Panel::lfoBottom-std::clamp(y,Panel::lfoTop,Panel::lfoBottom))
+                          /(Panel::lfoBottom-Panel::lfoTop);
+        edits.set(panel.lfoLane ? cutoffLfoAmount : pitchLfoAmount,depth);
     }
     else if (panel.gesture==Panel::Gesture::parameter)
     {
+        if (!panelControlEnabled(p,panel.dragParam)) return false;
         const auto& param=paramTable[paramIndex(panel.dragParam)];
         const int dx=x-panel.startX, dy=panel.startY-y;
         const int distance=std::abs(dx)>std::abs(dy) ? dx : dy;
@@ -1067,6 +1106,7 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
         return true;
     }
     auto captureParam=[&](uint32_t id) {
+        if (!panelControlEnabled(p,id)) return false;
         panel.gesture=Panel::Gesture::parameter;
         panel.dragParam=id;
         panel.startValue=valueOf(p,id);
@@ -1076,11 +1116,8 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
     if (x>=7 && x<122 && y>=252 && y<279) return captureParam(x<37 ? ParamId::root : ParamId::scale);
     if (panel.bank==sp16::voicePage)
     {
-        if (y>=103 && y<137)
-        {
-            if (x>=16 && x<174) return captureParam(ParamId::filter);
-            if (x>=406 && x<756) return captureParam(x<590 ? ParamId::cutoff : ParamId::resonance);
-        }
+        const int card = panel.ribbonColumnAt(x,y);
+        if (card>=0) return captureParam(sp16::voiceControls[card]);
         if (x<Panel::plotLeft || x>Panel::plotRight || y<Panel::plotTop || y>Panel::plotBottom) return false;
         panel.gesture=Panel::Gesture::filterXY;
         return dragControl(p,x,y);
@@ -1088,9 +1125,9 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
     if (panel.bank==sp16::lfoPage)
     {
         const int lane=x>=394;
-        const int left=12+382*lane;
-        if (x<left || x>=left+373 || y<103 || y>=244) return false;
-        if (y<139) return captureParam(x<left+242 ? (lane ? ParamId::cutoffLfoSpeed : ParamId::pitchLfoSpeed)
+        const int left=Panel::lfoCardLeft(lane);
+        if (x<left || x>=left+Panel::lfoCardWidth || y<103 || y>=244) return false;
+        if (y<Panel::lfoTop) return captureParam(x<left+242 ? (lane ? ParamId::cutoffLfoSpeed : ParamId::pitchLfoSpeed)
                                                    : (lane ? ParamId::cutoffLfoAmount : ParamId::pitchLfoAmount));
         panel.gesture=Panel::Gesture::lfoXY;
         panel.lfoLane=lane;
