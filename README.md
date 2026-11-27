@@ -160,7 +160,8 @@ holds the clocks already played until the song is past them again. Before 0.8.2 
 own frames counted as a jump: with the calls in parts, at slow tempos or run twice a block, a clock could come twice or
 be lost and the pattern step out of place (at 40 BPM with the place up to 0.002 of a quarter off, only the first 9 of
 65 notes stayed in place). A move of more than a 64th note is a jump, as before (exactly a 64th, as hdslaveOS has it,
-is not).
+is not), and so is one on past two clocks (Swing 75 at 1/64): the clock the song landed on comes, and the pattern steps
+once, not twice on one frame.
 
 ## MIDI notes and pads
 

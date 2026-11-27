@@ -1057,6 +1057,27 @@ void testJumpEdges()
         }
         CHECK (wrong == 0);
     }
+    // A move on by less than a 64th note that passes two clocks (Swing 75 at 1/64 puts a late clock 1/128 before the
+    // next one: a locate on, a MIDI clock catching up) is a jump, as it was: the clock the song landed on comes at once
+    // and the pattern steps once, not twice on one frame. At 40 BPM with Gate 20 % (so 1/64's notes can be told apart)
+    // the place goes from just before clock 17 (a late one) to 0.001 quarter past clock 18 at a block's start.
+    {
+        const double slow = 40.0, perSlow = slow / 60.0 / rate, grid = 0.0625;
+        auto clockAt = [&] (int k) { return (k & 1) ? ((k - 1) + 1.5) * grid : k * grid; };
+        const uint64_t at = (uint64_t) (clockAt (17) / perSlow / 128.0) * 128, blocks = (uint64_t) (4.0 / perSlow / 128.0);
+        const double landed = clockAt (18) + 0.001; // 66 frames past it: inside a block, so it comes at once
+        Instance a (rate);
+        pattern (a, { { "Swing", 0.75 }, { "Gate", 0.2 }, { "Clock Div", a.valueOf ("Clock Div", "1/64") } });
+        const auto found = noteStarts (playCalls (a, hostCalls (blocks, slow, rate, [&] (uint64_t f) {
+            return f < at ? (double) f * perSlow : landed + (double) (f - at) * perSlow; }), slow));
+        // Clocks 0-16 where they fall, then 18 at the jump, then 19 on after it.
+        auto song = [&] (int k) { return k <= 16 ? clockAt (k) / perSlow : k == 17 ? (double) at : (double) at + (clockAt (k + 1) - landed) / perSlow; };
+        auto expect = expectedNotesAt (seed, 5, tbmpc::appletDefaultScale, 16, 70, song);
+        expect.erase (std::lower_bound (expect.begin(), expect.end(), (long) ((double) blocks * 128.0 - 6000.0)), expect.end());
+        auto got = found;
+        got.erase (std::lower_bound (got.begin(), got.end(), (long) ((double) blocks * 128.0 - 6000.0)), got.end());
+        CHECK (notesNear (got, expect, rate, 2, 2, "two clocks passed"));
+    }
 }
 
 void testBlockSizes()

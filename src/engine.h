@@ -340,8 +340,11 @@ public:
         lastBlock = frames;
         const bool started = ! playing;
         const double moved = std::fabs (beats - position);
-        // A place moved by up to a 64th note is not a jump either (jumpBeats): drift, followed as it is.
-        const bool relocateClock = started || (moved > 0.5 * perFrame && moved >= window * perFrame && moved > jumpBeats + jumpSlack);
+        // A place moved by up to a 64th note is not a jump either (jumpBeats): drift, followed as it is; unless it goes on
+        // past two clocks (Swing 75 at 1/64: a locate on, a MIDI clock catching up), which a jump lines up.
+        const bool relocateClock = started
+                                   || (moved > 0.5 * perFrame && moved >= window * perFrame
+                                       && (moved > jumpBeats + jumpSlack || (beats > position && clockAtOrBefore (beats) > lastClock + 1)));
         voice.syncLfos (frameCount, perFrame, isPlaying && relocateClock, beats);
         if (! isPlaying)
         {
