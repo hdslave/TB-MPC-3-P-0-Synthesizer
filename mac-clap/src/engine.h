@@ -41,6 +41,13 @@ namespace tbmpc
 // at 48 kHz is about 1e-5 frames: a clock that falls on a block's first frame could otherwise come a frame late, by
 // how the host's rounding fell for that block, so the sound would depend on the block size.
 constexpr double clockSlack = 1.0e-3;
+// A place moved by up to a 64th note (in quarters: hdslaveOS's own jump tolerance) is not a jump. hdslaveOS works the
+// place out from its ticks, so it is not quite a straight line from block to block (a swung tick, a tick on a block's
+// edge, MTC's trim: up to 0.0021 of a quarter), and a plug-in two tracks play is run twice a block (its second call
+// told a block on, the next block's first a block back).
+constexpr double jumpBeats = 1.0 / 16.0;
+// CLAP rounds the place to 2^-31 beats: a move told as exactly a 64th note can read a hair over it.
+constexpr double jumpSlack = 1.0e-9;
 
 class Engine
 {
@@ -59,6 +66,7 @@ public:
         voice.gate (false, false);
         playing = false;
         lastClock = -1;
+        reached = -1.0e300;
         gateOffPending = false;
         regenPressed = false;
         frameCount = 0;
@@ -216,8 +224,13 @@ public:
         lastBlock = frames;
         const bool started = ! playing;
         const double moved = std::fabs (beats - position);
-        const bool relocateClock = started || (moved > 0.5 * perFrame && moved >= window * perFrame);
-        voice.syncLfos (frameCount, (std::isnan (bpm) ? 120.0 : std::clamp (bpm, 1.0, 1000.0)) / 60.0 / rate, isPlaying && relocateClock, beats);
+        // A place moved by up to a 64th note is not a jump either (jumpBeats): drift, followed as it is; unless it goes on
+        // past two clocks (Swing 75 at 1/64: a locate on, a MIDI clock catching up), which a jump lines up.
+        const bool relocateClock = started
+                                   || (moved > 0.5 * perFrame && moved >= window * perFrame
+                                       && (moved > jumpBeats + jumpSlack || (beats > position && clockAtOrBefore (beats) > lastClock + 1)));
+        voice.syncLfos (frameCount, (std::isnan (bpm) ? 120.0 : std::clamp (bpm, 1.0, 1000.0)) / 60.0 / rate, isPlaying && relocateClock, beats,
+                        isPlaying);
         if (! isPlaying)
         {
             if (playing)
@@ -231,11 +244,14 @@ public:
             playing = false;
             return;
         }
-        // A Play, or a place other than where the last block ended by more than a block (a jump, a loop going
-        // round): line up again. Less than that is drift (a tempo change inside the last block), followed as it is:
-        // the clocks already played are not played again, one passed is played at once.
+        // A Play, or a place other than where the last block ended by more than a block and a 64th note (a jump, a
+        // loop going round): line up again. Less than that is drift (a tempo change inside the last block, the host's
+        // place off its line), followed as it is: the clocks already played are not played again (a step back holds
+        // them until the song is past them again), one passed is played at once.
         if (relocateClock)
             relocate (beats, window, started);
+        else if (beats < position)
+            reached = std::max (reached, position); // held: where the clocks got to, for a Clock Div change meanwhile
         playing = true;
         position = beats;
     }
@@ -346,6 +362,7 @@ private:
         const bool played = ! started && std::fabs ((double) ((int64_t) frameCount - clockedAt) - late) <= 2.0;
         lastClock = played ? b : b - (late < window ? 1 : 0);
         position = beats;
+        reached = -1.0e300;
         regridWanted = false;
         if (played && resetClock (b) && ! clockedReset)
             resetPulse();
@@ -367,10 +384,11 @@ private:
     }
 
     // Clock Div changed: count clocks on the new grid from here, without a burst of them. A clock of the new grid due
-    // on this frame (in the last frame's time) still comes.
+    // on this frame (in the last frame's time) still comes. Here is where the clocks got to: while the place is held
+    // behind them, not the place.
     void regrid()
     {
-        lastClock = clockAtOrBefore (position - perFrame * (1.0 - clockSlack));
+        lastClock = clockAtOrBefore (std::max (position, reached) - perFrame * (1.0 - clockSlack));
         regridWanted = false;
     }
 
@@ -468,6 +486,7 @@ private:
     Tb3po seq;
     Voice voice;
     double rate = 48000.0, perFrame = 0.0, position = 0.0, bar = 4.0;
+    double reached = -1.0e300; // the furthest place the clocks got to while the place stepped back (a hold); none
     float knob[ParamId::count] {};
     int transposeKnob = 0, midiTranspose = 0;
     bool playing = false, regridWanted = false, gateOffPending = false, regenPressed = false, notesMode = false;
