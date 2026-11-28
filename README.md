@@ -9,13 +9,13 @@
     <th width="48%">macOS and Windows · CLAP</th>
   </tr>
   <tr>
-    <td align="center"><a href="docs/slink-screen.gif"><img src="docs/slink-screen.gif" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
-    <td align="center"><a href="docs/screen.md#thorn-crown-on-freesp16"><img src="docs/slink-sp16-thorn.png" alt="Thorn Crown playing a sixteen-step pattern on freesp16"></a></td>
-    <td align="center"><a href="docs/slink-desktop-0.9.11.png"><img src="docs/slink-desktop-0.9.11.png" alt="Slink 0.9.11 on macOS with the chrome smiley, 16-step sequencer and six control groups"></a></td>
+    <td align="center"><a href="docs/slink-screen.webp"><img src="docs/slink-screen.webp" alt="Slink cycling through Pattern, Voice, Tone, Sequencer, and Clock in hdslaveOS Stage"></a></td>
+    <td align="center"><a href="docs/slink-sp16.webp"><img src="docs/slink-sp16-thorn.webp" alt="Thorn Crown playing a sixteen-step pattern on freesp16"></a></td>
+    <td align="center"><a href="docs/slink-desktop-0.9.11.webp"><img src="docs/desktop-loop.webp" alt="Slink 0.9.11 on macOS with the chrome smiley, 16-step sequencer and six control groups"></a></td>
   </tr>
 </table>
 
-[See all six freesp16 pages](docs/screen.md#thorn-crown-on-freesp16) · [Watch the freesp16 panel in motion](docs/slink-sp16.gif) · [See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View Blacklight Transfer](docs/slink-mpc-blacklight.png)
+[See all six freesp16 pages](docs/screen.md#thorn-crown-on-freesp16) · [Watch the freesp16 panel in motion](docs/slink-sp16.webp) · [See all five silver MPC pages](docs/screen.md#silver-panel-on-mpc) · [View Blacklight Transfer](docs/slink-mpc-blacklight.png)
 
 ## Downloads
 
@@ -28,7 +28,7 @@
 
 [0.9.11 release notes and checksums](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.11) · [Build the freesp16 panel](#freesp16-on-sp-16)
 
-The desktop gallery shows Slink **0.9.11** playing Acid Line. The desktop transport has a heart and a step indicator. The framed whip animation lines up with the scale readout below the score. All 34 controls fit in the same window. [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.11 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.11/mac-clap)
+The desktop gallery shows Slink **0.9.11** playing Acid Line. The desktop transport has a heart and a step indicator. The framed whip animation lines up with the scale readout below the score. All 34 controls fit in the same window. [Full-resolution desktop still](docs/slink-desktop-0.9.11.png) · [Watch 20 seconds with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [Desktop 0.9.11 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.11/mac-clap)
 
 Built for the Akai MPC Sample running [Melodee](https://github.com/keremimo/melodee-sample) / [hdslaveOS](https://github.com/hdslave/hdslaveOS) (64-bit ARM Linux, Cortex-A55); it runs in any Linux `arm64` CLAP host. Hosts list this MPC build as **hdslave Slink** (id `com.hdslave.tb-mpc-3-p-0`, version 0.9.0).
 

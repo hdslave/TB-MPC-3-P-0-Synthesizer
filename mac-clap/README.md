@@ -2,7 +2,7 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink 0.9.11 playing Acid Line in the Thorn Crown desktop editor](../docs/slink-desktop-0.9.11.png)
+![Slink 0.9.11 playing Acid Line in the Thorn Crown desktop editor](../docs/slink-desktop-0.9.11.webp)
 
 [Desktop 0.9.11 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.11/mac-clap) · [Watch playback with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [View all 32 steps](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/thorn-crown-desktop-32.png) · [See the turning chrome smiley](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/chrome-smiley.webp)
 

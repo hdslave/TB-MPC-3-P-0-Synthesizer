@@ -18,15 +18,15 @@ On all five pages in both themes, two narrow slices through the smiley’s lower
 
 The [Null Port wordmarks](../tools/sp16_thorn/media/null-port-words.png) and [supplemental glyphs](../tools/sp16_thorn/media/null-port-glyphs.png) are the original lettering masters. The [native control sheet](../tools/sp16_thorn/media/null-port.png) contains the finished control states at the SP-16’s pixel size. After editing the sheet, run `python3 tools/sp16_thorn/pack_controls.py` with Pillow installed to rebuild the linked artwork.
 
-These six captures show the ARM plug-in playing the same 16-step pattern at its native 780 × 285 resolution. Tap an image to see the lettering at full size. [Watch all six pages during playback](slink-sp16.gif)
+These six captures show the ARM plug-in playing the same 16-step pattern at its native 780 × 285 resolution. Tap an image to see the lettering at full size. [Watch all six pages during playback](slink-sp16.webp)
 
 | Pattern | Voice |
 | --- | --- |
-| [![Pattern with a pitch trace above chrome notes on black keys, gate pulses, accent diamonds and slide arrows](slink-sp16-thorn.png)](slink-sp16-thorn.png) | [![Voice with the cutoff and resonance cursor over the Twin Peak filter response](slink-sp16-voice.png)](slink-sp16-voice.png) |
+| [![Pattern with a pitch trace above chrome notes on black keys, gate pulses, accent diamonds and slide arrows](slink-sp16-thorn.webp)](slink-sp16-thorn.webp) | [![Voice with the cutoff and resonance cursor over the Twin Peak filter response](slink-sp16-voice.webp)](slink-sp16-voice.webp) |
 | **Perform** | **Slide** |
-| [![Perform with cutoff, resonance and a numbered pitch ribbon](slink-sp16-perform.png)](slink-sp16-perform.png) | [![Slide with TB-3PO and 303 buttons, pitch transitions and gate lengths](slink-sp16-glide.png)](slink-sp16-glide.png) |
+| [![Perform with cutoff, resonance and a numbered pitch ribbon](slink-sp16-perform.webp)](slink-sp16-perform.webp) | [![Slide with TB-3PO and 303 buttons, pitch transitions and gate lengths](slink-sp16-glide.webp)](slink-sp16-glide.webp) |
 | **LFO** | **Clock** |
-| [![LFO with separate pitch and cutoff modulation curves](slink-sp16-lfo.png)](slink-sp16-lfo.png) | [![Clock with a swing ruler, transport settings and the playing steps](slink-sp16-clock.png)](slink-sp16-clock.png) |
+| [![LFO with separate pitch and cutoff modulation curves](slink-sp16-lfo.webp)](slink-sp16-lfo.webp) | [![Clock with a swing ruler, transport settings and the playing steps](slink-sp16-clock.webp)](slink-sp16-clock.webp) |
 
 The freesp16 edition opens on the **Thorn Crown** Pattern page. Its first frame shows the steps for the current seed, including saved per-step edits, even while transport is stopped. The score uses Razor Choir. Each pitch has a hooked chrome letter, with its octave at the lower right and its sharp directly above. Null Port Regular labels the Pattern lanes and step numbers, transport, Regen, page keys and scale. The counter and parameter values use Barlow SemiBold. The Pattern page plots pitch above the black note keys. Solid marks show gated notes and dashed marks show rests. Below the notes, a square pulse denotes an open gate, a diamond marks an accent and a curved arrow marks a slide. A curve connects a sliding step to the next pitch in view. Both halves of a long pattern share the same vertical scale. Drag a point or its note key to change pitch in semitones. A blue-violet outline follows the selected note, and the same finish marks the transport, active tab and selected step header. The step counter layers violet outlines behind its silver digits. The crest follows a twenty-second camera move. The footer frames an eight-second loop of the chrome whip panorama in a 168 × 31 pixel aperture. The scale, animation and six page keys share the same top and bottom edges. The upper-right smiley blends between 33 chrome poses on a 4.8-second cycle, independently of playback. The three animations are rendered at four times the panel resolution, downsampled offline, and played at up to 60 frames per second. Each tile repaints when its frame changes. All six SP-16 pages share the crest, animated smiley, whip strip, transport and bank tabs. The three pitch ribbons show chrome notes on black keys, with a separate numbered row for audition. Voice places four equal-width touch controls above the filter response. Filter selects the model, Peak Spread lights up for Twin Peak, and the X and Y readouts correspond to the cutoff and resonance axes of the pad. The lower axis shows frequency, the left scale shows gain in dB and the right scale shows resonance. LFO plots its curves on dark violet glass. Slide shows gate lengths and the selected slide’s pitch transitions. Clock shows the straight grid and shifted swing ticks above the pitch cells. [SP-16 controls](../README.md#freesp16-on-sp-16)
 
@@ -35,21 +35,21 @@ The freesp16 edition opens on the **Thorn Crown** Pattern page. Its first frame 
 <table>
   <tr><th>Pattern</th><th>Voice</th></tr>
   <tr>
-    <td><a href="slink-mpc-pattern.png"><img src="slink-mpc-pattern.png" alt="Pattern playing on the silver panel, with Cutoff, Resonance and Env Mod below the step grid" width="320"></a></td>
-    <td><a href="slink-mpc-voice.png"><img src="slink-mpc-voice.png" alt="Voice page with the selected cutoff, filter response and three satin-chrome knobs" width="320"></a></td>
+    <td><a href="slink-mpc-pattern.webp"><img src="slink-mpc-pattern.webp" alt="Pattern playing on the silver panel, with Cutoff, Resonance and Env Mod below the step grid" width="320"></a></td>
+    <td><a href="slink-mpc-voice.webp"><img src="slink-mpc-voice.webp" alt="Voice page with the selected cutoff, filter response and three satin-chrome knobs" width="320"></a></td>
   </tr>
   <tr><th>Tone</th><th>Sequencer</th></tr>
   <tr>
-    <td><a href="slink-mpc-tone.png"><img src="slink-mpc-tone.png" alt="Tone controls beside the filter response on charcoal" width="320"></a></td>
-    <td><a href="slink-mpc-sequencer.png"><img src="slink-mpc-sequencer.png" alt="Sequencer settings beside the playing score" width="320"></a></td>
+    <td><a href="slink-mpc-tone.webp"><img src="slink-mpc-tone.webp" alt="Tone controls beside the filter response on charcoal" width="320"></a></td>
+    <td><a href="slink-mpc-sequencer.webp"><img src="slink-mpc-sequencer.webp" alt="Sequencer settings beside the playing score" width="320"></a></td>
   </tr>
   <tr><th colspan="2">Clock</th></tr>
   <tr>
-    <td colspan="2" align="center"><a href="slink-mpc-clock.png"><img src="slink-mpc-clock.png" alt="Clock division, swing, reset and theme above the score" width="320"></a></td>
+    <td colspan="2" align="center"><a href="slink-mpc-clock.webp"><img src="slink-mpc-clock.webp" alt="Clock division, swing, reset and theme above the score" width="320"></a></td>
   </tr>
 </table>
 
-These images show Slink 0.8.0 in hdslaveOS Stage at twice the native resolution. [Watch all five pages in motion](slink-screen.gif) A faint horizontal grain runs through the silver title plate, step cells, parameter rows and knob panels. On Pattern, K1–K3 control Cutoff, Resonance and Env Mod. On Voice, they follow the selected row and the two below it.
+These images show Slink 0.8.0 in hdslaveOS Stage at twice the native resolution. [Watch all five pages in motion](slink-screen.webp) A faint horizontal grain runs through the silver title plate, step cells, parameter rows and knob panels. On Pattern, K1–K3 control Cutoff, Resonance and Env Mod. On Voice, they follow the selected row and the two below it.
 
 Voice and Tone draw the filter response in lime on a plain charcoal field. The 1 kHz mark sits on the lower scale. Sequencer and Clock use the same charcoal behind the notes. Sequencer pairs the settings with a taller note display. Clock arranges its four settings in one row above a full-width score and swing indicator.
 
