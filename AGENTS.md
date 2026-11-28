@@ -46,3 +46,7 @@ Read `../AGENTS.md`, then `../Workflow/plugins.md` and `../Workflow/host-facts.m
 - **The pads.** In Mode: TB-3PO, notes 36 .. 36 + max (16, Steps) - 1 (pads A01 - A16 at hdslaveOS's defaults) each play their step once (`Engine::note`, `playPad`) without moving the play head, seed or transposition; other notes transpose; Mode: Notes is the chromatic keyboard. `testStepPads` in `tests/host.cpp` holds it.
 - **The page.** It is designed on branch `screen`, which owns `src/screen.h`, `src/ui/`, `assets/`, `tools/ui_preview/` and `docs/screen.md`. The glue in `src/tbmpc.cpp`, the DSP, `tests/` and `Makefile` belong to `main`'s engine work.
 - `src/ui/page.h` began as a copy of Anvil's and has since diverged (114 changed lines when last diffed): they are not in sync, and neither is a copy of the other now.
+
+## Release packaging
+
+Every release ZIP includes the full repository `LICENSE.txt` beside the third-party notices, outside signed plug-in bundles. Preserve both when packaging the plug-in for another project.

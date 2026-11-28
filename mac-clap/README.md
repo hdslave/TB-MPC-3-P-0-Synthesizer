@@ -32,6 +32,10 @@ The CLAP ID, parameter IDs and choice order, factory preset keys, MIDI note beha
 
 [Download Slink 0.9.11 for macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.11), or build this checkout. On upgrade, keep the installed filename if the host stores plug-ins by path. Install one copy per host.
 
+## hdslave plug-in license
+
+You may use these plug-ins to make, perform, record and sell music, including paid client work, without royalties or credit to hdslave. You may share complete, unchanged official releases for free with their notices intact. Selling the software, including it in a paid product or subscription, or distributing a modified version requires prior written permission from hdslave. Third-party components keep their own licenses. [Full plug-in license](../LICENSE.txt).
+
 ## Build & Install (macOS)
 
 Requires Xcode Command Line Tools and CMake 3.20+ (Ninja optional):
