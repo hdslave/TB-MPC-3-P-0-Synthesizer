@@ -2,12 +2,15 @@
 // independent, so any generated pattern can use the same small set of cuts.
 const stormPlate=document.createElement('canvas');
 stormPlate.width=168*4;
-stormPlate.height=25*4;
+stormPlate.height=31*4;
 const stormContext=stormPlate.getContext('2d');
 const art=window.plates, density=4;
 art.bed.width=780*density;art.bed.height=285*density;
 const counter=art.makeStepCounter('62px SlinkSans',density);
-const nativeStorm=art.panelStorm(stormContext);
+const nativeStorm=art.panelStorm(stormContext,{left:0,top:0});
+// Fill the aperture from the 167 × 24 composition with a centered, uniform camera crop.
+const stormZoom=stormPlate.height/24;
+stormContext.setTransform(stormZoom,0,0,stormZoom,(stormPlate.width-167*stormZoom)/2,0);
 function nativePlate(kind,i){
   const {bed,bedDraw,scorePitch,drawStorm}=art;
   const cv=document.createElement('canvas'),ctx=cv.getContext('2d');
@@ -56,8 +59,6 @@ function nativePlate(kind,i){
   }else if(kind==='crest'){
     return window.plates.drawCrest(i).toDataURL().split(',')[1];
   }else if(kind==='storm'){
-    stormContext.setTransform(4,0,0,4,-201*4,-253*4);
-    stormContext.fillStyle='#080812';stormContext.fillRect(201,253,168,25);
     drawStorm(i,nativeStorm);
     return stormPlate.toDataURL().split(',')[1];
   }

@@ -1115,14 +1115,14 @@ bool panelTouch(const void* plugin, int32_t phase, int32_t x, int32_t y)
         panel.thorn.selected=panel.thorn.selected>=16?0:16;
         panel.dirty=true;return true;
     }
-    if (x>=622 && x<703 && y>=55 && y<84)
+    if (sp16::transportButton.contains(x,y))
     {
         const bool preview=p.previewRequested.load(std::memory_order_acquire);
         if ((panel.shown.running && !preview) || valueOf(p,ParamId::mode)>=.5f) return false;
         p.previewRequested.store(!preview,std::memory_order_release);
         wakePanel(p);return true;
     }
-    const bool regen = x>=719 && x<775 && y>=61 && y<91;
+    const bool regen = sp16::regenButton.contains(x,y,2);
     const bool back = x>=7 && x<72 && y>=50 && y<96;
     if (regen || back)
     {

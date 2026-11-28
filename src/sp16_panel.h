@@ -4,8 +4,12 @@
 #include "tb3po.h"
 #include "sixteen_screen.h"
 #include "sp16_graphics.h"
+#include "pulse_keys.h"
 #include "../assets/sp16-thorn/index.h"
+#include "../assets/sp16-thorn/controls.h"
 #include <array>
+
+extern "C" const uint32_t slink_sp16_controls[];
 
 namespace tbmpc::sp16
 {
@@ -30,8 +34,21 @@ using hdui::Ink;
 constexpr Ink bg = 0xff080812, cell = 0xff100d1a, grid = 0xff302840;
 constexpr Ink inactive = 0xff787583;
 constexpr Ink paper = 0xfff1efff, muted = 0xffb9b1cb, steel = 0xffb6c8fa, ice = 0xff96b7ff;
-constexpr int bodyTop = 100, tabTop = 247, tabLeft = 300, tabWidth = 79, stormX = 127;
+constexpr int bodyTop = 100, tabTop = 247, tabLeft = 300, tabWidth = 79;
+constexpr int footerTop = tabTop + 2, footerHeight = 33, footerBottom = footerTop + footerHeight;
+constexpr int stormX = 127;
+static_assert(thorn::storm.h == footerHeight - 2, "Bake the storm at the footer aperture height");
 constexpr int gridLeft = 8, gridWidth = 764, gridTop = 131, gridHeight = 113;
+
+struct ActionButton
+{
+    int x, y, w, h;
+    bool contains(int px,int py,int pad=0) const
+    {
+        return px>=x-pad && px<x+w+pad && py>=y-pad && py<y+h+pad;
+    }
+};
+constexpr ActionButton transportButton{624,60,81,29}, regenButton{720,68,53,26};
 
 struct Raster : hdui::Raster
 {
@@ -77,6 +94,23 @@ struct Raster : hdui::Raster
         dest = 0xff000000u | (red<<16) | (green<<8) | blue;
     }
 
+    // The artwork is already sampled at screen resolution with straight alpha.
+    void tile(const controls::Tiles& tiles, int frame, int x, int y) const
+    {
+        const auto* source = slink_sp16_controls + tiles.offset + frame*tiles.w*tiles.h;
+        for (int row = 0; row < tiles.h; ++row)
+        {
+            auto* dest = px + (y+row)*w+x;
+            for (int col = 0; col < tiles.w; ++col)
+            {
+                const Ink color = *source++;
+                const unsigned alpha = color >> 24;
+                if (alpha == 255) dest[col] = color;
+                else if (alpha) blend(x+col,y+row,color,(alpha+8)/17);
+            }
+        }
+    }
+
     // A vertical slice of a trace, with fractional coverage at each end.
     void trace(int x, double from, double to, Ink fg, int halfWidth=12) const
     {
@@ -120,12 +154,14 @@ struct Raster : hdui::Raster
         });
     }
 
-    void selectedPlate(int x,int y,int width,int height) const
+    void key(int x,int y,int width,int height,slink::keys::Face face,Ink well=bg) const
     {
-        plateRows(x,y,width,height,thorn::selectionEdge,[=](int row) {
-            return thorn::selectionRamp[(2*row+1)*std::size(thorn::selectionRamp)/(2*height)];
+        if (face != slink::keys::Face::window) box(x,y,width,height,well);
+        slink::keys::key(x,y,width,height,1,face,[&](int xx,int yy,int w,int h,Ink ink) {
+            box(xx,yy,w,h,ink);
         });
     }
+
 };
 
 }
@@ -230,7 +266,7 @@ public:
     }
     static int tabAt(int x,int y)
     {
-        if (y < tabTop+2 || y >= 283 || x < tabLeft || x >= tabLeft+6*tabWidth) return -1;
+        if (y < footerTop || y > footerBottom || x < tabLeft || x >= tabLeft+6*tabWidth) return -1;
         return (x-tabLeft)/tabWidth;
     }
 
@@ -315,30 +351,23 @@ private:
     void drawFooter(const Raster& r) const
     {
         r.box(0,tabTop,stormX,285-tabTop,bg);
-        r.box(stormX+168,tabTop,780-stormX-168,285-tabTop,bg);
-        r.box(stormX,tabTop,168,253-tabTop,bg);
-        r.box(stormX,278,168,285-278,bg);
-        r.plate(7,252,115,27,0xff291d39,0xff141021,0xff685d80);
-        char scaleName[64];
-        formatParam(paramTable[paramIndex(scale)],value(scale),scaleName,sizeof(scaleName),{});
-        char key[80];
-        std::snprintf(key,sizeof(key),"%s / %s",rootChoices[int(value(root))],scaleName);
-        r.label(13,259,120,key,paper,rave::small);
-        r.box(stormX,252,168,1,0xff514f70);
-        r.box(stormX,278,168,1,0xff514f70);
+        const int right = stormX + thorn::storm.w;
+        r.box(right,tabTop,780-right,285-tabTop,bg);
+        r.box(stormX,tabTop,thorn::storm.w,footerTop-tabTop,bg);
+        r.box(stormX,footerBottom,thorn::storm.w,285-footerBottom,bg);
+        static_assert(controls::scaleName.count == scaleCount);
+        static_assert(controls::root.count == std::size(rootChoices));
+        r.tile(controls::scaleKey,0,7,footerTop);
+        const int rootIndex = int(value(root));
+        const int slashX = rootChoices[rootIndex][1] ? 34 : 28;
+        r.tile(controls::root,rootIndex,15,255);
+        r.tile(controls::slash,0,slashX,255);
+        r.tile(controls::scaleName,int(value(scale)),slashX+9,255);
         for (int i=0; i<int(std::size(banks)); ++i)
         {
             const int x = tabLeft+i*tabWidth;
-            const bool active = i==bank;
-            if (active) r.selectedPlate(x,tabTop+2,tabWidth-2,33);
-            else r.plate(x,tabTop+2,tabWidth-2,33,0xff2b203b,0xff100d1b,0xff675a79);
-            if (i == slidePage)
-            {
-                const char* label = "SLIDE";
-                r.text(x+(tabWidth-2-Raster::measure(label,rave::small))/2,tabTop+11,label,paper);
-            }
-            else ThornPage::bankLabel(r,i,x,tabTop+8);
-            if (active) r.box(x+9,tabTop+30,tabWidth-20,2,thorn::selectionEdge);
+            r.tile(controls::tab,i+(i==bank ? int(std::size(banks)) : 0),x,footerTop);
+            if (i) r.box(x-2,footerTop+footerHeight/2+1,2,1,i==bank ? ice : 0xff524b69);
         }
     }
     void drawSlideSwitch(const Raster& r) const
@@ -348,8 +377,7 @@ private:
         {
             const int x = slideChoiceX+i*(slideChoiceWidth+slideChoiceGap);
             const bool active = i == int(value(glide));
-            if (active) r.selectedPlate(x,ribbonY+2,slideChoiceWidth,ribbonHeight-4);
-            else r.plate(x,ribbonY+2,slideChoiceWidth,ribbonHeight-4,0xff1d192d,0xff14101e,0xff514761);
+            r.key(x,ribbonY+2,slideChoiceWidth,ribbonHeight-4,active ? slink::keys::Face::lit : slink::keys::Face::control);
             const char* label = glideChoices[i];
             r.text(x+(slideChoiceWidth-Raster::measure(label,rave::small))/2,109,label,active?paper:muted);
         }
@@ -363,8 +391,7 @@ private:
             const auto [x,width] = ribbonCard(i);
             const uint32_t id = banks[bank].ids[i];
             const bool enabled = controlEnabled(id,int(value(filter)),int(value(glide)),int(value(mode)));
-            r.plate(x,ribbonY,width,ribbonHeight,enabled ? 0xff292036 : 0xff1c1b24,
-                    enabled ? 0xff151121 : 0xff13121a,enabled ? 0xff514761 : 0xff3a3744);
+            r.key(x,ribbonY,width,ribbonHeight,enabled ? slink::keys::Face::control : slink::keys::Face::dormant);
             if (bank == slidePage && i == 0)
             {
                 drawSlideSwitch(r);
@@ -462,8 +489,7 @@ private:
                 const int col = i%16, x = stepX(col), w = stepX(col+1)-x, y = pitchY(i);
                 char number[16];
                 std::snprintf(number,sizeof(number),"%02d",i+1);
-                if (focus==i) r.selectedPlate(x+1,numberTop,w-2,14);
-                else r.box(x+1,numberTop,w-2,14,0xff181322);
+                r.key(x+1,numberTop,w-2,14,focus==i ? slink::keys::Face::lit : slink::keys::Face::step);
                 r.text(x+(w-Raster::measure(number,rave::small))/2,numberTop,number,focus==i?paper:muted);
                 const bool hit = focus == i, gated = (shown.gates >> i) & 1u;
                 if (bank != clockPage)
@@ -504,8 +530,7 @@ private:
                         }
                     }
                 }
-                r.plateRows(x+1,plotEnd,w-2,bottom-plotEnd+1,hit?thorn::selectionEdge:0xff292333,
-                            [](int) { return 0xff000000u; });
+                r.key(x+1,plotEnd,w-2,bottom-plotEnd+1,hit ? slink::keys::Face::noteFocus : slink::keys::Face::note);
                 ThornPage::pitchLabel(r,shown.pitch[i],x+(w-42)/2,plotEnd+(rows==1?0:-3));
 
             }
@@ -578,8 +603,7 @@ private:
             const auto& param = paramTable[paramIndex(id)];
             const float displayed = id==cutoff ? voiceCutoff : id==resonance ? voiceRes : value(id);
             formatParam(param,displayed,readout,sizeof(readout),ctx);
-            r.plate(x,ribbonY,width,ribbonHeight,enabled ? 0xff292036 : 0xff1c1b24,
-                    enabled ? 0xff151121 : 0xff13121a,enabled ? 0xff635473 : 0xff3a3744);
+            r.key(x,ribbonY,width,ribbonHeight,enabled ? slink::keys::Face::control : slink::keys::Face::dormant);
             const char* label = id==cutoff ? "X  Cutoff" : id==resonance ? "Y  Resonance" : param.name;
             const Ink ink = id==cutoff ? ice : id==resonance ? 0xffcfa7ff : muted;
             const int end = x+width-10;

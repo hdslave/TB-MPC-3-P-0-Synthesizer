@@ -78,10 +78,10 @@ clean:
 
 # freesp16's ARM EABI/glibc 2.13 toolchain, and a Linux host copy for screen tests.
 SP16_ART := src/sp16_thorn_bank.S
-SP16_MEDIA := assets/sp16-thorn/panel.bank assets/sp16-thorn/index.h
+SP16_MEDIA := assets/sp16-thorn/panel.bank assets/sp16-thorn/index.h assets/sp16-thorn/controls.bank assets/sp16-thorn/controls.h
 SP16_CXX ?= arm-linux-gnueabi-g++
 SP16_OPT := -O3 -march=armv7-a -mtune=cortex-a9 -mfpu=neon -mfloat-abi=softfp -ffp-contract=fast -fno-math-errno -fno-trapping-math
-SP16_VERSION := 0.9.10
+SP16_VERSION := 0.9.11
 SP16_FLAGS := -DTBMPC_SP16 -DTBMPC_VERSION='"$(SP16_VERSION)"' -ffunction-sections -fdata-sections
 .PHONY: sp16 sp16-preview
 sp16: $(OUT)/sp16/Slink.clap

@@ -77,13 +77,13 @@ public:
             const int offset=first(v), count=std::clamp(int(v.steps)-offset,0,16);
             const int focus=focusStep(v);
             const int col=focus-offset;
-            image(r,thorn::counter, std::clamp(focus+1,0,32),528,20);
-            image(r,thorn::button,button,622,55);
-            char text[16];
-            std::snprintf(text,sizeof(text),"/%d",v.steps);
-            r.right(619,77,text,muted);
-            std::snprintf(text,sizeof(text),"%04X",unsigned(seed)&65535u);
-            r.reading(12,71,70,text,paper,true);
+            r.tile(controls::counter,std::clamp(focus,0,31),528,20);
+            r.tile(controls::stepTitle,0,533,10);
+            r.tile(controls::length,std::clamp(int(v.steps)-1,0,31),599,78);
+            drawActions(r,button,focus,v.steps);
+            r.tile(controls::seedTitle,0,14,55);
+            for (int i=0; i<4; ++i)
+                r.tile(controls::hexDigit,(unsigned(seed) >> ((3-i)*4)) & 15,14+11*i,70);
             for (int i=0;i<20;++i)
                 r.box(72+i*98/20,59,((seed>>(i%16))&1)?4:1,26,i%6?0xff919fbe:0xffced7ff);
             if (count)
@@ -114,7 +114,13 @@ public:
         const bool stormChanged = full || storm!=lastStorm;
         if (crestChanged) image(r,thorn::crest,camera,186,6);
         if (faceChanged) image(r,thorn::face,face,717,0);
-        if (stormChanged) image(r,thorn::storm,storm,stormX,253);
+        if (stormChanged)
+        {
+            r.box(stormX,footerTop,thorn::storm.w,1,bg);
+            r.box(stormX,footerBottom-1,thorn::storm.w,1,bg);
+            image(r,thorn::storm,storm,stormX,footerTop+1);
+            r.tile(controls::stormRim,0,stormX,footerTop);
+        }
         lastCamera=camera; lastFace=face; lastStorm=storm;
         return updateHeader || updateScore || crestChanged || faceChanged || stormChanged;
     }
@@ -125,6 +131,21 @@ private:
     bool initialized = false;
     int lastCamera=-1, lastFace=-1, lastStorm=-1;
 
+    static void drawActions(const Raster& r,int mode,int focus,int steps)
+    {
+        const auto& t=transportButton;
+        r.tile(controls::transport,mode,t.x,t.y);
+        const int slot=focus%16;
+        const int visible=std::min(16,steps-(focus/16)*16);
+        for (int i=0; i<visible; ++i)
+        {
+            const int x=t.x+11+int(std::lround(i*3.72+(i/4)*.92));
+            if (i==slot) r.box(x,t.y+22,3,2,0xffd6ddff);
+            else if (i<slot && (mode==1 || mode==2)) r.box(x,t.y+23,3,1,0xff8f9edc);
+        }
+        r.tile(controls::regen,0,regenButton.x,regenButton.y);
+    }
+
     static void restore(const Raster& r,int x,int y,int w,int h)
     {
         const auto* plate = slink_sp16_thorn_bank+thorn::backdropOffsets[0];
@@ -134,16 +155,23 @@ private:
 
     static void drawPitchRail(const Raster& r,const PatternView& v,int offset,int count,int col)
     {
-        if (count<=0) return;
         constexpr int top=thorn::scoreRow::pitch, bottom=thorn::scoreRow::note;
+        r.box(columnX(0),top,columnX(15)+42-columnX(0),bottom-top,0xff0b0b19);
+        if (count<=0) return;
         const auto limits=std::minmax_element(v.pitch,v.pitch+v.steps);
         const int span=std::max(128,int(*limits.second)-int(*limits.first));
+        const int mid=(top+bottom)/2;
         int previousEnd=0, previousY=0;
         for (int i=0; i<count; ++i)
         {
-            const int step=offset+i, x=columnX(i), left=x+4, right=x+38;
-            const int y=bottom-4-(int(v.pitch[step])-*limits.first)*(bottom-top-9)/span;
-            const Ink ink=i==col ? paper : steel;
+            const int step=offset+i, x=columnX(i), left=x+4, right=x+37;
+            const int y=bottom-4-(int(v.pitch[step])-*limits.first)*(bottom-top-8)/span;
+            const bool focus=i==col, gated=(v.gates>>step)&1u;
+            const Ink edge=focus ? 0xffe1edff : 0xffb0c8ff;
+            if (focus) r.box(x,top,42,bottom-top-1,0xff22223f);
+            r.box(x,mid,42,1,focus ? 0xff3a3658 : 0xff211e36);
+            r.box(x,mid-1,1,3,0xff49415e);
+            if (i%4==0) r.box(x,top,1,bottom-top-1,0xff514760);
             if (i && ((v.slides>>(step-1))&1u))
             {
                 double last=previousY;
@@ -151,51 +179,71 @@ private:
                 {
                     const double t=double(px-previousEnd)/(left-previousEnd);
                     const double next=previousY+(y-previousY)*t*t*(3-2*t);
-                    r.trace(px,last,next,muted,9);
+                    r.trace(px,last,next,0xffb69ce8,10);
                     last=next;
                 }
             }
-            if ((v.gates>>step)&1u) r.box(left,y-1,right-left+1,3,ink);
-            else r.frame(left,y-1,right-left+1,3,ink);
-            if ((v.accents>>step)&1u)
+            if (gated)
             {
-                r.box(x+20,top+2,2,1,steel);
-                r.box(x+19,top+3,4,1,steel);
+                r.box(left,y+1,right-left-2,1,0xff51549a);
+                r.box(left+1,y,right-left,1,edge);
+                r.box(left+2,y-1,((v.accents>>step)&1u) ? 12 : 4,1,edge);
             }
+            else
+                for (int px=left; px<right; px+=5) r.box(px,y,3,1,0xff8886b0);
             previousEnd=right;
             previousY=y;
         }
+    }
+
+    static void drawSwitches(const Raster& r,int x,uint32_t stepBit,const PatternView& v,bool focus)
+    {
+        namespace row=thorn::scoreRow;
+        const int cx=x+21;
+        const int gateY=(row::gate+row::accent)/2;
+        // The three switches share one dark strip per step. Separators register across each beat.
+        const Ink base=focus ? 0xff20203c : 0xff100e1c;
+        r.box(x,row::gate,42,row::end-row::gate,base);
+        for (int y : {row::gate,row::accent,row::slide})
+        {
+            r.box(x,y,42,1,focus ? 0xff695d94 : 0xff342c46);
+            r.box(x,y,1,3,focus ? steel : 0xff574d6d);
+        }
+        if (!stepBit) return;
+
+        // The gate is a square wave, low for rests and high between its two contacts.
+        const Ink gateInk=focus ? paper : steel;
+        r.box(cx-15,gateY+3,30,1,(v.gates&stepBit) ? 0xff484361 : 0xff696078);
+        if (v.gates&stepBit)
+        {
+            r.box(cx-9,gateY-4,1,8,gateInk);
+            r.box(cx-8,gateY-4,16,2,gateInk);
+            r.box(cx+8,gateY-4,1,8,gateInk);
+        }
+        else
+            r.box(cx-1,gateY+2,3,2,0xff9b92b4);
+
+        const int state=focus ? 2 : 0;
+        r.tile(controls::accentMark,state+bool(v.accents&stepBit),x+6,row::accent+4);
+        r.tile(controls::slideMark,state+bool(v.slides&stepBit),x+6,row::slide+3);
     }
 
     static void drawScore(const Raster& r,const PatternView& v,int offset,int count,int col)
     {
         namespace row=thorn::scoreRow;
         if (col>=0 && col<count) image(r,thorn::selected,0,columnX(col),row::step);
+        r.tile(controls::lane,0,5,102);
         drawPitchRail(r,v,offset,count,col);
-        constexpr int gateY=(row::gate+row::accent)/2, accentY=(row::accent+row::slide)/2;
-        constexpr int slideY=(row::slide+row::end)/2;
-        for (int i=0; i<count; ++i)
+        for (int i=0; i<16; ++i)
         {
-            const int index=offset+i,x=columnX(i),cx=x+21;
-            const bool active=i==col;
-            const Ink mark=active?0xffffffff:0xffd6d9ea, dash=active?0xffd6dcfa:0xff938aa8;
-            image(r,thorn::number,index,x,row::step);
+            const int index=offset+i, x=columnX(i);
+            const bool active=i==col && i<count;
+            // The original numbered cap and its downbeat slash come from the restored plate.
+            r.tile(controls::noteKey,active ? 1 : 0,x,row::note);
+            drawSwitches(r,x,i<count ? (1u<<index) : 0u,v,active);
+            if (i>=count) continue;
+            r.tile(controls::stepNumber,index,x,row::step);
             pitchLabel(r,v.pitch[index],x,(row::note+row::gate-thorn::pitch.h)/2);
-            if ((v.gates>>index)&1u)
-            {
-                r.box(cx-5,gateY-5,10,10,mark);
-                for (int cut=-3;cut<=3;cut+=3) r.box(cx+cut,gateY+2,1,2,active?0xff33499a:0xff5a5b84);
-            }
-            else r.frame(cx-5,gateY-5,10,10,mark);
-            if ((v.accents>>index)&1u)
-                for (int dy=-5;dy<=5;++dy) { int w=5-std::abs(dy);r.box(cx-w,accentY+dy,2*w+1,1,mark); }
-            else r.box(cx-3,accentY-1,6,2,dash);
-            if ((v.slides>>index)&1u)
-            {
-                for(int j=0;j<11;++j) r.box(cx-6+j,slideY+3-j*8/10,1,2,mark);
-                for(int j=0;j<5;++j) r.box(cx+j,slideY-4-j/3,5-j,1+j/2,mark);
-            }
-            else r.box(cx-3,slideY-1,6,2,dash);
         }
     }
 

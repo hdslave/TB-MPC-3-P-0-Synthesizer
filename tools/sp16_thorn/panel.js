@@ -183,15 +183,18 @@
    const edge=gradient(0,0,780,90,shell);
    chamfer(6,5,173,92,'#10101b',edge,8);drawWordmark();
    line(12,48,173,48,'#7c7691',.8);line(12,50,173,50,'#292735',.75);
-   caption('SEED',13,64,10,'#abadc4');if(!plate){caption(seed.toString(16).toUpperCase().padStart(4,'0'),12,83,17,'#edeef7');seedCode(72,59,98,26);}
+   caption('SEED',15,62,10,'#abadc4');if(!plate){caption(seed.toString(16).toUpperCase().padStart(4,'0'),14,81,17,'#edeef7');seedCode(72,59,98,26);}
    chamfer(185,5,334,92,'#05050d',edge,8);
    chamfer(525,5,188,92,stripe(525,5,188,92,purple),edge,8);
    drawStepGlass(g);
    caption('STEP',534,16,10,'#d2d4ea');if(!plate)caption('/16',615,83,11,'#c1bfdc','right');
-   if(!plate)miniPitch(625,17,77,23);actionButton(622,55,81,29,playing?'Stop':'Play',true);
-   actionButton(720,63,53,26,'Regen',false);
+   if(!plate){
+     miniPitch(625,17,77,23);
+     actionButton(624,60,81,29,playing?'Stop':'Play',true);
+     actionButton(720,68,53,26,'Regen',false);
+   }
    matrix(first,plate,selected);
-   chamfer(7,253,185,25,'#201730','#7b758e',4);if(!plate)caption('C / CHROMATIC',15,266,11,'#ddd6eb');
+   chamfer(7,253,185,25,'#201730','#7b758e',4);if(!plate)caption('C / CHROMATIC',17,266,11,'#ddd6eb');
    for(let i=0;i<17;i++)line(129+i*3.1,271,136+i*3.1,260,'#77678c',.9);
    line(201,252,369,252,'#525b79',.7);line(201,278,369,278,'#4c4860',.7);
    bracket(376,254,165,23,'#7380a1');if(!plate)miniPitch(382,256,154,16);
@@ -228,7 +231,7 @@
  function transport(){playing=!playing;if(playing){beat=time;strikeAccent();clock=setInterval(tick,125);}else{clearInterval(clock);clock=0;}update();}
  function toggleMotion(){options.motion=!options.motion;cameraOverride=null;lastTime=null;update();}
  function toggleCamera(){cameraOverride=!cameraRuns();lastTime=null;update();}
- const panelStorm=ctx=>makeWhipStorm(ctx,{composition:makeFooterPanorama(167),detail:2});
+ const panelStorm=(ctx,origin)=>makeWhipStorm(ctx,{composition:makeFooterPanorama(167),detail:2,...origin});
  const drawStorm=panelStorm(out);
  function paintStorm(at,draw=drawStorm){draw(at,seq[0],seq[1],seq[2],at-lastAccentTime);}
  const paintCounter=makeStepCounter('62px SlinkSans');
@@ -274,7 +277,7 @@
  }
  bedDraw(true);
  key('camera',crestFrame.x,crestFrame.y,crestFrame.w,crestFrame.h,'Pause 3D viewer',toggleCamera);
- key('transport',622,55,81,29,'Play sequence preview',transport);key('regen',719,61,55,30,'Regenerate pattern',regen);
+ key('transport',624,60,81,29,'Play sequence preview',transport);key('regen',718,66,57,30,'Regenerate pattern',regen);
  const mobileActions={prev:()=>hit(0,step-1),next:()=>hit(0,step+1),transport,gate:()=>hit(2,step),accent:()=>hit(3,step),slide:()=>hit(4,step),regen,motion:toggleMotion};
  root.querySelector('.compact').addEventListener('click',e=>mobileActions[e.target.dataset.do]?.());
  keys.addEventListener('keydown',e=>{const m=e.target.dataset.id?.match(/^(\d+)-(\d+)$/);const d={ArrowUp:[-1,0],ArrowDown:[1,0],ArrowLeft:[0,-1],ArrowRight:[0,1]}[e.key];if(!m||!d)return;e.preventDefault();bounds.get(clamp(+m[1]+d[0],0,4)+'-'+((+m[2]+d[1]+16)%16)).focus();});

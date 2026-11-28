@@ -3369,6 +3369,29 @@ void testSp16Panel(const std::string& folder)
     }
     CHECK(ui->render(touch.plugin, &surface, true));
     CHECK(!ui->render(touch.plugin, &surface, false));
+    auto checkFooter = [&] {
+        constexpr uint32_t well = 0xff080812u;
+        bool aligned = true;
+        // Check the middle of the scale, film and each page key through page and frame changes.
+        for (int x : {64,210,338,417,496,575,654,733})
+            aligned &= pixels[248*stride+x]==well && pixels[249*stride+x]!=well &&
+                       pixels[281*stride+x]!=well && pixels[282*stride+x]==well;
+        CHECK(aligned);
+        CHECK(pixels[249*stride+294]==well);
+        CHECK(pixels[281*stride+127]==well);
+        // The metal lip is continuous. Its curved corner ramps up to the flat rim.
+        const uint32_t rim = pixels[249*stride+210];
+        const uint32_t shoulder = pixels[249*stride+128];
+        CHECK(rim == pixels[249*stride+134] && rim != well);
+        CHECK((shoulder & 255u) > (well & 255u) && (shoulder & 255u) < (rim & 255u));
+    };
+    checkFooter();
+    const auto firstStorm = pixels;
+    surface.now_ms += 17;
+    CHECK(ui->render(touch.plugin, &surface, false));
+    checkFooter();
+    const int center = 265*stride+145;
+    CHECK(!std::equal(pixels.begin()+center,pixels.begin()+center+128,firstStorm.begin()+center));
     for (int row = 0; row < h; ++row)
     {
         CHECK(pixels[row*stride+779] != 0x12345678);
@@ -3390,6 +3413,7 @@ void testSp16Panel(const std::string& folder)
         CHECK(ui->touch(touch.plugin, SIXTEEN_TOUCH_DOWN, 339+bank*79, 264));
         CHECK(ui->knobs(touch.plugin, ids, label) && std::string(label)==bankNames[bank]);
         CHECK(ui->render(touch.plugin, &surface, false));
+        checkFooter();
     };
     for (int bank = 0; bank < 6; ++bank)
     {
@@ -3483,7 +3507,8 @@ void testSp16Panel(const std::string& folder)
     auto playing = [](uint64_t at) { return playingFrom(0,120,44100,at); };
     touch.render(8000,64,left,right,playing);
     const int original = int(touch.value("Seed"));
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,745,75));
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,745,65));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,745,93)); // Regen, last painted row
     touch.render(8000,64,left,right,[](uint64_t at) { return playingFrom(0,120,44100,8000+at); });
     CHECK(int(touch.value("Seed")) != original);
     CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,30,74));
@@ -3619,11 +3644,13 @@ void testSp16Panel(const std::string& folder)
     CHECK(!ui->render(touch.plugin, &surface, false));
     CHECK(ui->selector_turn(touch.plugin,1)); // LFO to Pattern
     CHECK(ui->render(touch.plugin,&surface,true));
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68)); // local Play
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,57));
+    CHECK(!ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,623,72));
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,704,88)); // local Play, bottom right of its bounds
     touch.render(22050,64,left,right,stopped);
     CHECK(std::any_of(left.begin(),left.end(),[](float v){return std::fabs(v)>.005f;}));
     CHECK(ui->render(touch.plugin,&surface,false));
-    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,68)); // local Stop
+    CHECK(ui->touch(touch.plugin,SIXTEEN_TOUCH_DOWN,660,88)); // local Stop in the same position
     touch.render(1024,64,left,right,stopped);
     CHECK(ui->render(touch.plugin,&surface,false));
     // Direct control drags update the same parameters the encoders expose.

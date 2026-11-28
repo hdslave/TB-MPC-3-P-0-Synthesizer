@@ -2,9 +2,9 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink 0.9.10 playing Acid Line in the Thorn Crown desktop editor](../docs/slink-desktop-0.9.10.png)
+![Slink 0.9.11 playing Acid Line in the Thorn Crown desktop editor](../docs/slink-desktop-0.9.11.png)
 
-[Desktop 0.9.10 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.10/mac-clap) · [Watch playback with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [View all 32 steps](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/thorn-crown-desktop-32.png) · [See the turning chrome smiley](https://github.com/hdslave/hdslave-Slink-Synth/blob/667d967e53033010c330d335e746a84e3a3411a8/mac-clap/assets/chrome-smiley.webp)
+[Desktop 0.9.11 source and controls](https://github.com/hdslave/hdslave-Slink-Synth/tree/desktop-v0.9.11/mac-clap) · [Watch playback with audio](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/slink-desktop-playback.mp4?raw=1) · [View all 32 steps](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/thorn-crown-desktop-32.png) · [See the turning chrome smiley](https://github.com/hdslave/hdslave-Slink-Synth/blob/desktop-v0.9.11/mac-clap/assets/chrome-smiley.webp)
 
 ## Desktop 0.8.1 on main
 
@@ -22,7 +22,7 @@ All 34 host parameters fit on one resizable panel down to 960 × 540. In **Tone*
 - Drag the filter response horizontally for cutoff and vertically for resonance. Drag across the score for transpose and vertically for density. These gestures send both parameters to the host for automation.
 - Click the crest to jump to a different camera angle. Shift-click it to pause or resume the camera independently. **Motion off** holds the artwork while playback and parameter displays continue to update.
 
-[Download Slink 0.9.10 for macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.10).
+[Download Slink 0.9.11 for macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.11).
 
 Slink 0.6.0 is the new name of TB-MPC-3-P-0. Existing projects use the same CLAP ID and factory preset keys. On upgrade, replace the previous plug-in in place, keeping its installed filename if the host stores paths. Install one copy per host.
 
