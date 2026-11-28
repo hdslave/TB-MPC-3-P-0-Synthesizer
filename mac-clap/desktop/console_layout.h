@@ -124,7 +124,7 @@ struct ConsoleLayout
         const int rootW = std::clamp(keyScale.w / 4, 34, 45);
         keyFields[0] = {keyScale.x, keyScale.y, rootW, keyScale.h};
         keyFields[1] = {keyScale.x + rootW, keyScale.y, keyScale.w - rootW, keyScale.h};
-        storm = {margin + keyW, footer.y + 2, usable - keyW, footerH - 4};
+        storm = {margin + keyW, keyScale.y, usable - keyW, keyScale.h};
 
         const int deskY = footer.y + footer.h + gap;
         headerHeight = std::clamp((height - margin - deskY) / 11, 20, 36);

@@ -14,7 +14,7 @@
 #include "../../src/lfo.h"
 
 #ifndef TBMPC_VERSION
-#define TBMPC_VERSION "0.9.10"
+#define TBMPC_VERSION "0.9.11"
 #endif
 
 namespace tbmpc

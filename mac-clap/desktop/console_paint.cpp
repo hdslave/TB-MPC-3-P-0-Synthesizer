@@ -1,5 +1,6 @@
 #include "panel_ui.h"
 #include "../../src/sp16_graphics.h"
+#include "../../src/pulse_keys.h"
 #include "../../assets/sp16-thorn/index.h"
 #include <cstdio>
 #include <cstring>
@@ -37,10 +38,6 @@ void faceplate(Canvas& c, Rect r, uint32_t top, uint32_t bottom, uint32_t outlin
 void plate(Canvas& c, Rect r, uint32_t fill = glass, uint32_t outline = edge)
 {
     faceplate(c, r, fill, mix(fill, ground, .45f), outline);
-}
-void disabledPlate(Canvas& c, Rect r, int cut)
-{
-    faceplate(c, r, 0xff1a1a21, 0xff121219, 0xff3b3b45, cut);
 }
 // Use the same antialiased Barlow lettering as the panel for desktop control cards.
 namespace font = tbmpc::rave;
@@ -113,10 +110,18 @@ void controlText(Canvas& c, Rect box, std::string_view text, const font::Font& f
     }
 }
 
+using slink::keys::Face;
+
+void drawKey(Canvas& c, Rect r, Face face, uint32_t well = ground)
+{
+    c.fill(r, well);
+    slink::keys::key(r.x * c.s, r.y * c.s, r.w * c.s, r.h * c.s, c.s, face,
+        [&](int x, int y, int w, int h, uint32_t ink) { c.fillPhys(x, y, x+w, y+h, ink); });
+}
+
 void button(Canvas& c, Rect r, std::string_view text, bool selected = false)
 {
-    faceplate(c, r, selected ? 0xff4d75de : 0xff2b203b, selected ? 0xff202f7f : 0xff100d1b,
-              selected ? 0xffb1c9ff : edge);
+    drawKey(c, r, selected ? Face::lit : Face::control);
     controlText(c, r.inset(2), text, font::normal, selected ? light : muted, .9f, 1);
 }
 
@@ -308,7 +313,6 @@ Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
         const Rect dst=layout_.headRect(lcd);
         if (lcdPlate_.paint(c_,601+focus(),dst))
         {
-            transportPlate_.paint(c_,633+button,layout_.play);
             controlText(c_,layout_.headRect({597,77,23,13}),"/"+std::to_string(pattern_.steps),
                         font::small,muted,layout_.mast.h*.009f,2);
             const int first=focus()/16*16, count=std::min(16,int(pattern_.steps)-first);
@@ -330,13 +334,29 @@ Rect PanelUI::paintArt(bool full, bool refreshHeader, uint64_t now)
             damage=damage.unite(dst);
         }
         else blit(lcd,dst);
+        const auto play = layout_.play;
+        c_.fill(layout_.headRect({621,54,83,31}),glass);
+        drawKey(c_,play,Face::lit,glass);
+        const auto fill = [&](int x,int y,int w,int h,uint32_t ink) { c_.fill(x,y,w,h,ink); };
+        const int iconWidth = play.w/5;
+        slink::keys::heart((play.x+play.w/13)*c_.s,(play.y+play.h/4)*c_.s,iconWidth*c_.s,
+                           button==1 || button==2,
+                           [&](int x,int y,uint32_t ink,unsigned alpha) { c_.plot(x,y,ink,alpha); });
+        constexpr const char* modes[]{"PLAY","STOP","SYNC","PLAY MIDI"};
+        const auto label = Rect{play.x+play.w*3/10,play.y,play.w*13/20,play.h*4/5};
+        const float zoom = std::min({1.55f,play.h/27.f,float(label.w)/textWidth(modes[button],font::normal)});
+        controlText(c_,label,modes[button],font::normal,light,zoom,1);
+        slink::keys::clockRail(play.x+play.w/9,play.y+play.h*4/5,play.w*7/9,1,focus(),pattern_.steps,fill);
     }
     if (changed(regen) || smileyPosition != lastSmileyPosition_)
     {
         blit(regen,layout_.headRect(regen));
         smiley_.paint(c_,smileyPosition,layout_.face);
         lastSmileyPosition_ = smileyPosition;
-        regenPlate_.paint(c_,638,layout_.headRect({720,63,53,26}));
+        const auto regenKey=layout_.headRect({720,63,53,26});
+        c_.fill(layout_.headRect({719,62,55,28}),ground);
+        drawKey(c_,regenKey,Face::control);
+        controlText(c_,regenKey,"Regen",font::normal,light,std::min(1.4f,regenKey.h/24.f),1);
     }
     return damage;
 }
@@ -348,8 +368,7 @@ void PanelUI::paintRibbon()
         const int slot = ribbonParams[bank_][i];
         const bool enabled = readings_[slot].enabled;
         const Rect r = layout_.ribbon[i];
-        if (enabled) faceplate(c_, r, 0xff292036, 0xff151121, hover_ == slot ? ice : 0xff554962);
-        else disabledPlate(c_, r, 4);
+        drawKey(c_, r, !enabled ? Face::dormant : hover_ == slot ? Face::lit : Face::control);
         const int pad = std::clamp(r.w / 22, 6, 12);
         const int valueW = std::min(r.w * 54 / 100, textWidth(readings_[slot].text, font::normal) + 2);
         const char* label = slot == int(id::pitchLfoAmount) ? "Pitch depth" :
@@ -375,6 +394,41 @@ void PanelUI::paintRibbon()
     }
 }
 
+// A pair of traces runs between the parameter readouts and the score legend.
+// Each gate opens the traces, an accent widens them, and the playhead lights the join.
+Rect PanelUI::paintPulseTrace()
+{
+    const int left = layout_.ribbon[1].x + layout_.ribbon[1].w + 3;
+    const Rect area{left,layout_.caption.y,layout_.legend.x-left-3,layout_.caption.h};
+    if (area.w < 8) return {};
+    c_.fill(area,ground);
+    const int count = std::clamp(int(pattern_.steps),0,32);
+    if (!count) return area;
+    const float cy = area.y+area.h*.53f;
+    for (int i=0; i<count; ++i)
+    {
+        const float x=left+area.w*float(i)/count, w=float(area.w)/count;
+        const bool gate=(pattern_.gates>>i)&1u, accent=(pattern_.accents>>i)&1u;
+        const bool live = i==focus();
+        const uint32_t upper=live ? ice : 0xff74708e, lower=live ? lilac : 0xff48405c;
+        const float lift = gate ? area.h*(accent ? .32f : .17f) : 0.f;
+        const float rise=x+w*.34f, crest=x+w*.50f, fall=x+w*.67f, end=x+w;
+        c_.line(x,cy,rise,cy,1,upper);
+        c_.line(rise,cy,rise+w*.06f,cy+lift*.20f,1,upper);
+        c_.line(rise+w*.06f,cy+lift*.20f,crest,cy-lift,1,upper);
+        c_.line(crest,cy-lift,fall-w*.06f,cy+lift*.35f,1,upper);
+        c_.line(fall-w*.06f,cy+lift*.35f,fall,cy,1,upper);
+        c_.line(fall,cy,end-1,cy,1,upper);
+        if (gate)
+        {
+            c_.line(rise,cy,crest,cy+lift*.60f,1,lower);
+            c_.line(crest,cy+lift*.60f,fall,cy,1,lower);
+        }
+        if (live) c_.fill(int(crest)-1,int(cy-lift)-1,3,3,light);
+    }
+    return area;
+}
+
 void PanelUI::paintFooter()
 {
     const auto& l = layout_;
@@ -383,8 +437,6 @@ void PanelUI::paintFooter()
     controlText(c_, {root.x + 6, root.y, root.w - 13, root.h}, readings_[id::root].text, font::normal, light, .94f);
     controlText(c_, {scale.x - 9, scale.y, 9, scale.h}, "/", font::normal, muted, .92f);
     controlText(c_, scale.inset(3), readings_[id::scale].text, font::normal, light, .94f);
-    c_.hline(l.storm.x, l.storm.y - 1, l.storm.w, 0xff514f70);
-    c_.hline(l.storm.x, l.storm.y + l.storm.h, l.storm.w, 0xff514f70);
 }
 
 void PanelUI::paintScore()
@@ -418,14 +470,13 @@ void PanelUI::paintScore()
         const Rect col = l.column(i, count), ruler = l.lane(0);
         const bool live = i < n, selected = live && i == active;
         const int left = col.x + (i && i % 4 == 0 ? 3 : 1), w = col.x + col.w - left - 1, mid = left + w / 2;
-        const uint32_t upper = selected ? 0xff527be7 : !live ? 0xff191622 : (i / 4) % 2 ? 0xff30213f : 0xff262139;
-        const uint32_t lower = selected ? 0xff263b98 : !live ? 0xff100d17 : (i / 4) % 2 ? 0xff1a112c : 0xff141224;
-        const uint32_t lip = selected ? 0xffa4bfff : 0xff52465f;
-        c_.gradient({left, ruler.y, w, ruler.h - 1}, upper, lower);
-        c_.hline(left, ruler.y, w, i == hoverStep_ ? light : lip);
-        if (selected)
-            for (int j = 0; j < 5; ++j) c_.fill(left + 1, ruler.y + 1 + j, 5 - j, 1, light);
-        else if (i % 4 == 0) c_.hline(left + 2, ruler.y + 2, 6, muted);
+        const Face face = !live ? Face::dormant : selected ? Face::lit : Face::step;
+        drawKey(c_, {left, ruler.y, w, ruler.h - 1}, face);
+        if (live && i == hoverStep_)
+            c_.hline(left+w/5, ruler.y, w*3/5, light);
+        if (i)
+            c_.hline(col.x-1, ruler.y+ruler.h/2, left-col.x+3,
+                     selected || i == hoverStep_ ? ice : live ? 0xff5d536f : 0xff312c3c);
         char number[4];
         std::snprintf(number, sizeof(number), "%02d", i + 1);
         controlText(c_, {left, ruler.y, w, ruler.h}, number, font::normal, live ? light : quiet, ruler.h < 19 ? .85f : 1.f, 1);
@@ -438,13 +489,13 @@ void PanelUI::paintScore()
         if (live && ((pattern_.accents >> i) & 1u)) mark(c_, 3, mid, pitch.y + 5, 3, ice);
 
         const Rect key{left, noteY, w, noteH - 1};
-        const uint32_t bed = selected ? 0xff101629 : 0xff07070c;
-        faceplate(c_, key, bed, bed, selected ? 0xff8ca8fc : 0xff342c43, 4);
+        constexpr uint32_t bed = 0xff000000;
+        drawKey(c_, key, selected ? Face::noteFocus : Face::note);
         if (live && chromeNotes)
         {
             constexpr auto& glyph = tbmpc::thorn::pitch;
             std::array<uint32_t, glyph.w * glyph.h> tile;
-            p_->panel->pitchTile(tile.data(), pattern_.pitch[i], bed, selected);
+            p_->panel->pitchTile(tile.data(), pattern_.pitch[i], bed, false);
             // Trim the transparent margin around the hardware glyphs, including the sharp and octave.
             const Rect ink{2, 3, glyph.w - 4, glyph.h - 6};
             c_.blitSharp(tile.data() + ink.y * glyph.w + ink.x, ink.w, ink.h, fit(ink, key.inset(2)), glyph.w);
@@ -453,15 +504,14 @@ void PanelUI::paintScore()
         {
             const auto name = noteName(pattern_.pitch[i]);
             const float zoom = std::min(1.f, float(key.w - 4) / textWidth(name, font::normal));
-            controlText(c_, key, name, font::normal, selected ? light : 0xffd1d3e6, zoom, 1);
+            controlText(c_, key, name, font::normal, 0xffd1d3e6, zoom, 1);
         }
 
         const int size = std::clamp(std::min(w / 7, l.lane(2).h / 4), 3, 7);
         for (int j = 2; j < 5; ++j)
         {
             const Rect row = l.lane(j);
-            c_.gradient({left, row.y, w, row.h - 1}, upper, lower);
-            c_.hline(left, row.y, w, lip);
+            drawKey(c_, {left, row.y, w, row.h - 1}, !live ? Face::dormant : selected ? Face::litBit : Face::bit);
             if (!live) continue;
             const int cy = row.y + row.h / 2;
             const bool on = ((j == 2 ? pattern_.gates : j == 3 ? pattern_.accents : pattern_.slides) >> i) & 1u;
@@ -472,7 +522,7 @@ void PanelUI::paintScore()
                 if (on)
                 {
                     c_.fill(gate, ink);
-                    for (int k = -1; k <= 1; ++k) c_.fill(mid + k * (size/2), cy + size - 2, 1, 2, lower);
+                    for (int k = -1; k <= 1; ++k) c_.fill(mid + k * (size/2), cy + size - 2, 1, 2, selected ? 0xff252a55 : 0xff262233);
                 }
                 else c_.frame(gate, selected ? light : muted);
             }
@@ -512,11 +562,17 @@ void PanelUI::paintSection(size_t index)
     const int hh = layout_.headerHeight;
     const bool active = int(index) == bank_;
     const Rect heading = layout_.heading(index);
-    faceplate(c_, heading, active ? 0xff323358 : 0xff292034, active ? 0xff1b203d : 0xff161121,
-              active ? 0xff8099d7 : 0xff544a65);
+    drawKey(c_, heading, active ? Face::lit : Face::control);
+    // A pair of fine conductors joins at the contact on the bank's shoulder.
+    const int tip = heading.x + heading.w - 14, cy = heading.y + hh / 2;
+    const int reach = std::min(heading.w / 3, 72);
+    c_.hline(tip-reach,cy+3,reach-12,active ? 0xff7f83bf : 0xff4d465f);
+    c_.line(tip-12,cy+3,tip-6,cy-2,1,active ? ice : 0xff706781);
+    c_.hline(tip-6,cy-2,7,active ? ice : 0xff706781);
+    c_.hline(tip-reach/2,cy-2,reach/2-6,active ? 0xff8b7bb2 : 0xff423c52);
+    c_.fill(tip,cy-3,3,3,active ? light : 0xff878196);
     controlText(c_, {heading.x + 9, heading.y, heading.w - 17, heading.h}, section.name, font::normal,
                 active ? light : 0xffd7d4e6, hh < 22 ? .84f : .97f);
-    if (active) c_.fill(heading.x + 7, heading.y + heading.h - 2, heading.w - 14, 1, ice);
     for (int j = 0; j < 2 * section.columns; ++j)
         paintSlot(section.slots[j], section.ink);
 }
@@ -529,10 +585,7 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
         (slot == hover_ || (slot < int(id::count) && paramIndex_[slot] == dragParam_) || slot == dragPlot_);
     c_.fill(r, ground);
     const Rect key{r.x + 1, r.y + 1, r.w - 2, r.h - 2};
-    if (enabled)
-        faceplate(c_, key, hot ? 0xff362e49 : 0xff251d32, hot ? 0xff1e1c31 : 0xff13101e, hot ? ice : 0xff51465f, 3);
-    else
-        disabledPlate(c_, key, 3);
+    drawKey(c_, key, !enabled ? Face::dormant : hot ? Face::lit : Face::control);
     if (slot >= filterPlot)
     {
         paintPlot(slot, ink);
@@ -568,8 +621,7 @@ void PanelUI::paintSlot(int slot, uint32_t ink)
         {
             const Rect option{left + i * usable / 2, valueY + 1, usable / 2 - 2, valueH - 1};
             const bool chosen = int(reading.value) == i;
-            faceplate(c_, option, chosen ? 0xff4d75de : 0xff292034, chosen ? 0xff202f7f : 0xff141021,
-                      chosen ? 0xffb1c9ff : edge, 3);
+            drawKey(c_, option, chosen ? Face::lit : Face::control);
             controlText(c_, option, tbmpc::glideChoices[i], font::normal, chosen ? light : muted,
                         std::min(.92f, float(option.h + 2) / font::normal.height), 1);
         }

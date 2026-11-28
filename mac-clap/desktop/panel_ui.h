@@ -50,7 +50,7 @@ class PanelUI
     FooterStorm footerStorm_;
     Smiley smiley_;
     int lastSmileyPosition_ = -1;
-    HeaderPlate crestPlate_, lcdPlate_, transportPlate_, brandPlate_, regenPlate_;
+    HeaderPlate crestPlate_, lcdPlate_, brandPlate_;
     std::vector<uint32_t> frame_, art_, previousArt_;
     struct Reading
     {
@@ -104,6 +104,7 @@ class PanelUI
     int focus() const;
     void paintToolbar();
     void paintRibbon();
+    Rect paintPulseTrace();
     void paintFooter();
     void paintScore();
     void paintSection(size_t group);

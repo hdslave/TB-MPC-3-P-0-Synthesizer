@@ -420,6 +420,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         press(desk.play);
         for (int i=0;i<110;++i) process();
         snap("console");
+        snap("console-retina",1352,708,2);
         snap("compact",960,540,2);
         if (captureMotion)
         {
@@ -679,13 +680,16 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     plug->reset(plug);
     process();
     render();
-    const auto stopped=area(desk.play);
+    // The contact rail follows the current step independently of the transport legend.
+    const Rect legend{desk.play.x+desk.play.w*3/10, desk.play.y,
+                      desk.play.w*13/20, desk.play.h*4/5-2};
+    const auto stopped=area(legend);
     press(desk.play,1);
     if (!check(ctx.transportRequests==1,"Shift-Play requests DAW transport when supported")) return false;
     press(desk.play);
     double previewPeak=0;
     for(int i=0;i<72;++i) { process(); previewPeak=std::max(previewPeak,peak()); }
-    const auto preview=area(desk.play);
+    const auto preview=area(legend);
     if (!check(preview!=stopped && previewPeak>.0001,"local Play sends audio and shows Stop without running host")) return false;
     MemStream beforeBrowsing;
     clap_ostream_t savedBrowse {&beforeBrowsing,MemStream::write};
@@ -712,7 +716,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
         process();
         if (i>=150) resumedPeak=std::max(resumedPeak,peak());
     }
-    if (!check(area(desk.play)==preview && resumedPeak>.0001,"sequence audio resumes after rapid preset browsing")) return false;
+    if (!check(area(legend)==preview && resumedPeak>.0001,"sequence audio resumes after rapid preset browsing")) return false;
     // Find a sounding boundary, then verify that switching the waveform joins to it.
     float tail=0;
     for (int i=0;i<180 && std::abs(tail)<.005f;++i)
@@ -725,13 +729,13 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(std::abs(block.audio_outputs[0].data32[0][0]-tail)<1.e-6f,"continuous sample at live preset boundary")) return false;
     press(desk.play);
     process();
-    if (!check(area(desk.play)==stopped,"local Stop releases preview control")) return false;
+    if (!check(area(legend)==stopped,"local Stop releases preview control")) return false;
     press(desk.play);
     process();
     transport.flags|=CLAP_TRANSPORT_IS_PLAYING;
     transport.song_pos_beats=8ull*CLAP_BEATTIME_FACTOR;
     process();
-    const auto synced=area(desk.play);
+    const auto synced=area(legend);
     if (!check(synced!=preview && synced!=stopped,"DAW start replaces preview and displays Sync")) return false;
     // Exercise the live host clock across late song positions, short blocks and preset bursts.
     // A MIDI-only patch may rest until a note arrives. Each sequenced patch must sound again.
@@ -748,7 +752,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!ui.preset_load(plug,5)) return false;
     for (int i=0;i<200;++i)
         if (!hostBlock()) return false;
-    const auto midiPrompt=area(desk.play);
+    const auto midiPrompt=area(legend);
     if (!check(peak()<.00001 && midiPrompt!=synced && midiPrompt!=stopped && midiPrompt!=preview,
                "Note Bass waits silently with a distinct MIDI prompt during DAW playback")) return false;
     clap_event_note_t bassNote {};
@@ -780,7 +784,7 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     }
     transport.flags&=~CLAP_TRANSPORT_IS_PLAYING;
     process();
-    if (!check(area(desk.play)==stopped,"host stop does not resume preview")) return false;
+    if (!check(area(legend)==stopped,"host stop does not resume preview")) return false;
     block.transport=nullptr;
 
     clap_istream_t restoreBrowse {&beforeBrowsing,MemStream::read};
@@ -827,18 +831,29 @@ bool testIntegratedPanel (const clap_plugin_t* plug, const hdslave_desktop_debug
     if (!check(crest()!=held,"crest resumes")) return false;
     press(desk.tools[size_t(Item::Motion)]);
     const auto frozenCrest=crest(), frozenStorm=storm(), frozenFace=smile();
-    // Holding the frame isolates the resize from animation. All visible bends
-    // must stay in place when more space opens up to their right.
+    // The film stays anchored on resize. Only the trailing bezel moves.
+    Rect print = desk.storm;
+    print.w -= 24;
+    const auto frozenPrint = area(print);
+    auto framed = [&](const uint32_t* pixels, int stride, Rect r) {
+        const int x = r.x * scale, y = r.y * scale;
+        const int w = r.w * scale, h = r.h * scale;
+        return pixels[y*stride + x+w-1] == 0xff080812u &&
+               pixels[(y+h-1)*stride + x] == 0xff080812u &&
+               pixels[y*stride + x+w/2] == 0xff696579u;
+    };
+    if (!check(framed(render(),width,desk.storm),"footer has a swept control bezel")) return false;
     ConsoleLayout wideDesk;
     wideDesk.arrange(1920,540);
     int wideWidth=0,wideHeight=0;
     const auto* wide=ui.ui_render(plug,1920,540,scale,&wideWidth,&wideHeight);
     if (!check(wide && wideWidth==1920*scale && wideHeight==540*scale,"wide Retina resize")) return false;
+    if (!check(framed(wide,wideWidth,wideDesk.storm),"footer bezel follows the resized window")) return false;
     std::vector<uint32_t> commonStorm;
     for (int y=0;y<desk.storm.h*scale;y+=3)
-        for (int x=0;x<desk.storm.w*scale;x+=3)
+        for (int x=0;x<print.w*scale;x+=3)
             commonStorm.push_back(wide[(wideDesk.storm.y*scale+y)*wideWidth+wideDesk.storm.x*scale+x]);
-    if (!check(commonStorm==frozenStorm,"widening the editor reveals the next whips at the same scale")) return false;
+    if (!check(commonStorm==frozenPrint,"widening the editor reveals the next whips at the same scale")) return false;
     render();
     set("Resonance",.28);
     mouse(1,0,0);

@@ -2,13 +2,13 @@
 
 Separate desktop CLAP build of **hdslave Slink** for **FL Studio** (2024+) and any other CLAP host on macOS (Apple Silicon / Intel) and Windows (x64).
 
-![Slink 0.9.10 playing a 16-step pattern on macOS, with the chrome crest, turning smiley and six control groups](assets/thorn-crown-desktop.png)
+![Slink 0.9.11 playing a 16-step pattern on macOS, with the chrome crest, turning smiley and six control groups](assets/thorn-crown-desktop.png)
 
 [Watch 20 seconds with audio](assets/slink-desktop-playback.mp4?raw=1) · [See the turning chrome smiley at Retina resolution](assets/chrome-smiley.webp) · [View the 32-step pattern](assets/thorn-crown-desktop-32.png) · [View the silent playback GIF](assets/desktop-preview.gif) · [Watch the full-width storm at 60 fps](assets/footer-storm.mp4) · [Preview the footer as a GIF](assets/footer-detail.gif) · [View the Windows editor under CrossOver](assets/windows-preview.png)
 
-Slink **0.9.10** uses the freesp16 Thorn Crown faceplate. The chrome logo sits above the seed and barcode, the thorn camera fills the center, and the glass step counter shares its panel with the cobalt transport key. Above **Regen**, the chrome smiley turns through 33 poses rebuilt from the original 600-pixel painting. The desktop blends adjacent poses at display resolution. The crest is rendered from its mesh at 1328 × 360 inside its bezel. The glass counter and transport use four-times-resolution artwork, and the control labels use Barlow masks sized for the display. All 34 parameters fit in one resizable window, down to 960 × 540.
+Slink **0.9.11** uses the freesp16 Thorn Crown faceplate. The chrome logo sits above the seed and barcode, the thorn camera fills the center, and the glass step counter shares its panel with a blue-violet transport key bearing a heart and a moving step contact. Above **Regen**, the chrome smiley turns through 33 poses rebuilt from the original 600-pixel painting. The desktop blends adjacent poses at display resolution. The crest is rendered from its mesh at 1328 × 360 inside its bezel. The glass counter and transport use four-times-resolution artwork, and the control labels use Barlow masks sized for the display. All 34 parameters fit in one resizable window, down to 960 × 540.
 
-The pitch ribbon and chrome note keys line up with the Gate, Accent and Slide rows. One cobalt column follows the current step. Steps 17–32 appear alongside steps 1–16 when the pattern length exceeds 16. Beside the editable key and scale, the original SP-16 whip shapes lead into new curls and staggered lightning forks. Widening the window reveals more of the composition at the same proportions. The eight-second desktop loop uses 480 frames rendered at 2240 × 80.
+The pitch ribbon and chrome note keys line up with the Gate, Accent and Slide rows. One cobalt column follows the current step. Steps 17–32 appear alongside steps 1–16 when the pattern length exceeds 16. Beside the editable key and scale, the original SP-16 whip shapes lead into new curls and staggered lightning forks. The chrome rim lines up with the scale key. Widening the window reveals more of the animation at the same proportions. The eight-second desktop loop uses 480 frames rendered at 2240 × 80.
 
 | Section | Controls |
 | --- | --- |
@@ -30,7 +30,7 @@ During internal Play, browsing through Note Bass suspends the sequence and displ
 
 The CLAP ID, parameter IDs and choice order, factory preset keys, MIDI note behavior, and desktop state envelope stay compatible with previous builds. Older projects load without manual step edits. A raw state from the freesp16 build can also carry the shared step-edit records.
 
-[Download Slink 0.9.10 for macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.10), or build this checkout. On upgrade, keep the installed filename if the host stores plug-ins by path. Install one copy per host.
+[Download Slink 0.9.11 for macOS and Windows](https://github.com/hdslave/hdslave-Slink-Synth/releases/tag/v0.9.11), or build this checkout. On upgrade, keep the installed filename if the host stores plug-ins by path. Install one copy per host.
 
 ## Build & Install (macOS)
 

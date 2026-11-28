@@ -1,4 +1,5 @@
 #include "footer_storm.h"
+#include "../../src/pulse_keys.h"
 #include <array>
 #include <cstring>
 
@@ -85,6 +86,10 @@ Rect FooterStorm::paint(Canvas& canvas, Rect bounds, uint64_t now, bool motion, 
     const int period = std::max(1, (film.width * bounds.h + film.height / 2) / film.height);
     for (int x = bounds.x; x < bounds.x + bounds.w; x += period)
         strip.blitSharp(pixels_.data(), film.width, film.height, {x, bounds.y, period, bounds.h});
+    slink::keys::key(bounds.x * strip.s, bounds.y * strip.s, bounds.w * strip.s, bounds.h * strip.s,
+        strip.s, slink::keys::Face::window, [&](int x, int y, int w, int h, uint32_t ink) {
+            strip.fillPhys(x, y, x + w, y + h, ink);
+        });
     return bounds;
 }
 }

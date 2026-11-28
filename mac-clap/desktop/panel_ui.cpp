@@ -391,6 +391,7 @@ Rect PanelUI::update(uint64_t now)
         paintFooter();
         damage = damage.unite(layout_.footer);
     }
+    if (full || patternChanged || focusChanged) damage = damage.unite(paintPulseTrace());
     if (score)
     {
         paintScore();
